@@ -1,15 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { removeInternalFileClick, replaceInternalFileClick, clearSearchInSarcClick, searchTextInSarcClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
-import { set } from 'lodash';
-
 
 
 
 
 const button_size = '33px';
-
-
 
 function ImageButton({ src, onClick, alt, title, style }) {
   // Apply both the background image and styles directly to the button
@@ -49,9 +45,6 @@ const ButtonsDisplay = () => {
 
   const displayButtons = activeTab === "SARC" || activeTab === "YAML" || activeTab === "RSTB";
   if (!displayButtons) return null;
-
-  const [pathsFilters, setPathsFilters] = useState({ showAll: true, showAdded: false, showModded: false });
-
 
   const handlePathToClipboard = (text) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -105,7 +98,7 @@ const ButtonsDisplay = () => {
     }
   }
 
-
+ 
   const triggerSearchInEditor = useCallback(() => {
     if (editorRef.current) {
       editorRef.current.getAction('actions.find').run();
@@ -153,94 +146,6 @@ const ButtonsDisplay = () => {
     // { src: 'replace.png', alt: 'replace', onClick: triggerReplaceInEditor, title: 'Replace (Ctrl+H)' },
   ]
     ;
-  const handleFilterChange = (setPathsFilters, key, val) => {
-    setPathsFilters((prevFilters) => {
-      const showAllFiles = () => ({
-        showAll: true,
-        showAdded: false,
-        showModded: false
-      });
-
-      let newFilters = { ...prevFilters, [key]: val };
-
-      switch (key) {
-        case "showAll":
-          handleClearSarcSearch();
-          newFilters = showAllFiles();
-          break;
-
-        case "showAdded":
-          if (val) {
-            setpaths({
-              paths: paths.added_paths,
-              added_paths: paths.added_paths,
-              modded_paths: paths.modded_paths
-            });
-            setStatusText(`Showing only added files (${paths.added_paths.length})`);
-            newFilters = { showAll: false, showAdded: true, showModded: false };
-          } else {
-            handleClearSarcSearch();
-            newFilters = showAllFiles();
-          }
-          break;
-
-        case "showModded":
-          if (val) {
-            setpaths({
-              paths: paths.modded_paths,
-              added_paths: paths.added_paths,
-              modded_paths: paths.modded_paths
-            });
-            setStatusText(`Showing only modded files (${paths.modded_paths.length})`);
-            newFilters = { showAll: false, showAdded: false, showModded: true };
-          } else {
-            handleClearSarcSearch();
-            newFilters = showAllFiles();
-          }
-          break;
-
-        default:
-          setStatusText(`ERROR: Bad filters: ${prevFilters.showAll}, ${prevFilters.showAdded}, ${prevFilters.showModded}`);
-          return newFilters;
-      }
-
-      console.log("Updated filters:", newFilters);
-      return newFilters; // Return the new state
-    });
-  };
-
-  const PathsFilterCheckboxes = () => {
-    if (activeTab !== "SARC") return null;
-    if (paths.paths.length == 0) return null;
-
-    useEffect(() => {
-      // console.log("Checkbox state updated:", pathsFilters);
-    }, [pathsFilters]);
-    const isAddedShown = paths.added_paths.length > 0;
-    const isModdedShown = paths.modded_paths.length > 0;
-    const isAllShown = isAddedShown || isModdedShown;
-    if (!isAllShown) return null;
-    const filters = [
-      { key: "showAll", label: "All", var: pathsFilters.showAll, isShown: isAllShown },
-      { key: "showAdded", label: "Added", var: pathsFilters.showAdded, isShown: isAddedShown  },
-      { key: "showModded", label: "Modded", var: pathsFilters.showModded, isShown: isModdedShown  }
-    ];
-    return (
-      <div >
-        {filters.map((filter) => (
-          filter.isShown ? <label style={{ paddingLeft: '5px' }}><input
-            type="radio"
-            checked={filter.var}
-            onChange={(e) => handleFilterChange(setPathsFilters, filter.key, e.target.checked)}
-          />
-            {filter.label}
-          </label> : null
-        ))
-        }
-
-      </div>
-    );
-  };
 
 
   useEffect(() => {
@@ -352,7 +257,6 @@ const ButtonsDisplay = () => {
             style={button.alt === 'back' || button.alt === 'find' ? { marginLeft: '10px' } : {}}
           />
         ))}
-        <PathsFilterCheckboxes />
         {isClearSearchShown && (
           <button
             className="modal-footer-button"
@@ -365,7 +269,7 @@ const ButtonsDisplay = () => {
       </div>
     </div>
   );
-
+  
 };
 
 export { ImageButton };

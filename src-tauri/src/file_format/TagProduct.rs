@@ -1,8 +1,6 @@
 #![allow(non_snake_case, non_camel_case_types)]
 use crate::file_format::BinTextFile::{bytes_to_file, BymlFile};
-use crate::Open_and_Save::SendData;
-use crate::Settings::Pathlib;
-use crate::Zstd::{is_tagproduct_path, TotkFileType, TotkZstd};
+use crate::Zstd::TotkZstd;
 //use byteordered::Endianness;
 //use indexmap::IndexMap;
 use bitvec::prelude::*;
@@ -16,8 +14,6 @@ use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
 use std::{io, panic};
-
-use super::BinTextFile::OpenedFile;
 
 #[derive(Serialize, Deserialize)]
 struct TagJsonData {
@@ -48,7 +44,7 @@ pub struct TagProduct<'a> {
 }
 
 impl<'a> TagProduct<'a> {
-    pub fn new<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
+    pub fn new<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         if let Some(byml) = BymlFile::new(path.as_ref(), zstd.clone()) {
             let mut tag_product = TagProduct {
                 byml: byml,
@@ -79,13 +75,14 @@ impl<'a> TagProduct<'a> {
     #[allow(dead_code)]
     pub fn save(&mut self, path: String, text: &str) -> io::Result<()> {
         //let mut f_handle = OpenOptions::new().write(true).open(&path)?;
-        let mut data: Vec<u8> =
-            Self::to_binary(text).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let mut data: Vec<u8> = Self::to_binary(text).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
         if path.to_ascii_lowercase().ends_with(".zs") {
             data = self
                 .byml
                 .zstd
+                // .compressor
+                .cpp_compressor
                 .compress_zs(&data)
                 .expect("Failed to compress with zs");
         }
@@ -103,39 +100,15 @@ impl<'a> TagProduct<'a> {
         let json_data: TagJsonData = serde_json::from_str(text)?;
         let cached_tag_list = &json_data.TagList;
         //PathList
-
-        let mut path_vec: Vec<(String, Vec<String>)> = json_data.PathList.clone().into_iter().collect();
         let sorted_map: BTreeMap<String, Vec<String>> = json_data.PathList.into_iter().collect();
-
-        // Custom sort based on the pipe-delimited value first
-        path_vec.clone().sort_by(|a, b| {
-            let extract = |s: &str| {
-                s.split('|')
-                    .nth(1) // get the string between the first pair of '|'
-                    .map(|part| part.to_string())
-                    .unwrap_or_else(|| s.to_string())
-            };
-            extract(&a.0).cmp(&extract(&b.0)).then_with(|| a.0.cmp(&b.0)) // fallback to full key
-        });
-
-        // Then push entries
-        for (path, _plist) in &path_vec {
-            if path.contains('|') {
-                for slice in path.split('|') {
+        for (path, _plist) in &sorted_map {
+            if path.contains("|") {
+                for slice in path.split("|") {
                     let entry = roead::byml::Byml::String(slice.into());
                     path_list.push(entry);
                 }
             }
         }
-
-        // for (path, _plist) in &sorted_map {
-        //     if path.contains("|") {
-        //         for slice in path.split("|") {
-        //             let entry = roead::byml::Byml::String(slice.into());
-        //             path_list.push(entry);
-        //         }
-        //     }
-        // }
         //Bittable
         let mut bit_table_bits = Vec::new();
 
@@ -290,32 +263,6 @@ impl<'a> TagProduct<'a> {
             //self.to_text();
         }
         Ok(())
-    }
-
-    pub fn open_tag<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
-        let mut opened_file = OpenedFile::default();
-        let mut data = SendData::default();
-        let path_ref = path.as_ref();
-        let pathlib_var = Pathlib::new(path_ref);
-        print!("Is {} a tag? ", &pathlib_var.full_path);
-        if is_tagproduct_path(path_ref)
-        {
-            opened_file.tag = TagProduct::new(path_ref, zstd.clone());
-            if let Some(tag) = &mut opened_file.tag {
-                println!(" yes!");
-                opened_file.path = pathlib_var.clone();
-                opened_file.endian = Some(roead::Endian::Little);
-                opened_file.file_type = TotkFileType::TagProduct;
-                data.status_text = format!("Opened {}", &pathlib_var.full_path);
-                data.path = pathlib_var;
-                data.text = tag.to_text();
-                data.lang = "json".to_string();
-                data.get_file_label(TotkFileType::TagProduct, Some(roead::Endian::Little));
-                return Some((opened_file, data));
-            }
-        }
-        println!(" no");
-        None
     }
 }
 

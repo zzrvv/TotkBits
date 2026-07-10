@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/tauri';
 import React, { useEffect, useRef, useState } from 'react';
+import ReactDiffViewer from 'react-diff-viewer-continued';
 import { useEditorContext } from './StateManager';
 
 import { DiffEditor, useMonaco } from '@monaco-editor/react';
@@ -27,7 +28,7 @@ const handleCompare = async (event) => {
   event.stopPropagation(); // Prevent click event from reaching parent
   closeMenu();
   try {
-    const content = await invoke('extract_folder_from_opened_sarc', {source_folder: ""});
+    const content = await invoke('extract_opened_sarc');
     console.log(content);
     if (content !== null && content.status_text !== undefined) {
       setStatusText(content.status_text);
@@ -223,23 +224,37 @@ const CompareFiles = () => {
 
   useEffect(() => {
     if (monaco && diffEditorRef.current) {
-      const navigator = monaco.editor.createDiffNavigator(diffEditorRef.current, {
-        followsCaret: true,
-        ignoreCharChanges: true,
-      });
-      diffNavigatorRef.current = navigator;
-  
-      const subscription = diffEditorRef.current.onDidUpdateDiff(() => {
-        const ranges = navigator._diffNavigator?.ranges || [];
-        setTotalDiffs(ranges.length);
-        setCurrentDiffIndex(0);
-        diffEditorRef.current.getModifiedEditor().revealLine(1);
-        diffEditorRef.current.getOriginalEditor().revealLine(1);
-      });
-  
-      return () => subscription.dispose();
+      const diffEditor = diffEditorRef.current;
+
+      // Ensure the models are initialized
+      if (diffEditor.getModel()) {
+        const navigator = monaco.editor.createDiffNavigator(diffEditor, {
+          followsCaret: true, // Automatically navigate to differences
+          ignoreCharChanges: true, // Ignore character-level changes
+        });
+        diffNavigatorRef.current = navigator;
+
+        const subscription = diffEditor.onDidUpdateDiff(() => {
+          const diffNavigator = navigator._editor._diffNavigator;
+          const newTotalDiffs = diffNavigator.ranges.length;
+          setTotalDiffs(newTotalDiffs);
+          setCurrentDiffIndex(0); // Reset to the first diff
+          diffEditor.getModifiedEditor().revealLine(1);
+          diffEditor.getOriginalEditor().revealLine(1);
+        });
+
+        // if (totalDiffs === 0 && navigator._editor._diffNavigator.ranges.length > 0) {
+        //   setTotalDiffs(navigator._editor._diffNavigator.ranges.length);
+        // }
+        return () => {
+          // Cleanup subscription when component unmounts
+          subscription.dispose();
+        };
+        // console.log(navigator);
+        // console.log(navigator._editor._diffNavigator.ranges.length);
+      }
     }
-  }, [monaco]);
+  }, [monaco, diffEditorRef.current]);
 
   const handleNextDiff = () => {
     console.log(currentDiffIndex, totalDiffs);
@@ -306,8 +321,8 @@ const CompareFiles = () => {
             readOnly: true,
             renderSideBySide: true,
           }}
-          onMount={(editor, monacoInstance) => {
-            diffEditorRef.current = editor; // store the real DiffEditor instance
+          onMount={(editor) => {
+            diffEditorRef.current = editor;
           }}
         />
       </div>

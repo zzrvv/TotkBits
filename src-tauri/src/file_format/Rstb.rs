@@ -5,15 +5,13 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::Open_and_Save::SendData;
 use crate::Settings::{list_files_recursively, Pathlib};
-use crate::Zstd::{is_restbl, TotkFileType, TotkZstd};
+use crate::Zstd::{is_restbl, TotkZstd};
 use flate2::read::ZlibDecoder;
 use restbl::bin::ResTblReader;
 use restbl::ResourceSizeTable;
 // use serde_json::to_string_pretty;
 
-use super::BinTextFile::OpenedFile;
 use super::Pack::PackFile;
 
 // use super::RstbData::get_rstb_data;
@@ -39,36 +37,6 @@ pub struct Restbl<'a> {
 }
 
 impl<'a> Restbl<'_> {
-
-    pub fn open_restbl<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
-        let mut opened_file = OpenedFile::default();
-        let path_ref = path.as_ref();
-        let mut data = SendData::default();
-        print!("Is {} a restbl? ", &path_ref.display());
-        let pathlib_var = Pathlib::new(path_ref);
-        if pathlib_var
-            .name
-            .to_lowercase()
-            .starts_with("resourcesizetable.product")
-        {
-            println!(" yes!");
-            opened_file.restbl = Restbl::from_path(path_ref, zstd.clone());
-            if let Some(_restbl) = &mut opened_file.restbl {
-                data.tab = "RSTB".to_string();
-                opened_file.path = pathlib_var.clone();
-                opened_file.endian = Some(roead::Endian::Little);
-                opened_file.file_type = TotkFileType::Restbl;
-                data.status_text = format!("Opened {}", &pathlib_var.full_path);
-                data.path = pathlib_var;
-                // data.text = restbl.to_text();
-                data.get_file_label(TotkFileType::Restbl, Some(roead::Endian::Little));
-                return Some((opened_file, data));
-            }
-        }
-        println!(" no");
-        None
-    }
-
     pub fn get_restb_entries<P: AsRef<Path>>(&mut self, path: P) -> io::Result<Vec<String>> {
         //read from zlib json
         let json_zlibdata = fs::read("bin/totk_rstb_paths.bin")?;
@@ -129,7 +97,7 @@ impl<'a> Restbl<'_> {
         let mut buffer = Vec::new();
         f_handle.read_to_end(&mut buffer).ok()?;
         if !is_restbl(&buffer) {
-            buffer = zstd.decompress_zs(&buffer).ok()?;
+            buffer = zstd.decompressor.decompress_zs(&buffer).ok()?;
         }
         if !is_restbl(&buffer) {
             return None; //invalid rstb
@@ -168,7 +136,7 @@ impl<'a> Restbl<'_> {
         let mut f = File::create(&path)?;
         if path.to_lowercase().ends_with(".zs") {
             // buffer = self.zstd.compressor.compress_empty(&buffer)?;
-            buffer = self.zstd.compress_empty(&buffer)?;
+            buffer = self.zstd.cpp_compressor.compress_empty(&buffer)?;
         }
         f.write_all(&buffer)?;
         Ok(())

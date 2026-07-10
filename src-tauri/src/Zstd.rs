@@ -3,7 +3,6 @@ use crate::Open_and_Save::get_string_from_data;
 use crate::TotkConfig::TotkConfig;
 use digest::Digest;
 use flate2::read::ZlibDecoder;
-use libloading::{Library, Symbol};
 use roead::sarc::*;
 use sha2::Sha256;
 use zstd::zstd_safe::zstd_sys::{
@@ -22,8 +21,6 @@ use std::io::{self, Cursor, Read, Write};
 use zstd::dict::{DecoderDictionary, EncoderDictionary};
 use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
 
-pub const  COMPRESSION_LEVEL: i32 = 16;
-
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TotkFileType {
     AINB,
@@ -38,7 +35,6 @@ pub enum TotkFileType {
     Bcett,
     Esetb,
     Evfl,
-    Xlink,
     Text,
     Other,
     //SMO
@@ -56,6 +52,13 @@ pub struct ZstdCppCompressor {
 
 impl ZstdCppCompressor {
     
+    #[allow(dead_code)]
+    pub fn from_totk_zstd(zstd: Arc<TotkZstd>) -> ZstdCppCompressor {
+        Self::from_zsdic(
+            zstd.clone().zsdic.clone(),
+            zstd.clone().compressor.comp_level,
+        )
+    }
     pub fn from_zsdic(zsdic: Arc<ZsDic>, comp_level: i32) -> ZstdCppCompressor {
         // let zsdic = &zstd.zsdic;
         // let comp_level = zstd.compressor.comp_level;
@@ -144,149 +147,49 @@ impl ZstdCppCompressor {
 
 pub struct TotkZstd<'a> {
     pub totk_config: Arc<TotkConfig>,
-    pub decompressor: Option<ZstdDecompressor<'a>>,
-    pub compressor: Option<ZstdCompressor<'a>>,
-    pub zsdic: Option<Arc<ZsDic>>,
-    pub cpp_compressor: Option<ZstdCppCompressor>,
-    //dll
-    pub dll_manager: DllManager
+    pub decompressor: ZstdDecompressor<'a>,
+    pub compressor: ZstdCompressor<'a>,
+    pub zsdic: Arc<ZsDic>,
+    pub cpp_compressor: ZstdCppCompressor,
 }
 
 impl<'a> TotkZstd<'_> {
     pub fn new(totk_config: Arc<TotkConfig>, comp_level: i32) -> io::Result<TotkZstd<'a>> {
-        let mut zsdic: Option<Arc<ZsDic>> = None;
-        // let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_config.clone())?);
-        let mut decompressor: Option<ZstdDecompressor<'_>> = None;
-        let mut compressor: Option<ZstdCompressor<'_>> = None;
-        let mut cpp_compressor: Option<ZstdCppCompressor> = None;
-        if totk_config.is_valid() {
-            if let Ok(_zsdic) = ZsDic::new(totk_config.clone()) {
-                let arc_zsdic = Arc::new(_zsdic);
-                zsdic = Some(arc_zsdic.clone());
-
-            if let Ok(_decompressor) = ZstdDecompressor::new(totk_config.clone(), arc_zsdic.clone()) {
-                decompressor = Some(_decompressor);
-            }
-            if let Ok(_compressor) = ZstdCompressor::new(totk_config.clone(), arc_zsdic.clone(), comp_level) {
-                compressor = Some(_compressor);
-            }
-            if compressor.is_some() {
-                cpp_compressor = Some(ZstdCppCompressor::from_zsdic(arc_zsdic.clone(), comp_level));
-            }
-        }
-        }
-        // let compressor: ZstdCompressor =
-        //     ZstdCompressor::new(totk_config.clone(), zsdic.clone(), comp_level)?;
+        let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_config.clone())?);
+        let decompressor: ZstdDecompressor =
+            ZstdDecompressor::new(totk_config.clone(), zsdic.clone())?;
+        let compressor: ZstdCompressor =
+            ZstdCompressor::new(totk_config.clone(), zsdic.clone(), comp_level)?;
 
         Ok(TotkZstd {
             totk_config,
             decompressor,
             compressor,
-            zsdic: zsdic,
-            cpp_compressor: cpp_compressor,
-            dll_manager: DllManager::default()
+            zsdic: zsdic.clone(),
+            cpp_compressor: ZstdCppCompressor::from_zsdic(zsdic.clone(), comp_level),
         })
     }
-
-    pub fn is_valid(&self) -> bool {
-        self.totk_config.is_valid() && self.zsdic.is_some()
-    }
-
-    fn throw_zstd_unavailable() -> io::Error {
-        io::Error::new(io::ErrorKind::InvalidInput, "No romfs path found, zstd unavailable")
-    }
-
-    pub fn compress_zs(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
-        if let Some(compressor) = &self.compressor {
-            return compressor.compress_zs(data);
-        }
-        Err(Self::throw_zstd_unavailable())
-    }
-
-    pub fn compress_pack(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
-        if let Some(compressor) = &self.compressor {
-            return compressor.compress_pack(data);
-        }
-        Err(Self::throw_zstd_unavailable())
-    }
-
-    pub fn compress_bcett(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
-        if let Some(compressor) = &self.compressor {
-            return compressor.compress_bcett(data);
-        }
-        Err(Self::throw_zstd_unavailable())
-    }
-
-    pub fn compress_empty(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
-        if let Some(compressor) = &self.compressor {
-            return compressor.compress_empty(data);
-        }
-        Err(Self::throw_zstd_unavailable())
-    }
-
-    pub fn decompress(&self, data: &Vec<u8>, dictt: &Arc<DecoderDictionary>) -> io::Result<Vec<u8>> {
-        if let Some(decompressor) = &self.decompressor {
-            return decompressor.decompress(data, dictt);
-        }
-        Err(Self::throw_zstd_unavailable())
-    }
-    pub fn decompress_zs(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
-        if let Some(decompressor) = &self.decompressor {
-            return decompressor.decompress(data, &decompressor.zs.clone());
-        }
-        Err(Self::throw_zstd_unavailable())
-    }
-
-    pub fn decompress_pack(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
-        if let Some(decompressor) = &self.decompressor {
-            return decompressor.decompress(data, &decompressor.packzs.clone());
-        }
-        Err(Self::throw_zstd_unavailable())
-    }
-
-    pub fn decompress_bcett(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
-        if let Some(decompressor) = &self.decompressor {
-            return decompressor.decompress(data, &decompressor.bcett.clone());
-        }
-        Err(Self::throw_zstd_unavailable())
-    }
-
-    pub fn decompress_empty(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
-        if let Some(decompressor) = &self.decompressor {
-            return decompressor.decompress(data, &decompressor.empty.clone());
-        }
-        Err(Self::throw_zstd_unavailable())
-    }
-
     pub fn try_decompress(&self, data: &Vec<u8>) -> Result<Vec<u8>, io::Error> {
         // println!("Trying to decompress...");
-        if let Some(decompressor) = &self.decompressor {
-            let mut dicts: HashMap<String, Arc<DecoderDictionary>> = Default::default();
-            dicts.insert("zs".to_string(), decompressor.zs.clone());
-            dicts.insert("packzs".to_string(), decompressor.packzs.clone());
-            dicts.insert("empty".to_string(), decompressor.empty.clone());
-            dicts.insert("bcett".to_string(), decompressor.bcett.clone());
-    
-            for (name, dictt) in dicts.iter() {
-                if let Ok(dec_data) = self.decompress(&data, &dictt) {
-                    // println!("Finally decompressed! Its {} dictionary", name);
-                    return Ok(dec_data);
-                }
-            }
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Unable to decompress with any dictionary!",
-            ));
-        }
-        Err(Self::throw_zstd_unavailable())
+        let mut dicts: HashMap<String, Arc<DecoderDictionary>> = Default::default();
+        dicts.insert("zs".to_string(), self.decompressor.zs.clone());
+        dicts.insert("packzs".to_string(), self.decompressor.packzs.clone());
+        dicts.insert("empty".to_string(), self.decompressor.empty.clone());
+        dicts.insert("bcett".to_string(), self.decompressor.bcett.clone());
 
-        
+        for (name, dictt) in dicts.iter() {
+            if let Ok(dec_data) = self.decompressor.decompress(&data, &dictt) {
+                // println!("Finally decompressed! Its {} dictionary", name);
+                return Ok(dec_data);
+            }
+        }
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            "Unable to decompress with any dictionary!",
+        ));
     }
     pub fn find_vanila_internal_file_path_in_romfs<P: AsRef<Path>>(&self, internal_path: P) -> io::Result<String> {
         //parse json
-        if !self.is_valid() {
-            return Err(Self::throw_zstd_unavailable());
-        }
         let json_zlibdata = fs::read("bin/totk_internal_filepaths.bin")?;
         let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
         let mut json_str = String::new();
@@ -310,9 +213,6 @@ impl<'a> TotkZstd<'_> {
         Ok(result)
     }
     pub fn find_vanila_internal_file_data_in_romfs<P: AsRef<Path>>(&self, internal_path: P, zstd: Arc<TotkZstd>) -> io::Result<String> {
-        if !zstd.is_valid() {
-            return Err(Self::throw_zstd_unavailable());
-        }
         //parse json
         // let json_zlibdata = fs::read("bin/totk_internal_filepaths.bin")?;
         // let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
@@ -549,16 +449,8 @@ pub fn is_ainb(data: &[u8]) -> bool {
     data.starts_with(b"AIB")
 }
 #[inline]
-pub fn is_xlink(data: &[u8]) -> bool {
-    data.starts_with(b"XLNK")
-}
-#[inline]
 pub fn is_asb(data: &[u8]) -> bool {
     data.starts_with(b"ASB ")
-}
-#[inline]
-pub fn is_baev(data: &[u8]) -> bool {
-    data.starts_with(b"BAEV")
 }
 
 #[inline]
@@ -577,50 +469,9 @@ pub fn is_gamedatalist<P: AsRef<Path>>(path: P) -> bool {
     // path.ends_with("GameDataList.Product.110.byml.zs")
 }
 #[inline]
-pub fn is_tagproduct_path<P: AsRef<Path>>(path: P) -> bool {
+pub fn is_tagproduct<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("tag.product")
     // path.ends_with("GameDataList.Product.110.byml.zs")
-}
-#[inline]
-pub fn is_xlink_path<P: AsRef<Path>>(path: P) -> bool {
-    let tmp = path.as_ref().to_string_lossy().to_ascii_lowercase();
-    tmp.ends_with(".belnk") ||
-    tmp.ends_with(".belnk.zs") 
-    // path.ends_with("GameDataList.Product.110.byml.zs")
-}
-#[inline]
-pub fn is_rstb_path<P: AsRef<Path>>(path: P) -> bool {
-    path.as_ref().file_name().unwrap_or_default().to_string_lossy().to_ascii_lowercase().starts_with("resourcesizetable.product")
-}
-#[inline]
-pub fn is_ainb_path<P: AsRef<Path>>(path: P) -> bool {
-    path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".ainb")
-}
-#[inline]
-pub fn is_asb_path<P: AsRef<Path>>(path: P) -> bool {
-    path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".asb")
-}
-#[inline]
-pub fn is_byml_path<P: AsRef<Path>>(path: P) -> bool {
-    let tmp = path.as_ref().to_string_lossy().to_ascii_lowercase();
-    tmp.ends_with(".byml")
-        || tmp.ends_with(".byml.zs")
-        || tmp.ends_with(".bgyml.zs")
-        || tmp.ends_with(".bgyml")
-}
-#[inline]
-pub fn is_msbt_path<P: AsRef<Path>>(path: P) -> bool {
-    path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".msbt")
-        || path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".msyt")
-}
-#[inline]
-pub fn is_evfl_path<P: AsRef<Path>>(path: P) -> bool {
-    path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".bfevfl.zs")
-        || path.as_ref().to_string_lossy().to_ascii_lowercase().ends_with(".bfevfl")
-}
-#[inline]
-pub fn is_sarc_root_path(path: &str) -> bool {
-    path.is_empty() || path.replace("\\", "/") == "/" || path == "."
 }
 
 #[inline]
@@ -641,7 +492,7 @@ pub fn sha256(data: Vec<u8>) -> String {
 }
 
 #[inline]
-pub fn is_esetb_path<P: AsRef<Path>>(path: P) -> bool {
+pub fn is_esetb<P: AsRef<Path>>(path: P) -> bool {
     let tmp = path.as_ref().to_string_lossy().to_ascii_lowercase();
     tmp.ends_with(".esetb.byml") || tmp.ends_with(".esetb.byml.zs")
 }
@@ -665,46 +516,3 @@ pub fn get_executable_dir() -> String {
     } 
     return String::new();
 }
-
-// DLLS
-
-pub struct CppDll {
-    pub path: String,
-    pub lib: Library
-}
-
-impl CppDll {
-    pub fn get_function<T>(&self, func_name: &str) -> io::Result<Symbol<T>> {
-        unsafe {
-            let lib = &self.lib;
-            let mut func_name_bytes = func_name.as_bytes().to_vec();
-            func_name_bytes.push(0); // Null-terminate the string
-            match lib.get(func_name_bytes.as_slice()) {
-                Ok(func) => Ok(func),
-                Err(_) => Err(io::Error::new(io::ErrorKind::NotFound, "Function not found")),
-            }
-        }
-    }
-}
-
-
-pub struct DllManager {
-    pub xlink_dll: CppDll,
-}
-
-impl Default for DllManager {
-    fn default() -> Self {
-        // let mut xlink_dll = CppDll { path: String::new() };
-        let exe_dir = get_executable_dir();
-        let dll_path = format!("{}/bin/dlls/xlink_tool.dll", exe_dir);
-        let lib;
-        unsafe {
-            lib = Library::new(&dll_path).expect("Failed to load DLL");
-        }
-        let xlink_dll = CppDll { path: dll_path, lib };
-        DllManager {
-            xlink_dll: xlink_dll,
-        }
-    }
-}
-

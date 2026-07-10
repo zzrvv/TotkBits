@@ -1,6 +1,5 @@
 use std::env;
 use std::error::Error;
-use std::f64::consts::E;
 use std::fs;
 use std::io;
 use std::io::{BufWriter, Read, Write};
@@ -30,25 +29,18 @@ pub fn get_startup_data(state: tauri::State<serde_json::Value>) -> Result<serde_
 pub struct StartupData {
     pub argv1: String,
     pub config: TotkConfig,
-    pub zstd_msg: String,
 }
 
 impl StartupData {
     pub fn new() -> io::Result<Self> {
         let args: Vec<String> = env::args().collect();
         let argv1 = args.get(1).cloned().unwrap_or_default();
-        let config = TotkConfig::safe_new().unwrap_or(TotkConfig::default());
-        let zstd_msg = if config.is_valid() {
-            ""
-        } else {
-            "ZSTD disabled"
-        };
-        Ok(Self { argv1, config, zstd_msg: zstd_msg.to_string() })
+        let config = TotkConfig::safe_new()?;
+        Ok(Self { argv1, config })
     }
     pub fn to_json(&self) -> io::Result<serde_json::Value> {
         let mut res = json!({"argv1": self.argv1,});
         res = update_json(res, self.config.to_react_json()?);
-        res = update_json(res, json!({"zstd_msg": self.zstd_msg}));
         Ok(res)
     }
 }
@@ -180,15 +172,9 @@ pub fn read_string_from_file(path: &str) -> io::Result<String> {
 
 
 pub fn makedirs(path: &PathBuf) -> std::io::Result<()> {
-    //Create parent directories if they don't exist
     let par = path.parent();
     if let Some(par) = par {
-        if par.is_file() {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("Parent is a file: {:?}, cannot create directory", par)));
-        }
-        if !par.exists() {
-            fs::create_dir_all(par)?;
-        }
+        fs::create_dir_all(par)?;
     }
     Ok(())
 }

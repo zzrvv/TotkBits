@@ -26,10 +26,10 @@ use crate::Settings::{get_startup_data, StartupData};
 use crate::TauriCommands::{
     add_click, add_empty_byml_file, add_files_from_dir_recursively, add_to_dir_click,
     clear_search_in_sarc, close_all_opened_files, compare_files, compare_internal_file_with_vanila,
-    edit_config, edit_internal_file, exit_app, extract_internal_file, extract_folder_from_opened_sarc,
+    edit_config, edit_internal_file, exit_app, extract_internal_file, extract_opened_sarc,
     open_dir_dialog, open_file_dialog, open_file_from_path, open_file_struct,
     remove_internal_sarc_file, rename_internal_sarc_file, restart_app, rstb_edit_entry,
-    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,check_if_update_needed,update_app,get_toml_config,update_toml_config
+    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,check_if_update_needed,update_app
 };
 use crate::TotkApp::TotkBitsApp;
 use updater::TotkbitsVersion::TotkbitsVersion;
@@ -39,7 +39,6 @@ use updater::TotkbitsVersion::TotkbitsVersion;
 
 
 fn main() -> io::Result<()> {
-
     main_initialization()?;
     // test_case()?;
     // return Ok(());
@@ -55,7 +54,7 @@ fn main() -> io::Result<()> {
         .manage(app)
         .invoke_handler(tauri::generate_handler![
             add_empty_byml_file,
-            extract_folder_from_opened_sarc,
+            extract_opened_sarc,
             restart_app,
             edit_config,
             get_startup_data,
@@ -83,8 +82,7 @@ fn main() -> io::Result<()> {
             compare_files,
             compare_internal_file_with_vanila,
             check_if_update_needed,
-            update_app,
-            get_toml_config,update_toml_config
+            update_app
         ])
         .run(tauri::generate_context!())
     {

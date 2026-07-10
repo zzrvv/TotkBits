@@ -1,6 +1,6 @@
 [package]
 name = "Totkbits"
-version = "0.1.0"
+version = "0.0.9"
 description = "A Tauri App"
 authors = ["Banan039/SolidLink95"]
 edition = "2021"
@@ -8,35 +8,32 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-tauri-build = { version = "1.5.6", features = [] }
+tauri-build = { version = "1", features = [] }
 
 [dependencies]
 # zstud-sys = {git = "https://github.com/SolidLink95/zstud-sys-rs"}
-libloading = "0.8.6"
+#BymlText
 ryml = "0.3.2"
 miow = "0.6.0"
+
 regex = "1.10.4"
 # glob = "0.3"
-msbt_bindings_rs = { git = "https://github.com/SolidLink95/msbt_bindings_rs" }
+msbt_bindings_rs = {git = "https://github.com/SolidLink95/msbt_bindings_rs"}
 # msbt_bindings_rs = {path = "W:/coding/msbt_bindings_rs"}
-tauri = { version = "1.8.2", features = ["api-all"] }
+tauri = { version = "1", features = [ "api-all"] }
 serde = { version = "1", features = ["derive"] }
 # tauri-bundler = "1.5.1"
 msyt = { git = "https://github.com/SolidLink95/msyt-lib" }
 msbt = { git = "https://github.com/lojewalo/msbt-rs" }
 zstd = "0.13.2"
-updater = { path = "../ext_projects/updater" }
-roead = { git = "https://github.com/SolidLink95/roead", features = [
-    "yaml",
-    "sarc",
-    "byml",
-] }
+updater = {path = "../ext_projects/updater"}
+roead = { git = "https://github.com/SolidLink95/roead", features = ["yaml", "sarc", "byml"] }
 # roead = { path = "./external/roead", features = ["yaml", "sarc", "byml"] }
 # roead = { version = "1.0.0", features = ["yaml", "sarc", "byml"] }
 #roead = { version = "0.25.1", features = ["yaml", "sarc", "byml"] }
 serde_json = "1.0"
-rfd = "0.15.3"
-native-dialog = "0.8.11"
+rfd = "0.15.1"
+native-dialog = "0.7.0"
 natord = "1.0.9"
 bitvec = "1.0.1"
 # rayon = "1"
@@ -49,14 +46,14 @@ digest = "0.10"
 fs2 = "0.4"
 base64 = "0.22.1"
 restbl = { version = "0.1", features = ["yaml"] }
-flate2 = "1.1.1"
-windows = "0.61.1"
-toml = "0.8.21"
-# winreg = "0.52.0"
-reqwest = "0.12.15"
+flate2 = "1.0.35"
+windows = "0.58.0"
+toml = "0.8.19"
+winreg = "0.52.0"
+reqwest = "0.12.12"
 
 [dev-dependencies]
-windows = "0.61.1"
+windows = "0.58.0"
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

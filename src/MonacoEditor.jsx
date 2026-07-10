@@ -39,7 +39,6 @@ const InitializeEditor = (props) => {
     settings.theme = updatedSettings.theme;  
     settings.minimap = updatedSettings.minimap;  
     settings.contextMenuFontSize = updatedSettings.contextMenuFontSize;  
-    settings.zstd_msg = data.zstd_msg;  
     
 
 

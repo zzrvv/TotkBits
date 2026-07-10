@@ -1,6 +1,6 @@
 use std::{fs::OpenOptions, io::{self, Write}, path::Path, sync::Arc};
-use roead::byml::Byml;
-use crate::{file_format::BinTextFile::{BymlFile, FileData, OpenedFile}, Open_and_Save::SendData, Settings::Pathlib, Zstd::{is_byml, TotkFileType, TotkZstd}};
+use roead::byml::{self, Byml};
+use crate::{file_format::BinTextFile::{BymlFile, FileData}, Zstd::{is_byml, TotkFileType, TotkZstd}};
 
 
 const SMO_SAVE_FILE_SIZE : usize = 0x20000C;
@@ -17,31 +17,6 @@ pub struct SmoSaveFile<'a> {
 }
 
 impl<'a> SmoSaveFile<'a> {
-
-    pub fn open_smo_save_file<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile<'static>, SendData)> {
-        let file_name = path.as_ref().to_string_lossy().to_string().replace("\\", "/");
-        let mut opened_file = OpenedFile::default();
-        let mut data = SendData::default();
-        let pathlib_var = Pathlib::new(&file_name);
-        print!("Is {} a smo save file?", &file_name);
-        if let Ok(smo_file) = &mut SmoSaveFile::from_file(&file_name, zstd.clone()) {
-            if let Ok(text) = smo_file.to_string() {
-                println!(" yes!");
-                opened_file.path = pathlib_var.clone();
-                opened_file.endian = Some(smo_file.endian);
-                opened_file.file_type = TotkFileType::SmoSaveFile;
-                data.status_text = format!("Opened {}", &pathlib_var.full_path);
-                data.path = pathlib_var;
-                data.text = text;
-                data.get_file_label(opened_file.file_type, Some(smo_file.endian));
-                return Some((opened_file, data));
-            }
-            // let m = opened_file.msyt.as_ref().unwrap();
-        }
-        println!(" no");
-        None
-    }
-
     pub fn from_binary<P: AsRef<Path>>(data: &[u8], zstd: Arc<TotkZstd<'a>>, path: P) -> io::Result<Self> {
         if !Self::is_smo_save_binary(data) {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "Data is not a valid SMO save file"));
@@ -102,7 +77,7 @@ impl<'a> SmoSaveFile<'a> {
     }
     pub fn from_string(text: &str,zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
         let mut byml_file = BymlFile::from_text(&text, zstd.clone())?;
-        let pio_map = byml_file.pio.as_mut_map().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let mut pio_map = byml_file.pio.as_mut_map().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         if !pio_map.contains_key("_Header")  {
             return Err(io::Error::new(io::ErrorKind::Other, "SMO save file does not contain Header key"));
         }

@@ -1,6 +1,5 @@
 #![allow(non_snake_case,non_camel_case_types)]
 use crate::file_format::TagProduct::TagProduct;
-use crate::Open_and_Save::SendData;
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, is_gamedatalist, TotkFileType, TotkZstd};
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
@@ -65,18 +64,24 @@ impl<'a> BymlFile<'_> {
                 TotkFileType::Byml => {
                     data = self
                         .zstd
+                        .cpp_compressor
+                        // .compressor
                         .compress_zs(&data)
                         .expect("Failed to compress with zs");
                 }
                 TotkFileType::Bcett => {
                     data = self
                         .zstd
+                        .cpp_compressor
+                        // .compressor
                         .compress_bcett(&data)
                         .expect("Failed to compress with bcett");
                 }
                 _ => {
                     data = self
                         .zstd
+                        // .compressor
+                        .cpp_compressor
                         .compress_zs(&data)
                         .expect("Failed to compress with zs");
                 }
@@ -168,7 +173,7 @@ impl<'a> BymlFile<'_> {
             data.file_type = TotkFileType::Byml;
             return Ok(data);
         } else {
-            match zstd.decompress_zs(&buffer) {
+            match zstd.decompressor.decompress_zs(&buffer) {
                 //regular byml file compressed with zs
                 Ok(res) => {
                     if is_byml(&res) {
@@ -180,7 +185,7 @@ impl<'a> BymlFile<'_> {
             }
         }
         if !is_byml(&data.data) {
-            match zstd.decompress_bcett(&buffer) {
+            match zstd.decompressor.decompress_bcett(&buffer) {
                 //bcett map file
                 Ok(res) => {
                     data.data = res;
@@ -240,35 +245,7 @@ impl<'a> BymlFile<'_> {
         // process_inline_content(Byml::to_text(&self.pio), self.zstd.totk_config.yaml_max_inl)
         text
     }
-    pub fn open_byml<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
-        let mut opened_file = OpenedFile::default();
-        let mut data = SendData::default();
-        let path_ref = path.as_ref();
-        let pathlib_var = Pathlib::new(path_ref);
-        print!("Is {} a byml? ", &pathlib_var.full_path);
-        opened_file.byml = BymlFile::new(path_ref, zstd.clone());
-        // if opened_file.byml.is_some() {
-        if let Some(b) = &opened_file.byml {
-            // let b = opened_file.byml.as_ref().unwrap();
-            let gamedatalist = if is_gamedatalist(path_ref) {
-                "(GameDataList) "
-            } else {
-                ""
-            };
-            println!("yes {}!",  gamedatalist);
-            opened_file.path = pathlib_var.clone();
-            opened_file.endian = b.endian;
-            opened_file.file_type = b.file_data.file_type.clone();
-            data.status_text = format!("Opened {}", &pathlib_var.full_path);
-            data.path = pathlib_var;
-            // data.text = Byml::to_text(&b.pio);
-            data.text = b.to_string();
-            data.get_file_label(b.file_data.file_type, b.endian);
-            return Some((opened_file, data));
-        }
-        println!(" no");
-        None
-    }
+
 
 }
 
@@ -502,7 +479,45 @@ impl<'a> OpenedFile<'_> {
         }
     }
 
-    
+    pub fn open(&mut self, file_path: &str, zstd: Arc<TotkZstd>) -> String {
+        let res = String::new();
+        let path = Pathlib::new(file_path.to_string());
+        if self.open_tag(&path, zstd.clone()) {
+            if let Some(tag) = &self.tag {
+                return tag.text.to_string();
+            }
+        }
+        res
+    }
+
+    pub fn open_tag(&mut self, path: &Pathlib, zstd: Arc<TotkZstd>) -> bool {
+        if path.name.to_lowercase().starts_with("tag.product") {
+            let tag = TagProduct::new(path.full_path.clone(), zstd.clone());
+            match tag {
+                Some(mut tag) => {
+                    match tag.parse() {
+                        Ok(_) => {
+                            println!("Tag parsed!");
+                        }
+                        Err(err) => {
+                            eprintln!("Error parsing tag! {:?}", err);
+                            return false;
+                        }
+                    }
+                    self.reset();
+                    //self.tag = Some(tag);
+                    self.file_type = TotkFileType::TagProduct;
+                    self.path = path.clone();
+                    self.endian = Some(roead::Endian::Little);
+                    return true;
+                }
+                None => {
+                    return false;
+                }
+            }
+        }
+        false
+    }
 }
 
 #[allow(dead_code)]
@@ -510,6 +525,18 @@ fn print_type_of<T>(_: &T) {
     println!("{}", type_name::<T>());
 }
 
+pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
+    let file = fs::File::create(path)?;
+    let mut writer = BufWriter::new(file);
+
+    writer.write_all(content.as_bytes())?;
+
+    // The buffer is automatically flushed when writer goes out of scope,
+    // but you can manually flush it if needed.
+    writer.flush()?;
+
+    Ok(())
+}
 
 #[allow(dead_code)]
 pub fn read_string_from_file(path: &str) -> io::Result<String> {
