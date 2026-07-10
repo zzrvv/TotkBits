@@ -40,7 +40,7 @@ export async function checkIfUpdateNeeded(setUpdateState) {
     
     // const result = content === null ? false : content === "yes" ? true : false;
     setUpdateState({wasChecked: true, isUpdateNeeded: isUpdateNeeded, latestVersion: latestVersion})
-    console.log('Update needed: ', content);
+    // console.log('Update needed: ', content);
   }
   catch (error) {
     console.error('Failed to check update:', error);
@@ -62,6 +62,27 @@ export async function extractFileClick(selectedPath, setStatusText) {
   catch (error) {
     console.error('Failed to extract file:', error);
   }
+}
+
+export async function extractFolderClick(sourcePath, setStatusText) {
+  try {
+    // if (sourcePath === "") {
+    //   setStatusText("Select some folder first!");
+    //   return;
+    // }
+    console.log('Extracting folder:', sourcePath);
+    const content = await invoke('extract_folder_from_opened_sarc', { sourceFolder: sourcePath });
+    if (content !== null) {
+      setStatusText(content.status_text);
+    }
+  }
+  catch (error) {
+    console.error('Failed to extract folder:', error);
+  }
+}
+
+export async function extractRootFolderClick(setStatusText) {
+  return extractFolderClick("", setStatusText);
 }
 
 export async function searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened) {
@@ -302,6 +323,10 @@ export async function addInternalFileToDir(internalPath, setStatusText, setpaths
     console.error("Error invoking 'addInternalFileToDir':", error);
   }
 
+}
+
+export async function addFilesFromDirRecursivelyToRoot(setStatusText, setpaths) {
+  return addFilesFromDirRecursively("", setStatusText, setpaths);
 }
 
 export async function addFilesFromDirRecursively(internalPath, setStatusText, setpaths) {
