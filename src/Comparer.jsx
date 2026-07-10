@@ -27,7 +27,7 @@ const handleCompare = async (event) => {
   event.stopPropagation(); // Prevent click event from reaching parent
   closeMenu();
   try {
-    const content = await invoke('extract_folder_from_opened_sarc', {source_folder: ""});
+    const content = await invoke('extract_folder_from_opened_sarc', { sourceFolder: "" });
     console.log(content);
     if (content !== null && content.status_text !== undefined) {
       setStatusText(content.status_text);

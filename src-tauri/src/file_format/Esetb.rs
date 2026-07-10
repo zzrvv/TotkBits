@@ -1,23 +1,30 @@
-#![allow(non_snake_case,non_camel_case_types)]
-use std::{fs, io, path::Path, result, sync::Arc};
+#![allow(non_snake_case, non_camel_case_types)]
+use super::{
+    BinTextFile::{BymlFile, FileData},
+    Wrapper::PythonWrapper,
+};
+use crate::{
+    Settings::Pathlib,
+    Zstd::{TotkFileType, TotkZstd},
+};
 use roead::byml::{self, Byml};
-use crate::{Settings::Pathlib, Zstd::{TotkFileType, TotkZstd}};
-use super::{BinTextFile::{BymlFile, FileData}, Wrapper::PythonWrapper};
+use std::{fs, io, path::Path, result, sync::Arc};
 
 const PTCL_JSON_KEY: &str = "PTCL_JSON";
 const PTCL_BIN_KEY: &str = "PtclBin";
-
 
 pub struct Esetb<'a> {
     pub byml: BymlFile<'a>,
     pub ptcl: Vec<u8>,
 }
 
-
 #[allow(dead_code)]
 impl<'a> Esetb<'a> {
     pub fn from_binary(data: &Vec<u8>, zstd: Arc<TotkZstd<'a>>) -> io::Result<Esetb<'a>> {
-        let file_data = FileData {file_type: TotkFileType::Esetb, data: data.to_vec()};
+        let file_data = FileData {
+            file_type: TotkFileType::Esetb,
+            data: data.to_vec(),
+        };
         let pio = Byml::from_binary(data).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         let mut byml = BymlFile {
             endian: BymlFile::get_endiannes(&file_data.data),
@@ -28,7 +35,10 @@ impl<'a> Esetb<'a> {
             file_type: TotkFileType::Byml,
         };
         let ptcl = Self::process_ptcl_binary(&mut byml.pio)?;
-        Ok(Esetb { byml: byml, ptcl: ptcl })
+        Ok(Esetb {
+            byml: byml,
+            ptcl: ptcl,
+        })
     }
 
     pub fn to_binary(&mut self) -> Vec<u8> {
@@ -39,57 +49,83 @@ impl<'a> Esetb<'a> {
         let endian = roead::Endian::Little;
         let mut result: Vec<u8> = Vec::new();
         let py_wrap = PythonWrapper::default();
-        let mut pio_map = pio.as_mut_map().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        if !pio_map.contains_key(PTCL_BIN_KEY)  {
-            return Err(io::Error::new(io::ErrorKind::Other, "BYML file does not contain PtclBin key"));
+        let mut pio_map = pio
+            .as_mut_map()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        if !pio_map.contains_key(PTCL_BIN_KEY) {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "BYML file does not contain PtclBin key",
+            ));
         }
         match pio_map[PTCL_BIN_KEY] {
             Byml::FileData(ref data) => {
                 result = data.clone();
                 match py_wrap.binary_to_string(&data, "ptcl_binary_to_text".to_string()) {
                     Ok(res) => {
-                        pio_map.insert("PTCL_JSON".into(), Byml::from_text(&res).unwrap_or(Byml::Null));
-                    },
+                        pio_map.insert(
+                            "PTCL_JSON".into(),
+                            Byml::from_text(&res).unwrap_or(Byml::Null),
+                        );
+                    }
                     Err(e) => println!("Error while converting PtclBin to text: {}", e),
                 }
-            },
+            }
             _ => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "PtclBin key is not FileData"));
-            },
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "PtclBin key is not FileData",
+                ));
+            }
         }
-        let ptcl_bin: Byml =  pio_map.get(PTCL_BIN_KEY).ok_or(io::Error::new(io::ErrorKind::Other, "Error while reading PtclBin key"))?.clone();
+        let ptcl_bin: Byml = pio_map
+            .get(PTCL_BIN_KEY)
+            .ok_or(io::Error::new(
+                io::ErrorKind::Other,
+                "Error while reading PtclBin key",
+            ))?
+            .clone();
         match ptcl_bin.clone() {
             Byml::FileData(data) => {
                 match py_wrap.binary_to_string(&data, "ptcl_binary_to_text".to_string()) {
                     Ok(res) => {
-                        pio_map.insert("PTCL_JSON".into(), Byml::from_text(&res).unwrap_or(Byml::Null));
-                    },
+                        pio_map.insert(
+                            "PTCL_JSON".into(),
+                            Byml::from_text(&res).unwrap_or(Byml::Null),
+                        );
+                    }
                     Err(e) => println!("Error while converting PtclBin to text: {}", e),
                 }
             }
-            _ => {},
+            _ => {}
         }
 
         Ok(result)
     }
 
-    pub fn from_file<P:AsRef<Path>>(file: P, zstd: Arc<TotkZstd<'a>>) -> io::Result<Esetb<'a>> {
+    pub fn from_file<P: AsRef<Path>>(file: P, zstd: Arc<TotkZstd<'a>>) -> io::Result<Esetb<'a>> {
         if let Some(byml) = BymlFile::new(file.as_ref(), zstd.clone()) {
-            let mut esetb = Esetb { byml: byml, ptcl: Vec::new() };
+            let mut esetb = Esetb {
+                byml: byml,
+                ptcl: Vec::new(),
+            };
             match Self::process_ptcl_binary(&mut esetb.byml.pio) {
                 Ok(ptcl) => esetb.ptcl = ptcl,
                 Err(e) => {
                     println!("Error while reading PtclBin key: {}", e);
-                    return Err(e)
-                },
+                    return Err(e);
+                }
             }
             // esetb.ptcl = Self::process_ptcl_binary(&esetb.byml.pio)?;
-            
+
             esetb.remove_ptclbin_entry()?;
-            
+
             return Ok(esetb);
         } else {
-            Err(io::Error::new(io::ErrorKind::Other, "Error while reading BYML file"))
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Error while reading BYML file",
+            ))
         }
         // let mut byml = BymlFile::new(file.to_string(), zstd.clone()).ok_or(io::Error::new(io::ErrorKind::Other, "Error while reading BYML file"))?;
     }
@@ -108,7 +144,8 @@ impl<'a> Esetb<'a> {
 
     pub fn update_from_text(&mut self, text: &str) -> io::Result<()> {
         let py_wrap = PythonWrapper::default();
-        self.byml.pio = Byml::from_text(text).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        self.byml.pio =
+            Byml::from_text(text).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         self.remove_ptclbin_entry()?;
         if let Ok(pio_map) = self.byml.pio.as_mut_map() {
             let mut is_ptcl_json_succ = false;
@@ -126,17 +163,16 @@ impl<'a> Esetb<'a> {
                         }
                         pio_map.insert(PTCL_BIN_KEY.into(), Byml::FileData(new_ptcl_data));
                         is_ptcl_json_succ = true;
-                    },
+                    }
                     Err(e) => println!("Error while converting Ptcl JSON to binary: {}", e),
                 }
-               
+
                 pio_map.remove(PTCL_JSON_KEY);
-            } 
+            }
             if !is_ptcl_json_succ {
                 println!("Ptcl JSON key not found or conversion failed. Using backup original PtclBin key");
                 let new_node = Byml::FileData(self.ptcl.clone());
                 pio_map.insert(PTCL_BIN_KEY.into(), new_node);
-
             }
             // let local_pio = Byml::from_binary(&self.ptcl).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
             // if let Ok(local_pio_map) = local_pio.as_map() {
@@ -146,16 +182,21 @@ impl<'a> Esetb<'a> {
             // }
             // pio_map.insert(PTCL_BIN_KEY.into(), Byml::FileData(self.ptcl.clone()));
         } else {
-            return Err(io::Error::new(io::ErrorKind::Other, "Error while converting Ptcl byml as mut map"));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Error while converting Ptcl byml as mut map",
+            ));
         }
-
 
         Ok(())
     }
 
     pub fn text_to_binary(&mut self, text: &str) -> io::Result<Vec<u8>> {
         self.update_from_text(text)?;
-        Ok(self.byml.pio.to_binary(self.byml.endian.unwrap_or(roead::Endian::Little)))
+        Ok(self
+            .byml
+            .pio
+            .to_binary(self.byml.endian.unwrap_or(roead::Endian::Little)))
     }
 
     pub fn save_from_text(&mut self, path: &str, text: &str) -> io::Result<()> {
@@ -164,5 +205,4 @@ impl<'a> Esetb<'a> {
 
         Ok(())
     }
-
 }

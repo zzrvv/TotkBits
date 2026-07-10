@@ -1,15 +1,24 @@
 //tauri commands
 use crate::{
-    Open_and_Save::SendData, Settings::{spawn_updater, NO_WINDOW_FLAG}, TotkApp::{SaveData, TotkBitsApp}
+    Open_and_Save::SendData,
+    Settings::{spawn_updater, NO_WINDOW_FLAG},
+    TotkApp::{SaveData, TotkBitsApp},
 };
+use reqwest::blocking::{get, Client};
 use rfd::MessageDialog;
 use serde::Deserialize;
-use updater::TotkbitsVersion::TotkbitsVersion;
+use serde_json::Value;
+use std::collections::HashMap;
 use std::{
-    env, error::Error, os::windows::process::CommandExt, path::Path, process::{self, Command}, sync::Mutex
+    env,
+    error::Error,
+    os::windows::process::CommandExt,
+    path::Path,
+    process::{self, Command},
+    sync::Mutex,
 };
 use tauri::Manager;
-use reqwest::blocking::{get, Client};
+use updater::TotkbitsVersion::TotkbitsVersion;
 
 #[tauri::command]
 pub fn restart_app() -> Option<()> {
@@ -33,11 +42,13 @@ pub fn restart_app() -> Option<()> {
             &totkbits_exe.to_string_lossy().into_owned(),
         ])
         .spawn();
-        // .map(|_| ())?;
-        // .ok()?;
+    // .map(|_| ())?;
+    // .ok()?;
     match p {
         Ok(_) => process::exit(0),
-        Err(_) => {return None;},
+        Err(_) => {
+            return None;
+        }
     };
     // process::exit(0);
     // #[allow(unreachable_code)]
@@ -48,7 +59,7 @@ pub fn restart_app() -> Option<()> {
 pub fn edit_config(app_handle: tauri::AppHandle) -> Option<()> {
     let no_window_flag = NO_WINDOW_FLAG;
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let app = binding.lock().expect("Failed to lock state");
+    let mut app = binding.lock().expect("Failed to lock state");
     let file_path = app.zstd.clone().totk_config.config_path.clone();
     let os_type = env::consts::OS;
 
@@ -93,7 +104,6 @@ pub fn extract_internal_file(
         Some(result) => Some(result), // Safely return the result if present
         None => None,                 // Return None if no result
     }
-    
 }
 
 #[tauri::command]
@@ -127,6 +137,46 @@ pub fn extract_opened_sarc(app_handle: tauri::AppHandle) -> Option<SendData> {
         Some(result) => Some(result), // Safely return the result if present
         None => None,                 // Return None if no result
     }
+}
+
+#[tauri::command]
+pub fn extract_folder_from_opened_sarc(
+    app_handle: tauri::AppHandle,
+    source_folder: String,
+) -> Option<SendData> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let mut app = binding.lock().expect("Failed to lock state");
+    app.extract_folder_from_opened_sarc(source_folder)
+}
+
+#[tauri::command]
+pub fn get_toml_config(app_handle: tauri::AppHandle) -> Result<Value, String> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let app = binding
+        .lock()
+        .map_err(|_| "Failed to lock state".to_string())?;
+    app.zstd.totk_config.to_json().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_toml_config(
+    app_handle: tauri::AppHandle,
+    new_config: HashMap<String, Value>,
+) -> Result<SendData, String> {
+    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
+    let app = binding
+        .lock()
+        .map_err(|_| "Failed to lock state".to_string())?;
+    let mut config = (*app.zstd.totk_config).clone();
+    config.update_from_json_data(new_config);
+    if !crate::TotkConfig::TotkConfig::check_for_zsdic(&config.romfs) {
+        return Err("ZSTD dictionary pack was not found in the selected romfs".to_string());
+    }
+    config.save().map_err(|e| e.to_string())?;
+    let mut data = SendData::default();
+    data.status_text =
+        "ZSTD available. Restart to apply backend configuration changes.".to_string();
+    Ok(data)
 }
 
 #[tauri::command]
@@ -396,7 +446,11 @@ pub fn compare_files(app_handle: tauri::AppHandle, isFromDisk: bool) -> Option<S
 }
 
 #[tauri::command]
-pub fn compare_internal_file_with_vanila(app_handle: tauri::AppHandle,  internal_path: String, is_from_sarc: bool) -> Option<SendData> {
+pub fn compare_internal_file_with_vanila(
+    app_handle: tauri::AppHandle,
+    internal_path: String,
+    is_from_sarc: bool,
+) -> Option<SendData> {
     let binding = app_handle.state::<Mutex<TotkBitsApp>>();
     let mut app = binding.lock().expect("Failed to lock state");
     match app.compare_internal_file_with_original(internal_path, is_from_sarc) {
@@ -408,7 +462,6 @@ pub fn compare_internal_file_with_vanila(app_handle: tauri::AppHandle,  internal
     None
 }
 
-
 #[tauri::command]
 pub fn check_if_update_needed() -> String {
     let repo_owner = "SolidLink95".to_string();
@@ -419,32 +472,28 @@ pub fn check_if_update_needed() -> String {
     );
     println!("Checking for updates...");
     let client = Client::new();
-    let response = client
-        .get(&url)
-        .header("User-Agent", "MyAppName")
-        .send();
+    let response = client.get(&url).header("User-Agent", "MyAppName").send();
 
-        if let Ok(response) = response {
-            // println!("Response: {:?}", response);
-    
-            if let Ok(json_value) = response.json::<serde_json::Value>() {
-                // println!("\n\nJson value: {:?}", json_value);
-                if let Some(release_info) = json_value["tag_name"].as_str() {
-                    // println!("\n\nRelease info: {}", release_info);
-                    let installed_ver = TotkbitsVersion::from_str(env!("CARGO_PKG_VERSION"));
-                    let latest_ver = TotkbitsVersion::from_str(release_info);
-                    if latest_ver > installed_ver {
-                        return release_info.to_string();
-                    }
+    if let Ok(response) = response {
+        // println!("Response: {:?}", response);
+
+        if let Ok(json_value) = response.json::<serde_json::Value>() {
+            // println!("\n\nJson value: {:?}", json_value);
+            if let Some(release_info) = json_value["tag_name"].as_str() {
+                // println!("\n\nRelease info: {}", release_info);
+                let installed_ver = TotkbitsVersion::from_str(env!("CARGO_PKG_VERSION"));
+                let latest_ver = TotkbitsVersion::from_str(release_info);
+                if latest_ver > installed_ver {
+                    return release_info.to_string();
                 }
             }
         }
+    }
     String::new()
 }
 
 #[tauri::command]
 pub fn update_app(latestVer: String) -> String {
-    
     if let Err(e) = spawn_updater(latestVer.as_str()) {
         return format!("Error spawning updater: {:?}", e);
     }

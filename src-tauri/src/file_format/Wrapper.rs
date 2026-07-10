@@ -60,7 +60,10 @@ impl ExeWrapper {
         } else {
             eprintln!("Script execution failed.");
             println!("{}", &stderr);
-            return Err(io::Error::new(io::ErrorKind::Other, "Script execution failed."));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Script execution failed.",
+            ));
         }
         Ok(stdout)
     }
@@ -82,7 +85,10 @@ impl ExeWrapper {
         let output = child.wait_with_output()?;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         if output.stdout.starts_with(b"Error") {
-            return Err(io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&output.stdout).into_owned()));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                String::from_utf8_lossy(&output.stdout).into_owned(),
+            ));
         }
         if stderr.to_lowercase().starts_with("error") {
             return Err(io::Error::new(io::ErrorKind::Other, stderr));
@@ -92,12 +98,14 @@ impl ExeWrapper {
             // println!("Script executed successfully.");
         } else {
             eprintln!("Script execution failed.");
-            return Err(io::Error::new(io::ErrorKind::Other, "Script execution failed."));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Script execution failed.",
+            ));
         }
         Ok(output.stdout)
     }
 }
-
 
 pub struct PythonWrapper {
     pub python_exe: String,
@@ -120,7 +128,6 @@ impl PythonWrapper {
     pub fn new() -> Self {
         Self::default()
     }
-    
 
     pub fn binary_to_string(&self, data: &Vec<u8>, fname: String) -> io::Result<String> {
         // env::set_var("PATH", self.newpath.clone());
@@ -154,12 +161,19 @@ impl PythonWrapper {
         } else {
             // eprintln!("Script execution failed.");
             eprintln!("Script execution failed. {:#?}\n", output.status);
-            return Err(io::Error::new(io::ErrorKind::Other, "Script execution failed."));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Script execution failed.",
+            ));
         }
         Ok(stdout)
     }
 
-    pub fn text_to_binary_mult_args(&self, args: &Vec<&Vec<u8>>, fname: String) -> io::Result<Vec<u8>> {
+    pub fn text_to_binary_mult_args(
+        &self,
+        args: &Vec<&Vec<u8>>,
+        fname: String,
+    ) -> io::Result<Vec<u8>> {
         // println!("Text to binary: spawning child process");
         let mut child = Command::new(&self.python_exe)
             // .current_dir(&self.current_dir)
@@ -180,7 +194,10 @@ impl PythonWrapper {
         let output = child.wait_with_output()?;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         if output.stdout.starts_with(b"Error") {
-            return Err(io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&output.stdout).into_owned()));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                String::from_utf8_lossy(&output.stdout).into_owned(),
+            ));
         }
         if stderr.to_lowercase().starts_with("error") {
             return Err(io::Error::new(io::ErrorKind::Other, stderr));
@@ -190,15 +207,14 @@ impl PythonWrapper {
             println!("Script executed successfully.");
         } else {
             eprintln!("Script execution failed.");
-            let e = format!("Script execution failed. Unable to convert ainb text to binary. \n{:#?}\n", output.status);
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                e,
-            ));
+            let e = format!(
+                "Script execution failed. Unable to convert ainb text to binary. \n{:#?}\n",
+                output.status
+            );
+            return Err(io::Error::new(io::ErrorKind::Other, e));
         }
         Ok(output.stdout)
     }
-
 
     pub fn text_to_binary(&self, text_data: &Vec<u8>, fname: String) -> io::Result<Vec<u8>> {
         // println!("Text to binary: spawning child process");
@@ -219,7 +235,10 @@ impl PythonWrapper {
         let output = child.wait_with_output()?;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         if output.stdout.starts_with(b"Error") {
-            return Err(io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&output.stdout).into_owned()));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                String::from_utf8_lossy(&output.stdout).into_owned(),
+            ));
         }
         if stderr.to_lowercase().starts_with("error") {
             return Err(io::Error::new(io::ErrorKind::Other, stderr));
@@ -229,15 +248,15 @@ impl PythonWrapper {
             println!("Script executed successfully.");
         } else {
             eprintln!("Script execution failed.");
-            let e = format!("Script execution failed. Unable to convert ainb text to binary. \n{:#?}\n", output.status);
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                e,
-            ));
+            let e = format!(
+                "Script execution failed. Unable to convert ainb text to binary. \n{:#?}\n",
+                output.status
+            );
+            return Err(io::Error::new(io::ErrorKind::Other, e));
         }
         Ok(output.stdout)
     }
-    
+
     pub fn test_winpython(&self) -> io::Result<()> {
         // env::set_var("PATH", self.newpath.clone());
         let output = Command::new(&self.python_exe)

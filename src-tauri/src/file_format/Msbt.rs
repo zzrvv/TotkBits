@@ -1,7 +1,7 @@
-#![allow(non_snake_case,non_camel_case_types)]
-use std::{fs, io::Read};
-use msyt::converter::MsytFile;
+#![allow(non_snake_case, non_camel_case_types)]
 use crate::{Settings::Pathlib, Zstd::TotkFileType};
+use msyt::converter::MsytFile;
+use std::{fs, io::Read};
 
 //assuming msbt is never compressed
 #[allow(dead_code)]
@@ -21,9 +21,6 @@ impl MsbtFile {
         f_handle.read_to_end(&mut data).ok()?;
         let endian = MsbtFile::check_endianness(&data)?;
 
-
-
-        
         let text = MsytFile::binary_to_text_safe(data).ok()?;
         Some(Self {
             path: Pathlib::new(path.to_string()),
@@ -38,7 +35,7 @@ impl MsbtFile {
         let endian = MsbtFile::check_endianness(&data)?;
         let text = MsytFile::binary_to_text_safe(data).ok()?;
         Some(Self {
-            path: Pathlib::new(path.unwrap_or_default()) ,
+            path: Pathlib::new(path.unwrap_or_default()),
             endian,
             file_type: TotkFileType::Msbt,
             text,

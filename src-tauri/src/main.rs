@@ -3,16 +3,16 @@
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case, non_camel_case_types)]
 use miow::pipe::NamedPipeBuilder;
-use Settings::BACKUP_UPDATER_NAME;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::{fs, process};
 use std::process::Command;
 use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::Duration;
 use std::{env, io, thread};
+use std::{fs, process};
 use tauri::Manager;
+use Settings::BACKUP_UPDATER_NAME;
 use Zstd::get_executable_dir;
 mod Comparer;
 mod Open_and_Save;
@@ -25,18 +25,16 @@ mod file_format;
 use crate::Settings::{get_startup_data, StartupData};
 use crate::TauriCommands::{
     add_click, add_empty_byml_file, add_files_from_dir_recursively, add_to_dir_click,
-    clear_search_in_sarc, close_all_opened_files, compare_files, compare_internal_file_with_vanila,
-    edit_config, edit_internal_file, exit_app, extract_internal_file, extract_opened_sarc,
+    check_if_update_needed, clear_search_in_sarc, close_all_opened_files, compare_files,
+    compare_internal_file_with_vanila, edit_config, edit_internal_file, exit_app,
+    extract_folder_from_opened_sarc, extract_internal_file, extract_opened_sarc, get_toml_config,
     open_dir_dialog, open_file_dialog, open_file_from_path, open_file_struct,
     remove_internal_sarc_file, rename_internal_sarc_file, restart_app, rstb_edit_entry,
-    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,check_if_update_needed,update_app
+    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,
+    update_app, update_toml_config,
 };
 use crate::TotkApp::TotkBitsApp;
 use updater::TotkbitsVersion::TotkbitsVersion;
-
-
-
-
 
 fn main() -> io::Result<()> {
     main_initialization()?;
@@ -55,6 +53,9 @@ fn main() -> io::Result<()> {
         .invoke_handler(tauri::generate_handler![
             add_empty_byml_file,
             extract_opened_sarc,
+            extract_folder_from_opened_sarc,
+            get_toml_config,
+            update_toml_config,
             restart_app,
             edit_config,
             get_startup_data,
@@ -123,7 +124,6 @@ fn pipe_worker() {
                             eprintln!("Error reading from pipe: {}", e);
                             // break;
                             sleep(Duration::from_secs(1));
-
                         }
                     }
                 }
@@ -133,7 +133,6 @@ fn pipe_worker() {
         } else {
             println!("[-] Error creating named pipe: {}", pipe_name);
         }
-        
     });
 }
 
@@ -147,7 +146,6 @@ fn main_initialization() -> io::Result<()> {
             if let Ok(_) = fs::remove_file(&backup_updater) {
                 println!("[+] Removed {}", BACKUP_UPDATER_NAME);
             }
-
         }
     }
     let version = env!("CARGO_PKG_VERSION").to_string();
@@ -156,4 +154,3 @@ fn main_initialization() -> io::Result<()> {
     // let installed_ver = TotkbitsVersion::from_str(&version);
     Ok(())
 }
-

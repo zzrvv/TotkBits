@@ -1,4 +1,6 @@
-#![allow(non_snake_case,non_camel_case_types)]
+#![allow(non_snake_case, non_camel_case_types)]
+use super::Esetb::Esetb;
+use super::Rstb::Restbl;
 use crate::file_format::TagProduct::TagProduct;
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, is_gamedatalist, TotkFileType, TotkZstd};
@@ -12,8 +14,6 @@ use std::panic::AssertUnwindSafe;
 use std::path::Path;
 use std::sync::Arc;
 use std::{fs, io, panic};
-use super::Esetb::Esetb;
-use super::Rstb::Restbl;
 
 // const FLOAT_PRECISION: i32 = 5;
 
@@ -41,7 +41,7 @@ pub struct BymlFile<'a> {
     pub file_type: TotkFileType,
 }
 
-#[allow(dead_code,unused_variables,unused_assignments)]
+#[allow(dead_code, unused_variables, unused_assignments)]
 impl<'a> BymlFile<'_> {
     pub fn new<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<BymlFile<'a>> {
         let data = BymlFile::byml_file_to_bytes(path.as_ref(), zstd.clone()).ok()?;
@@ -159,7 +159,10 @@ impl<'a> BymlFile<'_> {
         None
     }
 
-    pub fn byml_data_to_bytes(rawdata: &Vec<u8>, zstd: Arc<TotkZstd>) -> Result<FileData, io::Error> {
+    pub fn byml_data_to_bytes(
+        rawdata: &Vec<u8>,
+        zstd: Arc<TotkZstd>,
+    ) -> Result<FileData, io::Error> {
         let mut buffer = rawdata.clone();
         let mut data = FileData::new();
         if buffer.starts_with(b"Yaz0") {
@@ -218,7 +221,10 @@ impl<'a> BymlFile<'_> {
         ));
     }
 
-    pub fn byml_file_to_bytes<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Result<FileData, io::Error> {
+    pub fn byml_file_to_bytes<P: AsRef<Path>>(
+        path: P,
+        zstd: Arc<TotkZstd>,
+    ) -> Result<FileData, io::Error> {
         let mut f_handle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;
@@ -226,31 +232,50 @@ impl<'a> BymlFile<'_> {
     }
 
     pub fn is_banc(&self) -> bool {
-        self.path.full_path.to_ascii_lowercase().ends_with(".bcett.byml") ||
-            self.path.full_path.to_ascii_lowercase().ends_with(".bcett.byml.zs")
+        self.path
+            .full_path
+            .to_ascii_lowercase()
+            .ends_with(".bcett.byml")
+            || self
+                .path
+                .full_path
+                .to_ascii_lowercase()
+                .ends_with(".bcett.byml.zs")
     }
 
     pub fn to_string(&self) -> String {
-        let float_prec = if self.zstd.totk_config.lower_float_prec { Some(4) } else { None };
-        let max_inl = if is_gamedatalist(&self.path.full_path) && self.zstd.totk_config.yaml_max_inl < 5 {5} else {self.zstd.totk_config.yaml_max_inl};
+        let float_prec = if self.zstd.totk_config.lower_float_prec {
+            Some(4)
+        } else {
+            None
+        };
+        let max_inl =
+            if is_gamedatalist(&self.path.full_path) && self.zstd.totk_config.yaml_max_inl < 5 {
+                5
+            } else {
+                self.zstd.totk_config.yaml_max_inl
+            };
         // println!("max_inl: {}", max_inl);
         let mut text = Byml::to_text_advanced(&self.pio, max_inl, float_prec);
         // let mut text = Byml::to_text(&self.pio);
         if self.is_banc() {
             if self.zstd.totk_config.rotation_deg {
-            text = process_Rotate_in_banc(&text, self.zstd.totk_config.rotation_deg);}
+                text = process_Rotate_in_banc(&text, self.zstd.totk_config.rotation_deg);
+            }
         }
         // Byml::to_text(&self.pio)
         // lower_float_precision(&text)
         // process_inline_content(Byml::to_text(&self.pio), self.zstd.totk_config.yaml_max_inl)
         text
     }
-
-
 }
 
 pub fn is_banc_path<P: AsRef<Path>>(path: P) -> bool {
-    let path = path.as_ref().to_str().unwrap_or_default().to_ascii_lowercase();
+    let path = path
+        .as_ref()
+        .to_str()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
     path.ends_with(".bcett.byml") || path.ends_with(".bcett.byml.zs")
 }
 
@@ -268,75 +293,87 @@ fn deg_to_rad(deg: f64) -> f64 {
 #[allow(dead_code)]
 fn lower_float_precision(input: &str) -> String {
     let re = Regex::new(r"\[([^\]]+)\]").unwrap();
-    let text = re.replace_all(input, |caps: &regex::Captures| {
-        let inner = &caps[1];
-        // Process each float within the brackets
-        format!("[{}]", inner
-            .split(',')
-            .map(|s| {
-                s.trim()
-                    .parse::<f64>()
-                    .map(|num| 
-                        if num == 0.0 {
-                            "0.0".to_string()
-                        } else {
-                            format!("{:.5}", num).trim_end_matches('0').trim_end_matches('.').to_string()
-                        }
-                    ) // Lower precision to 5
-                    .unwrap_or_else(|_| s.to_string()) // Keep non-float values as is
-            })
-            .collect::<Vec<_>>()
-            .join(", ")) // Rejoin the floats with commas
-    })
-    .into_owned();
+    let text = re
+        .replace_all(input, |caps: &regex::Captures| {
+            let inner = &caps[1];
+            // Process each float within the brackets
+            format!(
+                "[{}]",
+                inner
+                    .split(',')
+                    .map(|s| {
+                        s.trim()
+                            .parse::<f64>()
+                            .map(|num| {
+                                if num == 0.0 {
+                                    "0.0".to_string()
+                                } else {
+                                    format!("{:.5}", num)
+                                        .trim_end_matches('0')
+                                        .trim_end_matches('.')
+                                        .to_string()
+                                }
+                            }) // Lower precision to 5
+                            .unwrap_or_else(|_| s.to_string()) // Keep non-float values as is
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ) // Rejoin the floats with commas
+        })
+        .into_owned();
 
     let re = Regex::new(r"\{([^}]+)\}").unwrap();
     re.replace_all(&text, |caps: &regex::Captures| {
         let inner = &caps[1];
         // Process each key-value pair within the braces
-        format!("{{{}}}", inner
-            .split(',')
-            .map(|pair| {
-                let mut parts = pair.split(':');
-                let key = parts.next().unwrap_or("").trim();
-                let value = parts.next().unwrap_or("").trim();
-                let formatted_value = value
-                    .parse::<f64>()
-                    .map(|num| {
-                        if num == 0.0 {
-                            "0.0".to_string()
-                        } else {
-                            format!("{:.5}", num).trim_end_matches('0').trim_end_matches('.').to_string()
-                        }
-                    })
-                    .unwrap_or_else(|_| value.to_string()); // Keep non-float values as is
-                format!("{}: {}", key, formatted_value)
-            })
-            .collect::<Vec<_>>()
-            .join(", ")) // Rejoin the key-value pairs
+        format!(
+            "{{{}}}",
+            inner
+                .split(',')
+                .map(|pair| {
+                    let mut parts = pair.split(':');
+                    let key = parts.next().unwrap_or("").trim();
+                    let value = parts.next().unwrap_or("").trim();
+                    let formatted_value = value
+                        .parse::<f64>()
+                        .map(|num| {
+                            if num == 0.0 {
+                                "0.0".to_string()
+                            } else {
+                                format!("{:.5}", num)
+                                    .trim_end_matches('0')
+                                    .trim_end_matches('.')
+                                    .to_string()
+                            }
+                        })
+                        .unwrap_or_else(|_| value.to_string()); // Keep non-float values as is
+                    format!("{}: {}", key, formatted_value)
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        ) // Rejoin the key-value pairs
     })
     .into_owned()
 
     // text
 }
 
-
-
 /// Finds and replaces `Rotate: [...]` with radian values converted to degrees
 fn process_Rotate_in_banc(input: &str, deg_to_rad: bool) -> String {
     let re = Regex::new(r"Rotate:\s*\[([^\]]+)\]").unwrap();
     re.replace_all(input, |caps: &regex::Captures| {
-        let array: Vec<f64> = if deg_to_rad {caps[1]
-            .split(',')
-            .filter_map(|s| s.trim().parse::<f64>().ok())
-            .map(rad_to_deg)
-            .collect()
+        let array: Vec<f64> = if deg_to_rad {
+            caps[1]
+                .split(',')
+                .filter_map(|s| s.trim().parse::<f64>().ok())
+                .map(rad_to_deg)
+                .collect()
         } else {
-                caps[1]
+            caps[1]
                 .split(',')
                 .filter_map(|s| s.trim().parse::<f64>().ok())
                 .collect()
-            };
+        };
         // format!("Rotate: [{}]", array.iter().map(|v| format!("{:.6}", v)).collect::<Vec<_>>().join(","))
         format!(
             "Rotate: [{}]",
@@ -365,12 +402,17 @@ pub fn replace_rotate_deg_to_rad(input: &str) -> String {
             .filter_map(|s| s.trim().parse::<f64>().ok())
             .map(deg_to_rad)
             .collect();
-        format!("Rotate: [{}]", array.iter().map(|v| format!("{:.5}", v)).collect::<Vec<_>>().join(","))
+        format!(
+            "Rotate: [{}]",
+            array
+                .iter()
+                .map(|v| format!("{:.5}", v))
+                .collect::<Vec<_>>()
+                .join(",")
+        )
     })
     .into_owned()
 }
-
-
 
 pub fn bytes_to_file(data: Vec<u8>, path: &str) -> io::Result<()> {
     let f = fs::File::create(&path); //TODO check if the ::create is sufficient
@@ -418,7 +460,7 @@ impl Default for OpenedFile<'_> {
     }
 }
 
-#[allow(dead_code,unused_variables)]
+#[allow(dead_code, unused_variables)]
 impl<'a> OpenedFile<'_> {
     pub fn new(
         path: String,
@@ -546,6 +588,3 @@ pub fn read_string_from_file(path: &str) -> io::Result<String> {
 
     Ok(contents)
 }
-
-
-

@@ -52,40 +52,48 @@ impl<'a> Restbl<'_> {
         }
         let mod_romfs_path = p.to_string_lossy().to_string().replace("\\", "/");
         //No point in updating from romfs dump
-        if mod_romfs_path == self.zstd.totk_config.romfs {return Ok(res);}
+        if mod_romfs_path == self.zstd.totk_config.romfs {
+            return Ok(res);
+        }
         let mod_romfs_path_len = mod_romfs_path.len();
         //limit to map files and actors
-        let valid_paths = vec!["Pack/Actor",  "AI", "AS"];
+        let valid_paths = vec!["Pack/Actor", "AI", "AS"];
         for entry in valid_paths.iter() {
             //no point in calling res.contains() since the check costs more time than
             //adding redundant local path
             let valid_path = PathBuf::from(&mod_romfs_path).join(entry);
-            if !valid_path.exists() {continue;}
+            if !valid_path.exists() {
+                continue;
+            }
             for file in list_files_recursively(&valid_path) {
                 // println!("  {}", &file);
-                let mut local_path = file.replace("\\","/")[mod_romfs_path_len..].to_string();
-                if local_path.starts_with("/") {local_path = local_path[1..].to_string()}
+                let mut local_path = file.replace("\\", "/")[mod_romfs_path_len..].to_string();
+                if local_path.starts_with("/") {
+                    local_path = local_path[1..].to_string()
+                }
                 let local_path_lower = local_path.to_ascii_lowercase();
-                if local_path.to_ascii_lowercase().ends_with(".zs") {local_path = local_path[..(local_path.len()-3)].to_string()}
+                if local_path.to_ascii_lowercase().ends_with(".zs") {
+                    local_path = local_path[..(local_path.len() - 3)].to_string()
+                }
                 // if !res.contains(&local_path) {
-                    // println!("Adding custom rstb path: {}", &local_path);
+                // println!("Adding custom rstb path: {}", &local_path);
                 // }
-                if entry == &"Pack/Actor" && (local_path_lower.ends_with(".pack") || local_path_lower.ends_with(".sarc")) {
+                if entry == &"Pack/Actor"
+                    && (local_path_lower.ends_with(".pack") || local_path_lower.ends_with(".sarc"))
+                {
                     if let Ok(pack) = PackFile::new(&file, self.zstd.clone()) {
                         for entry in pack.sarc.files() {
                             let entry_path = entry.name.unwrap_or_default().to_string();
                             // if !entry_path.is_empty() && !res.contains(&entry_path) {
-                            if !entry_path.is_empty()  {
+                            if !entry_path.is_empty() {
                                 // println!("Adding custom rstb sarc path: {}", &entry_path);
                                 res.push(entry_path);
                             }
                         }
                     }
                 } else {
-                    
                     res.push(local_path);
                 }
-                
             }
         }
 
@@ -107,7 +115,7 @@ impl<'a> Restbl<'_> {
             Ok(r) => {
                 let t: ResourceSizeTable = ResourceSizeTable::from_parser(&r);
                 // let hash_table = get_rstb_data().unwrap_or_default();
-                
+
                 let mut new_restbl = Restbl {
                     path: Pathlib::new(&path),
                     zstd: zstd.clone(),
@@ -141,5 +149,4 @@ impl<'a> Restbl<'_> {
         f.write_all(&buffer)?;
         Ok(())
     }
-
 }

@@ -1,8 +1,10 @@
-#![allow(non_snake_case,non_camel_case_types)]
+#![allow(non_snake_case, non_camel_case_types)]
 use std::{
-    io::{self, Read, Write}, os::windows::process::CommandExt, path::Path, process::{Command, Stdio}
+    io::{self, Read, Write},
+    os::windows::process::CommandExt,
+    path::Path,
+    process::{Command, Stdio},
 };
-
 
 use crate::{Settings::NO_WINDOW_FLAG, Zstd::is_ainb};
 
@@ -27,12 +29,12 @@ impl Ainb_py {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn binary_file_to_text<P:AsRef<Path>>(&self, file_path: P) -> io::Result<String> {
+    pub fn binary_file_to_text<P: AsRef<Path>>(&self, file_path: P) -> io::Result<String> {
         // env::set_var("PATH", self.newpath.clone());
         let mut f_handle = std::fs::File::open(file_path)?; // Open the file
         let mut buffer = Vec::new(); // Create a buffer to store the data
         f_handle.read_to_end(&mut buffer)?; // Read the file into the buffer
-        if !is_ainb( &buffer) {
+        if !is_ainb(&buffer) {
             return Err(io::Error::new(
                 io::ErrorKind::Other,
                 "File is not an Ainb file.",
@@ -43,7 +45,6 @@ impl Ainb_py {
         Ok(text)
     }
 
-    
     pub fn text_file_to_binary(&self, file_path: &str) -> io::Result<Vec<u8>> {
         // env::set_var("PATH", self.newpath.clone());
         let mut f_handle = std::fs::File::open(file_path)?; // Open the file
@@ -88,7 +89,10 @@ impl Ainb_py {
             // eprintln!("Script execution failed.");
             eprintln!("Script execution failed. {:#?}\n{}", output.status, &stderr);
             // eprintln!("Data: {:?}", &stdout);
-            return Err(io::Error::new(io::ErrorKind::Other, "Script execution failed."));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "Script execution failed.",
+            ));
         }
         Ok(stdout)
     }
@@ -111,7 +115,10 @@ impl Ainb_py {
         let output = child.wait_with_output()?;
         let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
         if output.stdout.starts_with(b"Error") {
-            return Err(io::Error::new(io::ErrorKind::Other, String::from_utf8_lossy(&output.stdout).into_owned()));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                String::from_utf8_lossy(&output.stdout).into_owned(),
+            ));
         }
         if stderr.to_lowercase().starts_with("error") {
             return Err(io::Error::new(io::ErrorKind::Other, stderr));
@@ -121,15 +128,15 @@ impl Ainb_py {
             println!("Script executed successfully.");
         } else {
             eprintln!("Script execution failed.");
-            let e = format!("Script execution failed. Unable to convert ainb text to binary. \n{:#?}\n{}", output.status, &stderr);
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                e,
-            ));
+            let e = format!(
+                "Script execution failed. Unable to convert ainb text to binary. \n{:#?}\n{}",
+                output.status, &stderr
+            );
+            return Err(io::Error::new(io::ErrorKind::Other, e));
         }
         Ok(output.stdout)
     }
-    
+
     pub fn test_winpython(&self) -> io::Result<()> {
         // env::set_var("PATH", self.newpath.clone());
         let output = Command::new(&self.python_exe)
@@ -140,7 +147,11 @@ impl Ainb_py {
         if output.status.success() {
             println!("Script executed successfully.");
         } else {
-            eprintln!("Script execution failed. {:#?}\n{}", output.status, String::from_utf8_lossy(&output.stderr).into_owned());
+            eprintln!(
+                "Script execution failed. {:#?}\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).into_owned()
+            );
         }
         let text = String::from_utf8_lossy(&output.stdout);
         // env::set_var("PATH", self.original_path.clone());

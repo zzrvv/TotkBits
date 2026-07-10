@@ -1,3 +1,7 @@
+use regex::Regex;
+use rfd::MessageDialog;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -7,21 +11,18 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process;
 use std::process::Command;
-use regex::Regex;
-use rfd::MessageDialog;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use updater::TotkbitsVersion::TotkbitsVersion;
 
 use crate::TotkConfig::TotkConfig;
 
 pub const BACKUP_UPDATER_NAME: &str = "backup_updater.exe";
 
-
 pub const NO_WINDOW_FLAG: u32 = 0x08000000;
 
 #[tauri::command]
-pub fn get_startup_data(state: tauri::State<serde_json::Value>) -> Result<serde_json::Value, String> {
+pub fn get_startup_data(
+    state: tauri::State<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
     Ok((*state.inner()).clone())
 }
 
@@ -44,8 +45,6 @@ impl StartupData {
         Ok(res)
     }
 }
-
-
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Pathlib {
@@ -105,7 +104,8 @@ impl Pathlib {
             .parent()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or_default().replace("\\", "/")
+            .unwrap_or_default()
+            .replace("\\", "/")
     }
 
     pub fn get_name<P: AsRef<Path>>(path: P) -> String {
@@ -113,7 +113,8 @@ impl Pathlib {
             .file_name()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or_default().replace("\\", "/")
+            .unwrap_or_default()
+            .replace("\\", "/")
     }
 
     pub fn get_stem<P: AsRef<Path>>(path: P) -> String {
@@ -121,7 +122,8 @@ impl Pathlib {
             .file_stem()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or_default().replace("\\", "/");
+            .unwrap_or_default()
+            .replace("\\", "/");
         if res.contains('.') {
             return res.split('.').next().unwrap_or_default().to_string();
         }
@@ -141,12 +143,10 @@ impl Pathlib {
             .extension()
             .and_then(|p| p.to_str())
             .map(|s| s.to_string())
-            .unwrap_or_default().replace("\\", "/")
+            .unwrap_or_default()
+            .replace("\\", "/")
     }
 }
-
-
-
 
 pub fn write_string_to_file(path: &str, content: &str) -> io::Result<()> {
     let file = fs::File::create(path)?;
@@ -170,7 +170,6 @@ pub fn read_string_from_file(path: &str) -> io::Result<String> {
     Ok(contents)
 }
 
-
 pub fn makedirs(path: &PathBuf) -> std::io::Result<()> {
     let par = path.parent();
     if let Some(par) = par {
@@ -178,8 +177,6 @@ pub fn makedirs(path: &PathBuf) -> std::io::Result<()> {
     }
     Ok(())
 }
-
-
 
 pub fn update_json(mut base: serde_json::Value, update: serde_json::Value) -> serde_json::Value {
     if let Some(obj) = base.as_object_mut() {
@@ -205,7 +202,7 @@ pub fn list_files_recursively<T: AsRef<Path>>(path: &T) -> Vec<String> {
                     }
                 } else if entry_path.is_dir() {
                     // Recurse into subdirectories
-                    files.extend( list_files_recursively(&entry_path));
+                    files.extend(list_files_recursively(&entry_path));
                 }
             }
         }
@@ -215,47 +212,49 @@ pub fn list_files_recursively<T: AsRef<Path>>(path: &T) -> Vec<String> {
 }
 
 pub fn process_inline_content(mut input: String, inline_count: usize) -> String {
-       // Regex to match content between { and }
-       let re = Regex::new(r"(\s*)\{(.*?)\}").unwrap();
+    // Regex to match content between { and }
+    let re = Regex::new(r"(\s*)\{(.*?)\}").unwrap();
 
-       // Replace content in the input string
-       input = re.replace_all(&input, |caps: &regex::Captures| {
-           if let Some(indentation) = caps.get(1) {
-               let indent = indentation.as_str();
-            //    println!("Indentation: {:?}", indent);
-               if let Some(content) = caps.get(2) {
-                   let content_str = content.as_str();
-                
-                   // Split content by commas
-                   let items: Vec<&str> = content_str.split(',').collect();
-   
-                   if items.len() > inline_count {
-                       // If more than 9 items, format as multiline with proper indentation
-                       let mut multiline = String::new();
-                       for item in items {
-                           let parts: Vec<&str> = item.splitn(2, ':').map(|s| s.trim()).collect();
-                           if parts.len() == 2 {
+    // Replace content in the input string
+    input = re
+        .replace_all(&input, |caps: &regex::Captures| {
+            if let Some(indentation) = caps.get(1) {
+                let indent = indentation.as_str();
+                //    println!("Indentation: {:?}", indent);
+                if let Some(content) = caps.get(2) {
+                    let content_str = content.as_str();
+
+                    // Split content by commas
+                    let items: Vec<&str> = content_str.split(',').collect();
+
+                    if items.len() > inline_count {
+                        // If more than 9 items, format as multiline with proper indentation
+                        let mut multiline = String::new();
+                        for item in items {
+                            let parts: Vec<&str> = item.splitn(2, ':').map(|s| s.trim()).collect();
+                            if parts.len() == 2 {
                                 let res = &format!("{}{}: {}\n", indent, parts[0], parts[1]);
-                               multiline.push_str(res);
-                           }
-                       }
-                       while (multiline.ends_with("\n") || multiline.ends_with(" ")) && multiline.len() > 1 {
-                           multiline.pop();
-                       }
-                       return format!("{}",  multiline);
-                   } else {
-                       // Otherwise, keep as single-line content
-                       return format!("{}{{{}}}", indent, content_str);
-                   }
-               }
-           }
-           String::new()
-       }).to_string();
-   
-       input
+                                multiline.push_str(res);
+                            }
+                        }
+                        while (multiline.ends_with("\n") || multiline.ends_with(" "))
+                            && multiline.len() > 1
+                        {
+                            multiline.pop();
+                        }
+                        return format!("{}", multiline);
+                    } else {
+                        // Otherwise, keep as single-line content
+                        return format!("{}{{{}}}", indent, content_str);
+                    }
+                }
+            }
+            String::new()
+        })
+        .to_string();
+
+    input
 }
-
-
 
 pub fn spawn_updater(latest_ver: &str) -> io::Result<()> {
     let version = env!("CARGO_PKG_VERSION").to_string();
@@ -273,14 +272,19 @@ pub fn spawn_updater(latest_ver: &str) -> io::Result<()> {
         "../ext_projects/updater/target/debug/updater.exe"
     } else {
         "updater.exe"
-    }.to_string();
+    }
+    .to_string();
     let upd_path = fs::canonicalize(&upd_exe)?;
     if !upd_path.exists() {
         println!("[-] Updater executable not found: {}", &upd_exe);
         process::exit(1);
     }
-    upd_exe = upd_path.to_string_lossy().to_string().replace("\\\\?\\", "");
-    let backup_upd_exe = format!("{}\\{}", Pathlib::new(&upd_exe).parent, BACKUP_UPDATER_NAME).replace("/", "\\");
+    upd_exe = upd_path
+        .to_string_lossy()
+        .to_string()
+        .replace("\\\\?\\", "");
+    let backup_upd_exe =
+        format!("{}\\{}", Pathlib::new(&upd_exe).parent, BACKUP_UPDATER_NAME).replace("/", "\\");
     if Path::new(&backup_upd_exe).exists() {
         println!("[+] Removing old backup updater: {}", &backup_upd_exe);
         fs::remove_file(&backup_upd_exe)?;

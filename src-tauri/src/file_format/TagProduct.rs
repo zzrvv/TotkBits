@@ -6,8 +6,9 @@ use crate::Zstd::TotkZstd;
 use bitvec::prelude::*;
 
 use roead::byml::{self, Byml};
-use serde::{Deserialize, Serialize};
-use serde_json::{self, json};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Serialize, Serializer};
+use serde_json;
 use std::collections::{BTreeMap, HashMap};
 
 use std::panic::AssertUnwindSafe;
@@ -28,6 +29,31 @@ struct YamlData {
     RankTable: String,
     TagList: Vec<String>,
 }
+
+struct AlphabeticalPathList<'a>(&'a BTreeMap<String, Vec<String>>);
+
+impl Serialize for AlphabeticalPathList<'_> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut entries: Vec<_> = self.0.iter().collect();
+        entries.sort_by(|(left, _), (right, _)| {
+            left.to_ascii_lowercase()
+                .cmp(&right.to_ascii_lowercase())
+                .then_with(|| left.cmp(right))
+        });
+        let mut map = serializer.serialize_map(Some(entries.len()))?;
+        for (path, tags) in entries {
+            map.serialize_entry(path, tags)?;
+        }
+        map.end()
+    }
+}
+
+#[derive(Serialize)]
+#[allow(non_snake_case)]
+struct TagJsonOutput<'a> {
+    PathList: AlphabeticalPathList<'a>,
+    TagList: &'a [String],
+}
 #[allow(dead_code)]
 pub struct TagProduct<'a> {
     pub byml: BymlFile<'a>,
@@ -44,7 +70,7 @@ pub struct TagProduct<'a> {
 }
 
 impl<'a> TagProduct<'a> {
-    pub fn new<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
+    pub fn new<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         if let Some(byml) = BymlFile::new(path.as_ref(), zstd.clone()) {
             let mut tag_product = TagProduct {
                 byml: byml,
@@ -75,7 +101,8 @@ impl<'a> TagProduct<'a> {
     #[allow(dead_code)]
     pub fn save(&mut self, path: String, text: &str) -> io::Result<()> {
         //let mut f_handle = OpenOptions::new().write(true).open(&path)?;
-        let mut data: Vec<u8> = Self::to_binary(text).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let mut data: Vec<u8> =
+            Self::to_binary(text).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
         if path.to_ascii_lowercase().ends_with(".zs") {
             data = self
@@ -100,8 +127,13 @@ impl<'a> TagProduct<'a> {
         let json_data: TagJsonData = serde_json::from_str(text)?;
         let cached_tag_list = &json_data.TagList;
         //PathList
-        let sorted_map: BTreeMap<String, Vec<String>> = json_data.PathList.into_iter().collect();
-        for (path, _plist) in &sorted_map {
+        let mut sorted_paths: Vec<_> = json_data.PathList.iter().collect();
+        sorted_paths.sort_by(|(left, _), (right, _)| {
+            left.to_ascii_lowercase()
+                .cmp(&right.to_ascii_lowercase())
+                .then_with(|| left.cmp(right))
+        });
+        for (path, _plist) in &sorted_paths {
             if path.contains("|") {
                 for slice in path.split("|") {
                     let entry = roead::byml::Byml::String(slice.into());
@@ -112,7 +144,7 @@ impl<'a> TagProduct<'a> {
         //Bittable
         let mut bit_table_bits = Vec::new();
 
-        for (_actor_tag, tag_entries) in &sorted_map {
+        for (_actor_tag, tag_entries) in &sorted_paths {
             for tag in cached_tag_list {
                 let bit = tag_entries.contains(tag);
                 bit_table_bits.push(bit);
@@ -157,15 +189,10 @@ impl<'a> TagProduct<'a> {
     }
 
     pub fn to_text(&mut self) -> String {
-        let _actor_tag_data = &self.actor_tag_data;
-        // let json_data = TagJsonData {
-        //     PathList: self.actor_tag_data.clone(),
-        //     TagList: self.tag_list.clone(),
-        // };
-        let json_data = json!({
-            "PathList": self.actor_tag_data,
-            "TagList": self.tag_list
-        });
+        let json_data = TagJsonOutput {
+            PathList: AlphabeticalPathList(&self.actor_tag_data),
+            TagList: &self.tag_list,
+        };
         serde_json::to_string_pretty(&json_data).unwrap_or(String::from("{}"))
     }
 
