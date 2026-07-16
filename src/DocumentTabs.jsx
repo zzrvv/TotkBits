@@ -9,7 +9,8 @@ import { useEditorContext } from './StateManager';
 const emptySnapshot = () => ({
     activeTab: 'SARC', statusText: 'Ready', selectedPath: { path: '', isfile: false },
     labelTextDisplay: { sarc: '', yaml: '', rstb: '', comparer: '' },
-    paths: { paths: [], added_paths: [], modded_paths: [] },
+    paths: { paths: [], added_paths: [], modded_paths: [], nested_paths: {} },
+    pathsFilters: { showAll: true, showAdded: false, showModded: false },
     compareData: { decision: 'FilesFromDisk', content1: '', content2: '', filepath1: '', filepath2: '', isSmall: true, isFromDisk: false, isInternal: false, label1: '', label2: '', isTiedToMonaco: false, lang: 'yaml' },
     editorText: '', editorLanguage: 'yaml',
 });
@@ -21,7 +22,7 @@ const isOwnedModel = (model, id) => isUsableModel(model) && model.uri.toString()
 const snapshotFor = (context, model) => ({
     activeTab: context.activeTab, statusText: context.statusText,
     selectedPath: context.selectedPath, labelTextDisplay: context.labelTextDisplay,
-    paths: context.paths, compareData: context.compareData,
+    paths: context.paths, pathsFilters: context.pathsFilters, compareData: context.compareData,
     editorText: isUsableModel(model) ? model.getValue() : '',
     editorLanguage: isUsableModel(model) ? model.getLanguageId() : 'yaml',
 });
@@ -79,6 +80,7 @@ export default function DocumentTabs() {
         latest.setSelectedPath(snapshot.selectedPath);
         latest.setLabelTextDisplay(snapshot.labelTextDisplay);
         latest.setpaths(snapshot.paths);
+        latest.setPathsFilters(snapshot.pathsFilters || { showAll: true, showAdded: false, showModded: false });
         latest.setCompareData(snapshot.compareData);
         previousDocumentIdRef.current = activeDocumentId;
     }, [activeDocumentId]);

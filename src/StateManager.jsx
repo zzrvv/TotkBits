@@ -18,7 +18,8 @@ export const EditorProvider = ({ children }) => {
   const [renamePromptMessage, setRenamePromptMessage] = useState({ message: "Rename internal SARC file:", path: "" });
   const [selectedPath, setSelectedPath] = useState({ path: "", isfile: false }); //selected path from directory tree
   const [labelTextDisplay, setLabelTextDisplay] = useState({ sarc: '', yaml: '', rstb: '', comparer: '' }); //labeltext display near tabs
-  const [paths, setpaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
+  const [paths, setpaths] = useState({ paths: [], added_paths: [], modded_paths: [], nested_paths: {} }); //paths structures for directory tree
+  const [pathsFilters, setPathsFilters] = useState({ showAll: true, showAdded: false, showModded: false });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddPrompt, setIsAddPrompt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -75,7 +76,7 @@ export const EditorProvider = ({ children }) => {
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
+    paths, setpaths, pathsFilters, setPathsFilters, isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
     isLoading, setIsLoading
   };
 

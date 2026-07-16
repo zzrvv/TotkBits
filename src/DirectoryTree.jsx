@@ -22,9 +22,9 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) =>
   const [searchQuery, setSearchQuery] = useState("");
   const tree = buildTree(sarcPaths);
   // setStatusText("Directory Tree Loaded  ");
-  const handleSelectNode = (fullPath, isFile) => {
-    setSelectedNode(fullPath,isFile);
-    onNodeSelect(fullPath, isFile);
+  const handleSelectNode = (fullPath, isFile, identity = fullPath, updateRootSelection = true) => {
+    setSelectedNode(identity);
+    if (updateRootSelection) onNodeSelect(fullPath, isFile);
   };
 
   const handleContextMenu = (fullPath) => {

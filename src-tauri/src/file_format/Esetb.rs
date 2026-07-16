@@ -3,6 +3,9 @@ use super::{
     BinTextFile::{BymlFile, FileData},
     Wrapper::PythonWrapper,
 };
+use crate::file_format::BinTextFile::OpenedFile;
+use crate::Open_and_Save::SendData;
+use crate::Zstd::is_esetb;
 use crate::{
     Settings::Pathlib,
     Zstd::{TotkFileType, TotkZstd},
@@ -20,6 +23,36 @@ pub struct Esetb<'a> {
 
 #[allow(dead_code)]
 impl<'a> Esetb<'a> {
+    pub fn open_esetb<P: AsRef<Path>>(
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(
+        super::BinTextFile::OpenedFile<'a>,
+        crate::Open_and_Save::SendData,
+    )> {
+        let mut opened_file = OpenedFile::default();
+        let path_ref = path.as_ref();
+        let mut data = SendData::default();
+        print!("Is {:?} a esetb? ", &path_ref);
+        if is_esetb(&path) {
+            opened_file.esetb = Esetb::from_file(path_ref, zstd.clone()).ok();
+            if let Some(esetb) = &opened_file.esetb {
+                println!(" yes!");
+                data.tab = "YAML".to_string();
+                opened_file.path = Pathlib::new(path_ref);
+                opened_file.endian = esetb.byml.endian;
+                opened_file.file_type = TotkFileType::Esetb;
+                data.status_text = format!("Opened {}", path_ref.display());
+                data.path = Pathlib::new(path_ref);
+                data.text = esetb.to_string();
+                data.get_file_label(TotkFileType::Esetb, esetb.byml.endian);
+                return Some((opened_file, data));
+            }
+        }
+        println!("no");
+
+        None
+    }
     pub fn from_binary(data: &Vec<u8>, zstd: Arc<TotkZstd<'a>>) -> io::Result<Esetb<'a>> {
         let file_data = FileData {
             file_type: TotkFileType::Esetb,

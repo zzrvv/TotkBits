@@ -6,6 +6,10 @@ use std::{
     process::{Command, Stdio},
 };
 
+use crate::file_format::BinTextFile::OpenedFile;
+use crate::Open_and_Save::SendData;
+use crate::Settings::Pathlib;
+use crate::Zstd::TotkFileType;
 use crate::{Settings::NO_WINDOW_FLAG, Zstd::is_ainb};
 
 pub struct Ainb_py {
@@ -26,6 +30,45 @@ impl Default for Ainb_py {
 
 #[allow(dead_code)]
 impl Ainb_py {
+    pub fn open_ainb<P: AsRef<Path>>(
+        path: P,
+        zstd: std::sync::Arc<crate::Zstd::TotkZstd>,
+    ) -> Option<(
+        super::BinTextFile::OpenedFile,
+        crate::Open_and_Save::SendData,
+    )> {
+        let mut opened_file = OpenedFile::default();
+        let mut data = SendData::default();
+        let path_ref = path.as_ref();
+        print!("Is {} a ainb? ", &path_ref.display());
+        match Ainb_py::new().binary_file_to_text(path_ref) {
+            Ok(text) => {
+                println!(" yes!");
+                opened_file.path = Pathlib::new(path_ref);
+                opened_file.file_type = TotkFileType::AINB;
+                data.status_text = format!("Opened: {}", &opened_file.path.full_path);
+                data.path = Pathlib::new(path_ref);
+                data.text = text;
+                data.get_file_label(TotkFileType::AINB, None);
+                return Some((opened_file, data));
+            }
+            Err(e) => {
+                println!(" no: {}", e);
+            }
+        }
+        // if let Ok(text) = Ainb_py::new().binary_file_to_text(path_ref) {
+        //     println!(" yes!");
+        //     opened_file.path = Pathlib::new(path_ref);
+        //     opened_file.file_type = TotkFileType::AINB;
+        //     data.status_text = format!("Opened: {}", &opened_file.path.full_path);
+        //     data.path = Pathlib::new(path_ref);
+        //     data.text = text;
+        //     data.get_file_label(TotkFileType::AINB, None);
+        //     return Some((opened_file, data));
+        // }
+        // println!(" no");
+        None
+    }
     pub fn new() -> Self {
         Self::default()
     }

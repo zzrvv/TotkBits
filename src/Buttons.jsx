@@ -44,14 +44,10 @@ const ButtonsDisplay = () => {
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
+    paths, setpaths, pathsFilters, setPathsFilters, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
   } = useEditorContext();
 
   const displayButtons = activeTab === "SARC" || activeTab === "YAML" || activeTab === "RSTB";
-  if (!displayButtons) return null;
-
-  const [pathsFilters, setPathsFilters] = useState({ showAll: true, showAdded: false, showModded: false });
-
 
   const handlePathToClipboard = (text) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -174,7 +170,8 @@ const ButtonsDisplay = () => {
             setpaths({
               paths: paths.added_paths,
               added_paths: paths.added_paths,
-              modded_paths: paths.modded_paths
+              modded_paths: paths.modded_paths,
+              nested_paths: paths.nested_paths || {}
             });
             setStatusText(`Showing only added files (${paths.added_paths.length})`);
             newFilters = { showAll: false, showAdded: true, showModded: false };
@@ -189,7 +186,8 @@ const ButtonsDisplay = () => {
             setpaths({
               paths: paths.modded_paths,
               added_paths: paths.added_paths,
-              modded_paths: paths.modded_paths
+              modded_paths: paths.modded_paths,
+              nested_paths: paths.nested_paths || {}
             });
             setStatusText(`Showing only modded files (${paths.modded_paths.length})`);
             newFilters = { showAll: false, showAdded: false, showModded: true };
@@ -338,6 +336,8 @@ const ButtonsDisplay = () => {
     };
   }, [selectedPath]); // Pass an empty dependency array to ensure this effect runs only once after the initial render
   const isClearSearchShown = activeTab == "SARC" && searchInSarcQuery.length > 0 && !isSearchInSarcOpened;
+
+  if (!displayButtons) return null;
 
   return (
     <div>

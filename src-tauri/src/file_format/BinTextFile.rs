@@ -2,6 +2,7 @@
 use super::Esetb::Esetb;
 use super::Rstb::Restbl;
 use crate::file_format::TagProduct::TagProduct;
+use crate::Open_and_Save::SendData;
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, is_gamedatalist, TotkFileType, TotkZstd};
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
@@ -39,6 +40,42 @@ pub struct BymlFile<'a> {
     pub pio: roead::byml::Byml,
     pub zstd: Arc<TotkZstd<'a>>,
     pub file_type: TotkFileType,
+}
+
+#[allow(dead_code, unused_variables, unused_assignments)]
+impl<'a> BymlFile<'_> {
+    pub fn open_byml<P: AsRef<Path>>(
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'a>, crate::Open_and_Save::SendData)> {
+        let mut opened_file = OpenedFile::default();
+        let mut data = SendData::default();
+        let path_ref = path.as_ref();
+        let pathlib_var = Pathlib::new(path_ref);
+        print!("Is {} a byml? ", &pathlib_var.full_path);
+        opened_file.byml = BymlFile::new(path_ref, zstd.clone());
+        // if opened_file.byml.is_some() {
+        if let Some(b) = &opened_file.byml {
+            // let b = opened_file.byml.as_ref().unwrap();
+            let gamedatalist = if is_gamedatalist(path_ref) {
+                "(GameDataList) "
+            } else {
+                ""
+            };
+            println!("yes {}!", gamedatalist);
+            opened_file.path = pathlib_var.clone();
+            opened_file.endian = b.endian;
+            opened_file.file_type = b.file_data.file_type.clone();
+            data.status_text = format!("Opened {}", &pathlib_var.full_path);
+            data.path = pathlib_var;
+            // data.text = Byml::to_text(&b.pio);
+            data.text = b.to_string();
+            data.get_file_label(b.file_data.file_type, b.endian);
+            return Some((opened_file, data));
+        }
+        println!(" no");
+        None
+    }
 }
 
 #[allow(dead_code, unused_variables, unused_assignments)]

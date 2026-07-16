@@ -1,7 +1,9 @@
 #![allow(non_snake_case, non_camel_case_types)]
 use super::BinTextFile::write_string_to_file;
-use crate::Settings::NO_WINDOW_FLAG;
-use crate::Zstd::{is_asb, TotkZstd};
+use crate::file_format::BinTextFile::OpenedFile;
+use crate::Open_and_Save::SendData;
+use crate::Settings::{Pathlib, NO_WINDOW_FLAG};
+use crate::Zstd::{is_asb, TotkFileType, TotkZstd};
 use std::path::Path;
 use std::sync::Arc;
 use std::{
@@ -20,6 +22,49 @@ pub struct Asb_py<'a> {
 
 #[allow(dead_code, unused_variables)]
 impl<'a> Asb_py<'a> {
+    pub fn open_asb<P: AsRef<Path>>(
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(
+        super::BinTextFile::OpenedFile<'a>,
+        crate::Open_and_Save::SendData,
+    )> {
+        let mut opened_file = OpenedFile::default();
+        let path_ref = path.as_ref();
+        let mut data = SendData::default();
+        print!("Is {} a asb? ", &path_ref.display());
+        if let Ok(asb) = Asb_py::from_binary_file(path_ref, zstd.clone()) {
+            match asb.binary_to_text() {
+                Ok(text) => {
+                    println!(" yes!");
+                    opened_file.path = Pathlib::new(path_ref);
+                    opened_file.file_type = TotkFileType::ASB;
+                    data.status_text = format!("Opened: {}", &opened_file.path.full_path);
+                    data.path = Pathlib::new(path_ref);
+                    data.text = text;
+                    data.get_file_label(TotkFileType::ASB, Some(roead::Endian::Little));
+                    return Some((opened_file, data));
+                }
+                Err(e) => {
+                    println!(" yes but failed to open: {}", e);
+                }
+            }
+            // if let Ok(text) = asb.binary_to_text() {
+            //     println!(" yes!");
+            //     opened_file.path = Pathlib::new(path_ref);
+            //     opened_file.file_type = TotkFileType::ASB;
+            //     data.status_text = format!("Opened: {}", &opened_file.path.full_path);
+            //     data.path = Pathlib::new(path_ref);
+            //     data.text = text;
+            //     data.get_file_label(TotkFileType::ASB, Some(roead::Endian::Little));
+            //     return Some((opened_file, data));
+            // } else {
+            //     println!("{} yes but failed to convert to text", &path_ref.display());
+            // }
+        }
+        println!(" no");
+        None
+    }
     pub fn new(zstd: Arc<TotkZstd<'a>>) -> Asb_py<'a> {
         Self {
             zstd: zstd.clone(),

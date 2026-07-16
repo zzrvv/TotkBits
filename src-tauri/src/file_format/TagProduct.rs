@@ -1,6 +1,9 @@
 #![allow(non_snake_case, non_camel_case_types)]
+use crate::file_format::BinTextFile::OpenedFile;
 use crate::file_format::BinTextFile::{bytes_to_file, BymlFile};
-use crate::Zstd::TotkZstd;
+use crate::Open_and_Save::SendData;
+use crate::Settings::Pathlib;
+use crate::Zstd::{is_tagproduct, TotkFileType, TotkZstd};
 //use byteordered::Endianness;
 //use indexmap::IndexMap;
 use bitvec::prelude::*;
@@ -70,6 +73,36 @@ pub struct TagProduct<'a> {
 }
 
 impl<'a> TagProduct<'a> {
+    pub fn open_tag<P: AsRef<Path>>(
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(
+        super::BinTextFile::OpenedFile<'a>,
+        crate::Open_and_Save::SendData,
+    )> {
+        let mut opened_file = OpenedFile::default();
+        let mut data = SendData::default();
+        let path_ref = path.as_ref();
+        let pathlib_var = Pathlib::new(path_ref);
+        print!("Is {} a tag? ", &pathlib_var.full_path);
+        if is_tagproduct(path_ref) {
+            opened_file.tag = TagProduct::new(path_ref, zstd.clone());
+            if let Some(tag) = &mut opened_file.tag {
+                println!(" yes!");
+                opened_file.path = pathlib_var.clone();
+                opened_file.endian = Some(roead::Endian::Little);
+                opened_file.file_type = TotkFileType::TagProduct;
+                data.status_text = format!("Opened {}", &pathlib_var.full_path);
+                data.path = pathlib_var;
+                data.text = tag.to_text();
+                data.lang = "json".to_string();
+                data.get_file_label(TotkFileType::TagProduct, Some(roead::Endian::Little));
+                return Some((opened_file, data));
+            }
+        }
+        println!(" no");
+        None
+    }
     pub fn new<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         if let Some(byml) = BymlFile::new(path.as_ref(), zstd.clone()) {
             let mut tag_product = TagProduct {

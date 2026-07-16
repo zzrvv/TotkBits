@@ -155,7 +155,7 @@ function App() {
         setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
       </SearchTextInSarcPrompt>
 
-      {hasOpenDocuments && <ButtonsDisplay
+      <ButtonsDisplay
         editorRef={editorRef}
         updateEditorContent={updateEditorContent}
         setStatusText={setStatusText}
@@ -166,7 +166,7 @@ function App() {
         selectedPath={selectedPath}
         setIsModalOpen={setIsModalOpen}
         setIsAddPrompt={setIsAddPrompt}
-      />}
+      />
       {!hasOpenDocuments && <div className="empty-workspace">open file to start work</div>}
       {hasOpenDocuments && <DirectoryTree
         onNodeSelect={handleNodeSelect}

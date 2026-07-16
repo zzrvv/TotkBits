@@ -8,6 +8,53 @@ const dirClosed = `dir_closed.png`;
 const fileIcon = `file.png`;
 const iconSize = '20px';
 
+const buildNestedTree = (paths) => {
+  const root = {};
+  paths.forEach((innerPath) => innerPath.split('/').reduce((parent, part, index, parts) => {
+    if (!(part in parent)) parent[part] = index === parts.length - 1 ? null : {};
+    return parent[part] || {};
+  }, root));
+  return root;
+};
+
+const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onSelect }) => {
+  const { setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent } = useEditorContext();
+  const [isCollapsed, setIsCollapsed] = useState(true);
+  const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
+  const isFile = node === null;
+  const innerPath = innerParent ? `${innerParent}/${name}` : name;
+  const identity = `nested:${outerPath}:${innerPath}`;
+  const selectedStyle = selected === identity ? '#303030' : 'transparent';
+  const select = (event) => { event.stopPropagation(); onSelect(innerPath, isFile, identity, false); };
+  const open = (event) => {
+    event.stopPropagation();
+    if (isFile) editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    else setIsCollapsed((value) => !value);
+  };
+  const actions = isFile ? [
+    { label: 'Extract', method: () => { setContextMenu({ visible: false, x: 0, y: 0 }); extractNestedSarcFile(outerPath, innerPath, setStatusText); }, icon: 'context_menu/extract.png', shortcut: '' },
+    { label: 'Copy path', method: () => { navigator.clipboard.writeText(innerPath); setStatusText('Copied to clipboard'); setContextMenu({ visible: false, x: 0, y: 0 }); }, icon: 'context_menu/copy.png', shortcut: '' },
+  ] : [];
+  return <li onClick={select}>
+    <div style={{ borderRadius: '5px', width: '95%', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'white', backgroundColor: selectedStyle }}
+      onDoubleClick={open}
+      onContextMenu={(event) => { if (!isFile) return; event.preventDefault(); event.stopPropagation(); setContextMenu({ visible: true, x: event.clientX, y: event.clientY }); }}>
+      <img src={isFile ? fileIcon : isCollapsed ? dirClosed : dirOpened} alt={name}
+        style={{ marginRight: '5px', width: iconSize, height: iconSize }}
+        onClick={(event) => { event.stopPropagation(); if (!isFile) setIsCollapsed((value) => !value); }} />
+      <span>{name}</span>
+    </div>
+    {!isFile && <div className={`node-children ${isCollapsed ? 'collapsed' : 'expanded'}`}>
+      <ul style={{ marginLeft: '40px', listStyleType: 'none', padding: 0 }}>
+        {Object.entries(node).map(([childName, child]) => <NestedDirectoryNode key={childName} node={child} name={childName}
+          innerParent={innerPath} outerPath={outerPath} selected={selected} onSelect={onSelect} />)}
+      </ul>
+    </div>}
+    {contextMenu.visible && <ContextMenu x={contextMenu.x} y={contextMenu.y}
+      onClose={() => setContextMenu({ visible: false, x: 0, y: 0 })} actions={actions} settings={{ contextMenuFontSize: 14 }} />}
+  </li>;
+};
+
 const ContextMenu = ({ x, y, onClose, actions, settings }) => {
   return (
     <ul
@@ -50,7 +97,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, setCompareData, setInternalSarcPath
+    paths, setpaths, setPathsFilters, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, setCompareData, setInternalSarcPath
   } = useEditorContext();
 
   const [isCollapsed, setIsCollapsed] = useState(true);
@@ -60,10 +107,20 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   // const endian = "LE";
   const isSelected = selected === fullPath;
 
-  const handleDoubleClick = (e) => {
+  const handleDoubleClick = async (e) => {
     e.stopPropagation(); // Prevent the click from bubbling up to parent elements
     console.log(`Double-clicked on directory: ${fullPath}`);
-    handleOpenInternalSarcFile();
+    if (isFile) {
+      if (sarcPaths.nested_paths?.[fullPath]) {
+        setIsCollapsed((value) => !value);
+        return;
+      }
+      const expanded = await expandNestedSarc(fullPath, setStatusText, setpaths, setPathsFilters);
+      if (expanded) setIsCollapsed(false);
+      else handleOpenInternalSarcFile();
+    } else {
+      toggleCollapse();
+    }
     // Add your custom double-click logic here
   };
 
@@ -216,7 +273,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
 
   const contextMenuActions = isFile ? [
     { label: 'Edit', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: 'F3' },
-    { label: 'Expand archive', method: () => { closeContextMenu(); expandNestedSarc(fullPath, setStatusText, setpaths); }, icon: 'context_menu/dir_opened.png', shortcut: '' },
+    { label: 'Expand archive', method: async () => { closeContextMenu(); if (await expandNestedSarc(fullPath, setStatusText, setpaths, setPathsFilters)) setIsCollapsed(false); }, icon: 'dir_opened.png', shortcut: '' },
     { label: 'Compare', method: handleCompareInternalSarcFile, icon: 'context_menu/compare.png', shortcut: '' },
     { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },
     { label: 'Replace', method: handleReplaceInternalSarcFile, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R' },
@@ -248,16 +305,11 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
         />
         <span onClick={toggleCollapse}>{name}</span>
       </div>
-      {isFile && sarcPaths.nested_paths?.[fullPath]?.length > 0 && (
+      {isFile && !isCollapsed && sarcPaths.nested_paths?.[fullPath]?.length > 0 && (
         <ul style={{ marginLeft: '40px', listStyleType: 'none', padding: 0 }}>
-          {sarcPaths.nested_paths[fullPath].map((innerPath) => (
-            <li key={`${fullPath}:${innerPath}`}>
-              <div style={{ ...nodeStyle, backgroundColor: 'transparent' }}>
-                <img src={fileIcon} alt="" style={{ marginRight: '5px', width: iconSize, height: iconSize }} />
-                <span onDoubleClick={(event) => { event.stopPropagation(); editNestedSarcFile(fullPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent); }}>{innerPath}</span>
-                <button style={{ marginLeft: '8px' }} onClick={(event) => { event.stopPropagation(); extractNestedSarcFile(fullPath, innerPath, setStatusText); }}>Extract</button>
-              </div>
-            </li>
+          {Object.entries(buildNestedTree(sarcPaths.nested_paths[fullPath])).map(([nestedName, nestedNode]) => (
+            <NestedDirectoryNode key={nestedName} node={nestedNode} name={nestedName} innerParent=""
+              outerPath={fullPath} selected={selected} onSelect={onSelect} />
           ))}
         </ul>
       )}

@@ -5,7 +5,7 @@ use crate::Comparer::DiffComparer;
 use crate::NestedSarc::{NestedArchive, NestedArchives};
 use crate::Open_and_Save::{
     check_if_save_in_romfs, file_from_disk_to_senddata, get_binary_by_filetype,
-    get_string_from_data, open_sarc, SaveFileDialog, SendData,
+    get_string_from_data, SaveFileDialog, SendData,
 };
 use crate::Settings::{list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
@@ -990,7 +990,7 @@ impl<'a> TotkBitsApp<'a> {
         let mut data = SendData::default();
         //let file_name = file.to_string_lossy().to_string().replace("\\", "/");
         if check_if_filepath_valid(&file_name) {
-            if let Some((pack, data)) = open_sarc(&file_name, self.zstd.clone()) {
+            if let Some((pack, data)) = PackComparer::open_sarc(&file_name, self.zstd.clone()) {
                 self.pack = Some(pack);
                 self.internal_file = None;
                 return Some(data);

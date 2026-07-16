@@ -1,5 +1,8 @@
 #![allow(non_snake_case, non_camel_case_types)]
+use crate::file_format::BinTextFile::OpenedFile;
+use crate::Open_and_Save::SendData;
 use crate::{Settings::Pathlib, Zstd::TotkFileType};
+use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use msyt::converter::MsytFile;
 use std::{fs, io::Read};
 
@@ -15,6 +18,37 @@ pub struct MsbtFile {
 
 #[allow(dead_code)]
 impl MsbtFile {
+    pub fn open_msbt<P: AsRef<std::path::Path>>(
+        path: P,
+    ) -> Option<(
+        crate::file_format::BinTextFile::OpenedFile<'static>,
+        crate::Open_and_Save::SendData,
+    )> {
+        let file_name = path
+            .as_ref()
+            .to_string_lossy()
+            .to_string()
+            .replace("\\", "/");
+        let mut opened_file = OpenedFile::default();
+        let mut data = SendData::default();
+        print!("Is {} a msbt?", &file_name);
+        opened_file.msyt = MsbtCpp::from_binary_file(&file_name).ok();
+        if let Some(m) = &opened_file.msyt {
+            // let m = opened_file.msyt.as_ref().unwrap();
+            println!(" yes!");
+            let endian = str_endian_to_roead(&m.endian.clone().unwrap_or("LE".to_string()));
+            opened_file.path = Pathlib::new(&file_name);
+            opened_file.endian = Some(endian);
+            opened_file.file_type = TotkFileType::Msbt;
+            data.status_text = format!("Opened {}", &file_name);
+            data.path = Pathlib::new(file_name.clone());
+            data.text = m.text.clone();
+            data.get_file_label(opened_file.file_type, Some(endian));
+            return Some((opened_file, data));
+        }
+        println!(" no");
+        None
+    }
     pub fn from_filepath(path: &str) -> Option<Self> {
         let mut f_handle = fs::File::open(path).ok()?;
         let mut data: Vec<u8> = Vec::new();

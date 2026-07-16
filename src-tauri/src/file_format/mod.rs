@@ -3,6 +3,7 @@ pub mod BinTextFile;
 pub mod Msbt;
 pub mod Pack;
 pub mod Rstb;
+pub mod SimpleOpeners;
 pub mod TagProduct;
 // pub mod RstbData;
 // pub mod SarcEntriesData;

@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 //mod Zstd;
 
+use crate::Open_and_Save::SendData;
 use crate::Settings::{makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
@@ -40,6 +41,36 @@ pub struct PackComparer<'a> {
 
 #[allow(dead_code)]
 impl<'a> PackComparer<'a> {
+    pub fn open_sarc<P: AsRef<Path>>(
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(Self, crate::Open_and_Save::SendData)> {
+        let mut data = SendData::default();
+        let path_ref = path.as_ref();
+        print!("Is {:?} a sarc? ", &path_ref.display());
+        let pathlib_var = Pathlib::new(path_ref);
+        if let Ok(sarc) = PackFile::new(path_ref, zstd.clone()) {
+            let e_s = if sarc.endian == roead::Endian::Little {
+                " [LE]"
+            } else {
+                " [BE]"
+            };
+            let yaz0_s = if sarc.is_yaz0 { " [Yaz0] " } else { " " };
+            if let Some(pack) = PackComparer::from_pack(sarc, zstd.clone()) {
+                println!(" yes!");
+                data.get_sarc_paths(&pack);
+                data.status_text =
+                    format!("Opened {}", &path_ref.to_string_lossy().replace("\\", "/"));
+                data.path = pathlib_var.clone();
+                data.tab = "SARC".to_string();
+                data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, yaz0_s, e_s);
+                return Some((pack, data));
+            }
+        }
+        println!(" no");
+
+        None
+    }
     pub fn from_pack(pack: PackFile<'a>, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         let config = zstd.clone().totk_config.clone();
         // let vanila = PackComparer::get_vanila_sarc(&pack.path, zstd.clone());

@@ -163,11 +163,16 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
 
 }
 
-export async function expandNestedSarc(outerPath, setStatusText, setpaths) {
+export async function expandNestedSarc(outerPath, setStatusText, setpaths, setPathsFilters) {
   const content = await invoke('expand_nested_sarc', { outerPath });
-  if (!content) return;
+  if (!content) return false;
   setStatusText(content.status_text);
-  if (content.tab !== 'ERROR') setpaths(content.sarc_paths);
+  if (content.tab !== 'ERROR') {
+    setPathsFilters?.({ showAll: true, showAdded: false, showModded: false });
+    setpaths(content.sarc_paths);
+    return true;
+  }
+  return false;
 }
 
 export async function editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent) {
