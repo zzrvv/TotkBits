@@ -1,7 +1,7 @@
 import { invoke } from './DocumentState';
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
-import { addFilesFromDirRecursivelyToRoot, extractRootFolderClick, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
+import { addFilesFromDirRecursivelyToRoot, extractRootFolderClick, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, openFolderContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
 import { ImageButton } from "./Buttons";
 import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
 import { useEditorContext } from './StateManager';
@@ -37,6 +37,11 @@ function MenuBarDisplay() {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
     fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+  };
+  const handleOpenFolderClick = (event) => {
+    event.stopPropagation();
+    closeMenu();
+    openFolderContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
   };
   const handleOpenInternalSarcFile = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
@@ -247,6 +252,7 @@ function MenuBarDisplay() {
 
   const fileMenuItems = [
     { label: 'Open', onClick: handleOpenFileClick, icon: 'menu/open.png', shortcut: 'Ctrl+O' },
+    { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
     { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S' },
     { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S' },
     { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },
@@ -400,6 +406,7 @@ function MenuBarDisplayWithUpdater() {
   }
   const iconSize = '28px';
   const isUp = updateState.isUpdateNeeded;
+  const SHOW_UPDATE_BUTTON = false;
   return (
     <div style={{
       display: 'flex',
@@ -410,7 +417,7 @@ function MenuBarDisplayWithUpdater() {
       <MenuBarDisplay />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
       {settings.zstd_msg && <div style={{padding: '2px', color: 'yellow'}}>{settings.zstd_msg}</div>}
-        <ImageButton
+        {SHOW_UPDATE_BUTTON && <ImageButton
           key={isUp ? 'UpdaterButton' : 'NoUpdaterButton'}
           src={isUp ? 'update.png' : 'noupdate.png'}
           alt={
@@ -430,7 +437,7 @@ function MenuBarDisplayWithUpdater() {
             width: iconSize,
             height: iconSize,
           }}
-        />
+        />}
       </div>
     </div>
   );

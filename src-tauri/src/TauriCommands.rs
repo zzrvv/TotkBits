@@ -361,6 +361,17 @@ pub fn open_file_struct(
 }
 
 #[tauri::command]
+pub fn open_folder_struct(app_handle: tauri::AppHandle, documentId: String) -> Option<SendData> {
+    let result = with_document_mut!(app_handle, documentId, app, app.open_folder());
+    if let Some(data) = &result {
+        if data.tab == "ERROR" {
+            show_open_error(data);
+        }
+    }
+    result
+}
+
+#[tauri::command]
 pub fn open_file_from_path(
     app_handle: tauri::AppHandle,
     documentId: String,

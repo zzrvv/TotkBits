@@ -4,6 +4,7 @@ use std::{
     path::{Component, Path},
 };
 
+pub mod Folder;
 pub mod Rar;
 pub mod SevenZip;
 pub mod Zip;
@@ -36,6 +37,7 @@ pub enum RootArchive {
     Zip(Zip::ZipFile),
     SevenZip(SevenZip::SevenZipFile),
     Rar(Rar::RarFile),
+    Folder(Folder::FolderFile),
 }
 
 pub struct ArchiveDocument {
@@ -46,6 +48,14 @@ pub struct ArchiveDocument {
 }
 
 impl ArchiveDocument {
+    pub fn open_folder(path: &Path) -> ArchiveResult<Self> {
+        Ok(Self {
+            archive: RootArchive::Folder(Folder::FolderFile::from_directory(path)?),
+            path: path.to_string_lossy().replace('\\', "/"),
+            added: BTreeSet::new(),
+            modified: BTreeSet::new(),
+        })
+    }
     pub fn open(path: &Path) -> ArchiveResult<Option<Self>> {
         let bytes =
             fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
@@ -140,6 +150,13 @@ impl ArchiveDocument {
         self.archive.to_bytes()
     }
     pub fn save_atomic(&mut self, destination: &Path) -> ArchiveResult<()> {
+        if let RootArchive::Folder(folder) = &self.archive {
+            folder.save_to_directory(destination)?;
+            self.path = destination.to_string_lossy().replace('\\', "/");
+            self.added.clear();
+            self.modified.clear();
+            return Ok(());
+        }
         let bytes = self.to_bytes()?;
         let parent = destination.parent().unwrap_or_else(|| Path::new("."));
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -190,6 +207,7 @@ impl RootArchive {
             Self::Zip(v) => v.entries(),
             Self::SevenZip(v) => v.entries(),
             Self::Rar(v) => v.entries(),
+            Self::Folder(v) => v.entries(),
         }
     }
     pub(crate) fn entries_mut(&mut self) -> &mut BTreeMap<String, Vec<u8>> {
@@ -197,6 +215,7 @@ impl RootArchive {
             Self::Zip(v) => v.entries_mut(),
             Self::SevenZip(v) => v.entries_mut(),
             Self::Rar(v) => v.entries_mut(),
+            Self::Folder(v) => v.entries_mut(),
         }
     }
     pub(crate) fn get(&self, path: &str) -> Option<&[u8]> {
@@ -207,6 +226,7 @@ impl RootArchive {
             Self::Zip(v) => v.to_bytes(),
             Self::SevenZip(v) => v.to_bytes(),
             Self::Rar(v) => v.to_bytes(),
+            Self::Folder(v) => v.to_bytes(),
         }
     }
 }

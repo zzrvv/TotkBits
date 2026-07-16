@@ -1,4 +1,4 @@
-use crate::file_format::Archive::ArchiveDocument;
+use crate::file_format::Archive::{ArchiveDocument, RootArchive};
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Esetb::Esetb;
 use crate::file_format::Pack::{PackComparer, SarcPaths};
@@ -144,7 +144,12 @@ impl<'a> TotkBitsApp<'a> {
         data.status_text = status;
         if let Some(archive) = &self.archive {
             data.path = Pathlib::new(archive.path.clone());
-            data.file_label = format!("{} [Archive]", data.path.name);
+            let kind = if matches!(archive.archive, RootArchive::Folder(_)) {
+                "Folder"
+            } else {
+                "Archive"
+            };
+            data.file_label = format!("{} [{kind}]", data.path.name);
             data.sarc_paths.paths = archive.paths();
             data.sarc_paths.added_paths = archive.added.iter().cloned().collect();
             data.sarc_paths.modded_paths = archive.modified.iter().cloned().collect();
@@ -1466,6 +1471,27 @@ impl<'a> TotkBitsApp<'a> {
             return self.open_from_path(file.to_string_lossy().to_string().replace("\\", "/"));
         }
         None
+    }
+
+    pub fn open_folder(&mut self) -> Option<SendData> {
+        let folder = FileDialog::new()
+            .set_title("Choose folder to open")
+            .pick_folder()?;
+        match ArchiveDocument::open_folder(&folder) {
+            Ok(archive) => {
+                self.pack = None;
+                self.internal_file = None;
+                self.opened_file = OpenedFile::default();
+                self.archive = Some(archive);
+                Some(self.archive_send_data(format!("Opened folder {}", folder.display())))
+            }
+            Err(error) => {
+                let mut data = SendData::default();
+                data.tab = "ERROR".into();
+                data.status_text = format!("Error: {error}");
+                Some(data)
+            }
+        }
     }
 
     pub fn compare_opened_file_with_original_monaco(&mut self) -> Option<SendData> {

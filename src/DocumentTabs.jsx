@@ -114,6 +114,7 @@ export default function DocumentTabs() {
     return <div className="document-tabs" role="tablist">
         {documents.map((document) => <button
             type="button" role="tab" aria-selected={document.id === activeDocumentId}
+            title={document.fullPath || document.title}
             className={`document-tab ${document.id === activeDocumentId ? 'active' : ''}`}
             key={document.id} onClick={() => activateDocument(document.id)}
             onMouseDown={(event) => {

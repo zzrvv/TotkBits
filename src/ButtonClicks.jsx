@@ -263,6 +263,22 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
   // setActiveTab(activeTabBak);
 }
 
+export async function openFolderContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
+  try {
+    setStatusText('Opening folder...');
+    const content = await invoke('open_folder_struct');
+    if (!content) { setStatusText('Ready'); return; }
+    setStatusText(content.status_text);
+    setActiveTab('SARC');
+    setLabelTextDisplay((previous) => ({ ...previous, sarc: content.file_label.replace(/\/\//g, '/') }));
+    setpaths(content.sarc_paths);
+    updateEditorContent('', content.lang);
+  } catch (error) {
+    console.error('Failed to open folder:', error);
+    setStatusText(`Error: failed to open folder: ${error}`);
+  }
+}
+
 export async function closeAllFilesClick(setCompareData, setStatusText, setpaths, updateEditorContent, setLabelTextDisplay) {
   try {
     const content = await invoke('close_all_opened_files');

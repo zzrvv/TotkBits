@@ -33,9 +33,9 @@ use crate::TauriCommands::{
     edit_nested_sarc_file, exit_app, expand_nested_sarc, extract_folder_from_opened_sarc,
     extract_internal_file, extract_nested_sarc_file, extract_opened_sarc, get_toml_config,
     mutate_nested_archive, open_dir_dialog, open_file_dialog, open_file_from_path,
-    open_file_struct, remove_internal_sarc_file, rename_internal_sarc_file, restart_app,
-    rstb_edit_entry, rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct,
-    search_in_sarc, update_app, update_toml_config,
+    open_file_struct, open_folder_struct, remove_internal_sarc_file, rename_internal_sarc_file,
+    restart_app, rstb_edit_entry, rstb_get_entries, rstb_remove_entry, save_as_click,
+    save_file_struct, search_in_sarc, update_app, update_toml_config,
 };
 use updater::TotkbitsVersion::TotkbitsVersion;
 
@@ -79,6 +79,7 @@ fn main() -> io::Result<()> {
             edit_config,
             get_startup_data,
             open_file_struct,
+            open_folder_struct,
             open_file_from_path,
             edit_internal_file,
             expand_nested_sarc,
