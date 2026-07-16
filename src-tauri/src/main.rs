@@ -13,6 +13,7 @@ use std::{fs, process};
 use tauri::Manager;
 use Settings::BACKUP_UPDATER_NAME;
 use Zstd::get_executable_dir;
+mod Cli;
 mod Comparer;
 mod DocumentState;
 mod NestedSarc;
@@ -39,7 +40,14 @@ use crate::TauriCommands::{
 use updater::TotkbitsVersion::TotkbitsVersion;
 
 fn main() -> io::Result<()> {
+    let cli = Cli::CliCommand::from_env();
     main_initialization()?;
+    if let Some(command) = cli {
+        match command.execute() {
+            Ok(()) => return Ok(()),
+            Err(error) => eprintln!("CLI command failed; launching GUI: {error}"),
+        }
+    }
     // test_case()?;
     // return Ok(());
     let startup_data = StartupData::new()?.to_json()?;
