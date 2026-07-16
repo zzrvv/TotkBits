@@ -5,6 +5,7 @@ import { addFilesFromDirRecursivelyToRoot, extractRootFolderClick, clearSearchIn
 import { ImageButton } from "./Buttons";
 import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
 import { useEditorContext } from './StateManager';
+import CommandsHelp from './CommandsHelp';
 
 function MenuBarDisplay() {
   // const [backupPaths, setBackupPaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
@@ -22,11 +23,12 @@ function MenuBarDisplay() {
     compareData, setCompareData,
   } = useEditorContext();
 
-  const [showDropdown, setShowDropdown] = useState({ file: false, view: false, tools: false, compare: false });
-  const dropdownRefs = useRef({ file: null, view: null, tools: null, compare: null });
+  const [showDropdown, setShowDropdown] = useState({ file: false, view: false, tools: false, compare: false, about: false });
+  const [isCommandsOpen, setIsCommandsOpen] = useState(false);
+  const dropdownRefs = useRef({ file: null, view: null, tools: null, compare: null, about: null });
 
   const closeMenu = () => {
-    setShowDropdown({ file: false, view: false, tools: false, compare: false });
+    setShowDropdown({ file: false, view: false, tools: false, compare: false, about: false });
   };
 
 
@@ -215,7 +217,7 @@ function MenuBarDisplay() {
 
   const toggleDropdown = (menu) => {
     setShowDropdown(prevState => ({
-      ...{ file: false, view: false, tools: false, compare: false }, // Reset all to false
+      ...{ file: false, view: false, tools: false, compare: false, about: false }, // Reset all to false
       [menu]: !prevState[menu] // Then toggle the clicked one
     }));
   };
@@ -354,7 +356,20 @@ function MenuBarDisplay() {
             </div>
           </div>
         )}
+        <div className="menu-item" onClick={() => toggleDropdown('about')} ref={el => dropdownRefs.current.about = el}>
+          About
+          <div className="dropdown-content" style={{ display: showDropdown.about ? 'block' : 'none' }}>
+            <li className="menu-item" style={menuItemStyle} onClick={(event) => {
+              event.stopPropagation();
+              closeMenu();
+              setIsCommandsOpen(true);
+            }}>
+              <div style={menuDivStyle}><img src={blankIcon} alt="Commands" style={menuItemImgStyle} />Commands</div>
+            </li>
+          </div>
+        </div>
       </div>
+      <CommandsHelp isOpen={isCommandsOpen} onClose={() => setIsCommandsOpen(false)} />
     </div>
   );
 

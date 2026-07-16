@@ -510,3 +510,45 @@ button {
   flex: 0 0 auto;
   padding: 6px 10px;
 }
+
+.commands-help-modal {
+  box-sizing: border-box;
+  width: min(760px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: 85vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+}
+
+.commands-help-modal > * {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.commands-help-modal code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.commands-help-modal pre {
+  box-sizing: border-box;
+  max-width: 100%;
+  padding: 12px;
+  overflow-x: hidden;
+  border-radius: 4px;
+  background: #202124;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.commands-help-list section {
+  margin: 12px 0;
+}
+
+.commands-help-list section p {
+  margin: 5px 0 0;
+}

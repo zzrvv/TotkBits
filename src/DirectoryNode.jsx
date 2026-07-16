@@ -19,7 +19,7 @@ const buildNestedTree = (paths) => {
 };
 
 const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onSelect }) => {
-  const { settings, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, paths, setpaths, setPathsFilters, setCompareData } = useEditorContext();
+  const { settings, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, paths, setpaths, setPathsFilters, setCompareData, setRenamePromptMessage, setIsAddPrompt, setIsModalOpen } = useEditorContext();
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
   const isFile = node === null;
@@ -42,7 +42,17 @@ const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onS
   const mutate = async (action, options = {}) => { setContextMenu({ visible: false, x: 0, y: 0 }); await mutateNestedArchive(outerPath, options.path ?? innerPath, action, setStatusText, setpaths, options); };
   const chooseFile = async () => await invoke('open_file_dialog');
   const chooseDir = async () => await invoke('open_dir_dialog');
-  const rename = async () => { const name = window.prompt('Rename nested entry:', innerPath.split('/').pop()); if (!name) return; const parent = innerPath.includes('/') ? innerPath.slice(0, innerPath.lastIndexOf('/') + 1) : ''; await mutate('rename', { newPath: `${parent}${name}` }); };
+  const rename = () => {
+    setContextMenu({ visible: false, x: 0, y: 0 });
+    setRenamePromptMessage({
+      message: isFile ? 'Rename the internal archive file:' : 'Rename the internal archive directory:',
+      path: name,
+      nestedChain: outerPath,
+      nestedPath: innerPath,
+    });
+    setIsAddPrompt(false);
+    setIsModalOpen(true);
+  };
   const actions = isFile ? [
     { label: 'Edit', method: () => { setContextMenu({ visible: false, x: 0, y: 0 }); editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent); }, icon: 'context_menu/edit.png', shortcut: 'F3' },
     { label: 'Expand archive', method: async () => { setContextMenu({ visible: false, x: 0, y: 0 }); if (await expandNestedSarc(childChain, setStatusText, setpaths, setPathsFilters)) setIsCollapsed(false); }, icon: 'dir_opened.png', shortcut: '' },
