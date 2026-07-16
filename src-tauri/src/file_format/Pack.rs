@@ -108,7 +108,22 @@ impl<'a> PackComparer<'a> {
         } else {
             format!("{}/", prefix.replace('\\', "/"))
         };
-        let output_root = dest_path.as_ref().join(&opened.path.stem);
+        // When extracting a selected directory, make that directory the root of
+        // the result instead of recreating the SARC name and its full parent path.
+        // Full-archive extraction has its own path and intentionally keeps the
+        // existing `<destination>/<sarc name>/...` layout.
+        let output_root = if prefix.is_empty() {
+            dest_path.as_ref().join(&opened.path.stem)
+        } else {
+            let folder_name = prefix
+                .rsplit('/')
+                .next()
+                .filter(|name| !name.is_empty())
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "Invalid SARC folder path")
+                })?;
+            dest_path.as_ref().join(folder_name)
+        };
         let mut count = 0;
 
         for path in paths {
@@ -120,7 +135,14 @@ impl<'a> PackComparer<'a> {
                 continue;
             }
             if let Some(bytes) = opened.writer.get_file(&path) {
-                let output_path = output_root.join(&normalized);
+                let relative_path = if prefix_with_separator.is_empty() {
+                    normalized.as_str()
+                } else {
+                    normalized
+                        .strip_prefix(&prefix_with_separator)
+                        .unwrap_or(normalized.as_str())
+                };
+                let output_path = output_root.join(relative_path);
                 makedirs(&output_path)?;
                 fs::write(output_path, bytes)?;
                 count += 1;
