@@ -10,7 +10,7 @@ use crate::Open_and_Save::{
 };
 use crate::Settings::{list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{global_totk_zstd, TotkFileType, TotkZstd};
+use crate::Zstd::{global_totk_zstd, TotkFileType, TotkZstd, ZstdDictionary};
 use rfd::{FileDialog, MessageDialog};
 use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
@@ -412,6 +412,7 @@ impl<'a> TotkBitsApp<'a> {
             zstd.clone(),
             dest_file,
             &mut self.opened_file,
+            None,
         )
     }
 
@@ -818,6 +819,7 @@ impl<'a> TotkBitsApp<'a> {
                 self.zstd.clone(),
                 &inner_path,
                 &mut self.opened_file,
+                internal_file.zstd_dictionary,
             )?;
             let archive = self.nested_archives.get_mut(&outer_path)?;
             archive.set(&inner_path, rawdata);
@@ -842,6 +844,7 @@ impl<'a> TotkBitsApp<'a> {
                     self.zstd.clone(),
                     &path,
                     &mut self.opened_file,
+                    internal_file.zstd_dictionary,
                 )?;
                 self.archive.as_mut()?.set(&path, rawdata).ok()?;
                 data.tab = "YAML".into();
@@ -858,6 +861,7 @@ impl<'a> TotkBitsApp<'a> {
                         self.zstd.clone(),
                         &path,
                         &mut self.opened_file,
+                        internal_file.zstd_dictionary,
                     )?;
                     if rawdata.is_empty() {
                         data.status_text =
@@ -889,6 +893,7 @@ impl<'a> TotkBitsApp<'a> {
                 self.zstd.clone(),
                 &fullpath,
                 &mut self.opened_file,
+                None,
             )?;
             if rawdata.is_empty() {
                 data.status_text =
@@ -1183,6 +1188,41 @@ impl<'a> TotkBitsApp<'a> {
         new_path: Option<String>,
         source_path: Option<String>,
     ) -> SendData {
+        if action == "compare" {
+            let mut data = self.archive_send_data(format!("Comparing nested entry {path}"));
+            let result = (|| -> Result<(String, String), String> {
+                let bytes = self
+                    .nested_archives
+                    .get_mut(&chain)
+                    .ok_or("nested archive is not expanded")?
+                    .get(&path)
+                    .ok_or_else(|| format!("nested entry not found: {path}"))?
+                    .to_vec();
+                let current = get_string_from_data(&path, bytes, self.zstd.clone())
+                    .map(|(_, text)| text)
+                    .ok_or_else(|| format!("unsupported nested entry type: {path}"))?;
+                let original = self
+                    .zstd
+                    .find_vanila_internal_file_data_in_romfs(&path, self.zstd.clone())
+                    .map_err(|error| error.to_string())?;
+                Ok((current, original))
+            })();
+            match result {
+                Ok((current, original)) => {
+                    data.tab = "COMPARER".into();
+                    data.status_text = format!("Compared nested entry {path}");
+                    data.compare_data.file1.text = current;
+                    data.compare_data.file1.label = format!("{path} (nested archive)");
+                    data.compare_data.file2.text = original;
+                    data.compare_data.file2.label = "Original".into();
+                }
+                Err(error) => {
+                    data.tab = "ERROR".into();
+                    data.status_text = format!("Error: failed to compare {path}: {error}");
+                }
+            }
+            return data;
+        }
         let result = (|| -> Result<String, String> {
             match action.as_str() {
                 "delete" => {
@@ -1215,6 +1255,9 @@ impl<'a> TotkBitsApp<'a> {
                         .get_mut(&chain)
                         .ok_or("nested archive is not expanded")?
                         .set(&path, bytes);
+                    if action == "replace" {
+                        self.drop_nested_descendants(&chain, &path);
+                    }
                     self.flush_nested_chain(&chain)?;
                     Ok(format!("Updated nested entry {path}"))
                 }
@@ -1566,6 +1609,7 @@ pub struct InternalFile<'a> {
     pub text: Option<String>,
     pub aamp: Option<String>,
     pub esetb: Option<Esetb<'a>>,
+    pub zstd_dictionary: Option<ZstdDictionary>,
 }
 
 impl Default for InternalFile<'_> {
@@ -1579,6 +1623,7 @@ impl Default for InternalFile<'_> {
             text: None,
             aamp: None,
             esetb: None,
+            zstd_dictionary: None,
         }
     }
 }
@@ -1596,6 +1641,7 @@ impl InternalFile<'_> {
             text: None,
             aamp: None,
             esetb: None,
+            zstd_dictionary: None,
         }
     }
 }

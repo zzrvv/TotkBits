@@ -290,8 +290,8 @@ const CompareFiles = () => {
         fontWeight: 'bold',
         fontSize: fontSize,
       }}>
-        <div style={{marginLeft: margin}}>{compareData.label1.replace(/\/\//g, '/') || 'Modified File'}</div>
-        <div style={{marginRight: margin}}>{compareData.label2.replace(/\/\//g, '/') || 'Original File'}</div>
+        <div style={{marginLeft: margin}}>{(compareData.label1 ?? '').replace(/\/\//g, '/') || 'Modified File'}</div>
+        <div style={{marginRight: margin}}>{(compareData.label2 ?? '').replace(/\/\//g, '/') || 'Original File'}</div>
       </div>
 
       <div style={{ height: 'calc(100vh - 177px)', width: '100%', flexDirection: 'column' }}>
@@ -400,9 +400,9 @@ const Comparer = ({ setStatusText, activeTab }) => {
     >
       <div  style={{ display: activeTab === 'COMPARER' ? "block" : "none" }}>
       {/* <DiffEditor
-        original={compareData.content1}
-        modified={compareData.content2}
-        language={compareData.lang} // Adjust language as needed
+        original={compareData.content1 ?? ''}
+        modified={compareData.content2 ?? ''}
+        language={compareData.lang ?? 'yaml'} // Adjust language as needed
         theme={settings.theme} // Choose between "vs-light", "vs-dark", etc.
         options={{
           readOnly: true, // Makes the editor read-only

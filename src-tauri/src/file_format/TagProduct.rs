@@ -73,6 +73,35 @@ pub struct TagProduct<'a> {
 }
 
 impl<'a> TagProduct<'a> {
+    pub fn from_binary<P: AsRef<Path>>(
+        data: &Vec<u8>,
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<Self> {
+        let file_data = BymlFile::byml_data_to_bytes(data, zstd.clone()).ok()?;
+        let byml = BymlFile::from_binary(
+            file_data,
+            zstd,
+            path.as_ref().to_string_lossy().into_owned(),
+        )
+        .ok()?;
+        let mut tag_product = TagProduct {
+            byml,
+            path_list: Vec::new(),
+            tag_list: Vec::new(),
+            rank_table: roead::byml::Byml::default(),
+            file_name: String::new(),
+            actor_tag_data: BTreeMap::default(),
+            cached_tag_list: Vec::new(),
+            cached_rank_table: String::new(),
+            bit_table_bytes: roead::byml::Byml::default(),
+            text: String::new(),
+            endian: roead::Endian::Little,
+        };
+        tag_product.parse().ok()?;
+        Some(tag_product)
+    }
+
     pub fn open_tag<P: AsRef<Path>>(
         path: P,
         zstd: Arc<TotkZstd<'a>>,

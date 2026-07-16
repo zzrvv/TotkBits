@@ -17,8 +17,8 @@ use crate::{
     Settings::Pathlib,
     TotkApp::InternalFile,
     Zstd::{
-        is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, is_xlink, is_xlink_path,
-        TotkFileType, TotkZstd,
+        is_aamp, is_ainb, is_asb, is_byml, is_esetb, is_evfl, is_gamedatalist, is_msyt,
+        is_tagproduct, is_xlink, is_xlink_path, TotkFileType, TotkZstd, ZstdDictionary,
     },
 };
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
@@ -37,11 +37,43 @@ pub fn get_string_from_data<P: AsRef<Path>>(
     data: Vec<u8>,
     zstd: Arc<TotkZstd>,
 ) -> Option<(InternalFile, String)> {
+    let path = filepath.as_ref().to_string_lossy().into_owned();
+    let (data, dictionary) = if path.to_ascii_lowercase().ends_with(".zs") {
+        let (decoded, dictionary) = zstd.try_decompress_with_dictionary(&data).ok()?;
+        (decoded, Some(dictionary))
+    } else {
+        (data, None)
+    };
+    let (mut internal_file, text) = get_string_from_decoded_data(&path, data, zstd)?;
+    internal_file.zstd_dictionary = dictionary;
+    Some((internal_file, text))
+}
+
+fn get_string_from_decoded_data<P: AsRef<Path>>(
+    filepath: P,
+    data: Vec<u8>,
+    zstd: Arc<TotkZstd>,
+) -> Option<(InternalFile, String)> {
     let mut internal_file = InternalFile::default();
     if data.is_empty() {
         return None;
     }
     let path = filepath.as_ref().to_string_lossy().into_owned();
+    let lower_path = path.to_ascii_lowercase();
+
+    // Archive entries must be dispatched by their full, lower-cased name before
+    // generic magic checks. Several specialized TOTK formats are BYML containers.
+    if is_tagproduct(&path) {
+        if let Some(mut tag) = TagProduct::from_binary(&data, &path, zstd.clone()) {
+            internal_file.endian = Some(roead::Endian::Little);
+            internal_file.path = Pathlib::new(path.clone());
+            internal_file.file_type = TotkFileType::TagProduct;
+            return Some((internal_file, tag.to_text()));
+        }
+        println!("Unable to parse TagProduct archive entry {path}");
+        return None;
+    }
+
     if is_esetb(&filepath) {
         if let Ok(esetb) = Esetb::from_binary(&data, zstd.clone()) {
             internal_file.endian = Some(roead::Endian::Little);
@@ -53,20 +85,49 @@ pub fn get_string_from_data<P: AsRef<Path>>(
         }
     }
 
-    if let Ok(asb) = Asb_py::from_binary(&data, zstd.clone()) {
-        if let Ok(text) = asb.binary_to_text() {
-            internal_file.endian = Some(roead::Endian::Little);
-            internal_file.path = Pathlib::new(path.clone());
-            internal_file.file_type = TotkFileType::ASB;
-            return Some((internal_file, text));
+    let byml_suffix = lower_path.ends_with(".byml") || lower_path.ends_with(".byml.zs");
+    if is_gamedatalist(&path) || is_banc_path(&path) || byml_suffix {
+        if let Ok(file_data) = BymlFile::byml_data_to_bytes(&data, zstd.clone()) {
+            if let Ok(byml_file) = BymlFile::from_binary(file_data, zstd.clone(), path.clone()) {
+                let text = byml_file.to_string();
+                internal_file.endian = byml_file.endian;
+                internal_file.path = Pathlib::new(path.clone());
+                internal_file.file_type = byml_file.file_data.file_type.clone();
+                internal_file.byml = Some(byml_file);
+                return Some((internal_file, text));
+            }
+        }
+        println!("Unable to parse named BYML archive entry {path}");
+        return None;
+    }
+
+    let asb_suffix = lower_path.ends_with(".asb") || lower_path.ends_with(".asb.zs");
+    if (asb_suffix || is_asb(&data)) {
+        if let Ok(asb) = Asb_py::from_binary(&data, zstd.clone()) {
+            if let Ok(text) = asb.binary_to_text() {
+                internal_file.endian = Some(roead::Endian::Little);
+                internal_file.path = Pathlib::new(path.clone());
+                internal_file.file_type = TotkFileType::ASB;
+                return Some((internal_file, text));
+            }
         }
     }
 
-    if is_ainb(&data) {
+    let ainb_suffix = lower_path.ends_with(".ainb") || lower_path.ends_with(".ainb.zs");
+    if ainb_suffix || is_ainb(&data) {
         if let Ok(text) = Ainb_py::new().binary_to_text(&data) {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
             internal_file.file_type = TotkFileType::AINB;
+            return Some((internal_file, text));
+        }
+    }
+    let evfl_suffix = lower_path.ends_with(".bfevfl") || lower_path.ends_with(".bfevfl.zs");
+    if evfl_suffix || is_evfl(&data) {
+        if let Ok(text) = Evfl::new(zstd.clone()).binary_to_string(&data) {
+            internal_file.endian = Some(roead::Endian::Little);
+            internal_file.path = Pathlib::new(path.clone());
+            internal_file.file_type = TotkFileType::Evfl;
             return Some((internal_file, text));
         }
     }
@@ -189,13 +250,14 @@ pub fn get_binary_by_filetype(
     zstd: Arc<TotkZstd>,
     file_path: &str,
     opened_file: &mut OpenedFile<'_>,
+    zstd_dictionary: Option<ZstdDictionary>,
 ) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
     let endian_str = match endian {
         roead::Endian::Big => "BE",
         roead::Endian::Little => "LE",
     };
-    let is_zs = file_path.to_lowercase().ends_with(".zs");
+    let is_zs = file_path.to_lowercase().ends_with(".zs") && zstd_dictionary.is_none();
     let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs");
     match file_type {
         TotkFileType::Xlink => {
@@ -323,6 +385,9 @@ pub fn get_binary_by_filetype(
         _ => {}
     }
 
+    if let Some(dictionary) = zstd_dictionary {
+        rawdata = zstd.compress_with_dictionary(&rawdata, dictionary).ok()?;
+    }
     Some(rawdata)
 }
 

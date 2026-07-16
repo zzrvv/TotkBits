@@ -193,7 +193,7 @@ export async function extractNestedSarcFile(outerPath, innerPath, setStatusText)
 export async function mutateNestedArchive(chain, path, action, setStatusText, setpaths, options = {}) {
   const content = await invoke('mutate_nested_archive', { chain, path, action, newPath: options.newPath ?? null, sourcePath: options.sourcePath ?? null });
   if (content) { setStatusText(content.status_text); if (content.tab !== 'ERROR') setpaths(content.sarc_paths); }
-  return content?.tab !== 'ERROR';
+  return content;
 }
 export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {

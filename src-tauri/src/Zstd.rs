@@ -216,6 +216,14 @@ pub struct TotkZstd<'a> {
     pub cpp_compressor: ZstdCppCompressor,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ZstdDictionary {
+    Zs,
+    Pack,
+    Empty,
+    Bcett,
+}
+
 impl<'a> TotkZstd<'_> {
     pub fn new(totk_config: Arc<TotkConfig>, comp_level: i32) -> io::Result<TotkZstd<'a>> {
         let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_config.clone())?);
@@ -233,21 +241,47 @@ impl<'a> TotkZstd<'_> {
         })
     }
     pub fn try_decompress(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
+        self.try_decompress_with_dictionary(data)
+            .map(|(data, _)| data)
+    }
+
+    pub fn try_decompress_with_dictionary(
+        &self,
+        data: &[u8],
+    ) -> Result<(Vec<u8>, ZstdDictionary), io::Error> {
         let dicts = [
-            self.decompressor.zs.as_deref(),
-            self.decompressor.packzs.as_deref(),
-            Some(self.decompressor.empty.as_ref()),
-            self.decompressor.bcett.as_deref(),
+            (ZstdDictionary::Zs, self.decompressor.zs.as_deref()),
+            (ZstdDictionary::Pack, self.decompressor.packzs.as_deref()),
+            (
+                ZstdDictionary::Empty,
+                Some(self.decompressor.empty.as_ref()),
+            ),
+            (ZstdDictionary::Bcett, self.decompressor.bcett.as_deref()),
         ];
-        for dict in dicts.into_iter().flatten() {
-            if let Ok(dec_data) = self.decompressor.decompress(data, dict) {
-                return Ok(dec_data);
+        for (kind, dict) in dicts {
+            if let Some(dict) = dict {
+                if let Ok(dec_data) = self.decompressor.decompress(data, dict) {
+                    return Ok((dec_data, kind));
+                }
             }
         }
-        return Err(io::Error::new(
+        Err(io::Error::new(
             io::ErrorKind::Other,
             "Unable to decompress with any dictionary!",
-        ));
+        ))
+    }
+
+    pub fn compress_with_dictionary(
+        &self,
+        data: &[u8],
+        dictionary: ZstdDictionary,
+    ) -> io::Result<Vec<u8>> {
+        match dictionary {
+            ZstdDictionary::Zs => self.cpp_compressor.compress_zs(data),
+            ZstdDictionary::Pack => self.cpp_compressor.compress_pack(data),
+            ZstdDictionary::Empty => self.cpp_compressor.compress_empty(data),
+            ZstdDictionary::Bcett => self.cpp_compressor.compress_bcett(data),
+        }
     }
     pub fn find_vanila_internal_file_path_in_romfs<P: AsRef<Path>>(
         &self,
@@ -286,7 +320,7 @@ impl<'a> TotkZstd<'_> {
             )
         })?;
         //parse to string
-        let (_, result) = get_string_from_data("".to_string(), rawdata.to_vec(), zstd.clone())
+        let (_, result) = get_string_from_data(&int_path_str, rawdata.to_vec(), zstd.clone())
             .ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,

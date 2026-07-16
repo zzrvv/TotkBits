@@ -1,4 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
+import { invoke } from './DocumentState';
 import { extractRootFolderClick, extractFolderClick, editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick, addEmptyByml,addFilesFromDirRecursively, expandNestedSarc, editNestedSarcFile, extractNestedSarcFile, mutateNestedArchive } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 import {compareInternalFileWithOVanila} from './Comparer';
@@ -18,7 +19,7 @@ const buildNestedTree = (paths) => {
 };
 
 const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onSelect }) => {
-  const { settings, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, paths, setpaths, setPathsFilters } = useEditorContext();
+  const { settings, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, paths, setpaths, setPathsFilters, setCompareData } = useEditorContext();
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
   const isFile = node === null;
@@ -49,7 +50,31 @@ const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onS
     { label: 'Replace', method: async () => { const sourcePath = await chooseFile(); if (sourcePath) await mutate('replace', { sourcePath }); }, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R' },
     { label: 'Delete', method: async () => { if (window.confirm(`Delete ${innerPath}?`)) await mutate('delete'); }, icon: 'context_menu/remove.png', shortcut: '' },
     { label: 'Rename', method: rename, icon: 'context_menu/rename.png', shortcut: '' },
-    { label: 'Compare', method: () => { setContextMenu({ visible: false, x: 0, y: 0 }); setStatusText('Compare is unavailable for nested archives because there is no unambiguous vanilla source.'); }, icon: 'context_menu/compare.png', shortcut: '' },
+    { label: 'Compare', method: async () => {
+      setContextMenu({ visible: false, x: 0, y: 0 });
+      const content = await mutateNestedArchive(outerPath, innerPath, 'compare', setStatusText, setpaths);
+      if (content?.tab === 'COMPARER') {
+        const data = content.compare_data ?? {};
+        const file1 = data.file1 ?? {};
+        const file2 = data.file2 ?? {};
+        const content1 = file1.text ?? '';
+        const content2 = file2.text ?? '';
+        setCompareData((previous) => ({
+          ...previous,
+          content1,
+          content2,
+          filepath1: file1.path?.full_path ?? '',
+          filepath2: file2.path?.full_path ?? '',
+          label1: file1.label || innerPath,
+          label2: file2.label || 'Original',
+          isInternal: true,
+          isTiedToMonaco: false,
+          isSmall: content1.length < 500000 && content2.length < 500000,
+          lang: content.lang || 'yaml',
+        }));
+        setActiveTab('COMPARER');
+      }
+    }, icon: 'context_menu/compare.png', shortcut: '' },
     { label: 'Copy path', method: () => { navigator.clipboard.writeText(innerPath); setStatusText('Copied to clipboard'); setContextMenu({ visible: false, x: 0, y: 0 }); }, icon: 'context_menu/copy.png', shortcut: '' },
     { label: 'Close', method: () => setContextMenu({ visible: false, x: 0, y: 0 }), icon: 'context_menu/close.png', shortcut: '' },
   ] : [
