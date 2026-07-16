@@ -31,8 +31,6 @@ use std::{
     path::{self, Path},
     sync::Arc,
 };
-use tauri::api::file;
-
 pub fn open_sarc<P: AsRef<Path>>(
     file_name: P,
     zstd: Arc<TotkZstd>,

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import { invoke } from '@tauri-apps/api/core'; // Import Tauri invoke method
 import React, { useState } from 'react';
 import {searchTextInSarcClick} from './ButtonClicks';
 

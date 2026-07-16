@@ -14,7 +14,6 @@ use std::path::PathBuf;
 //use roead::byml::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tauri::api::version;
 use updater::TotkbitsVersion::TotkbitsVersion;
 
 use crate::file_format::Pack::PackFile;

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import { invoke } from '@tauri-apps/api/core'; // Import Tauri invoke method
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { addFilesFromDirRecursivelyToRoot, extractRootFolderClick, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
