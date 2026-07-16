@@ -1,18 +1,28 @@
-import React, { useEffect, useRef } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { useEffect, useRef, useState } from 'react';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { OpenFileFromPath } from './ButtonClicks';
 
 export const useFileDropHandler = (setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) => {
   const canProcessEvent = useRef(true);
+  const [isFileHovering, setIsFileHovering] = useState(false);
 
   useEffect(() => {
-    const handleFileDrop = async ({ payload }) => {
-      if (canProcessEvent.current && payload.length > 0) {
+    let disposed = false;
+    let unlisten = null;
+
+    const handleDragDropEvent = async ({ payload }) => {
+      if (payload.type === 'enter' || payload.type === 'over') {
+        setIsFileHovering(true);
+        return;
+      }
+
+      setIsFileHovering(false);
+      if (payload.type === 'drop' && canProcessEvent.current && payload.paths.length > 0) {
         canProcessEvent.current = false; // Set the flag to false to block processing
-        const file = payload[0];
+        const file = payload.paths[0];
 
         try {
-          OpenFileFromPath(file, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+          await OpenFileFromPath(file, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
         } catch (error) {
           console.error('Error processing file:', error);
         }
@@ -24,12 +34,14 @@ export const useFileDropHandler = (setStatusText, setActiveTab, setLabelTextDisp
       }
     };
 
-    let unlisten = null;
-
     const setupListener = async () => {
       try {
-        const listener = await listen('tauri://file-drop', handleFileDrop);
-        unlisten = listener.unlisten;
+        const stopListening = await getCurrentWebview().onDragDropEvent(handleDragDropEvent);
+        if (disposed) {
+          stopListening();
+        } else {
+          unlisten = stopListening;
+        }
       } catch (error) {
         console.error('Failed to set up listener:', error);
       }
@@ -38,10 +50,13 @@ export const useFileDropHandler = (setStatusText, setActiveTab, setLabelTextDisp
     setupListener();
 
     return () => {
+      disposed = true;
       if (unlisten) {
-        unlisten().catch(error => console.error('Error unlistening:', error));
+        unlisten();
       }
     };
   }, []);
+
+  return isFileHovering;
 };
 

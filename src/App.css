@@ -19,6 +19,29 @@ body {
   height: 100vh;
 }
 
+.file-drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: rgba(20, 22, 28, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.file-drop-message {
+  padding: 24px 40px;
+  border: 2px dashed rgba(255, 255, 255, 0.75);
+  border-radius: 12px;
+  background: rgba(35, 38, 48, 0.78);
+  color: white;
+  font-size: 24px;
+  font-weight: 600;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+
 .code_editor {
   position: absolute;
   /* Position relative to the body or nearest positioned ancestor */

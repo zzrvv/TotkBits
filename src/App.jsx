@@ -40,7 +40,7 @@ function App() {
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, compareData
   } = useEditorContext();
   
-  useFileDropHandler(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+  const isFileHovering = useFileDropHandler(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
 
 
 
@@ -120,6 +120,11 @@ function App() {
   const rootStyle = activeTab !== "COMPARER" ? {} : isComparerWorking ? {backgroundColor: "#2E303C"} : {};
   return (
     <div className="maincontainer" > 
+      {isFileHovering && (
+        <div className="file-drop-overlay" role="status">
+          <div className="file-drop-message">Drop file to open</div>
+        </div>
+      )}
       <MenuBarDisplayWithUpdater />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
       {/* {activeTab === 'LOADING' ? <div className="modal-overlay">Loading...</div> : null} */}

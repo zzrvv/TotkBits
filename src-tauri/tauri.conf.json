@@ -36,6 +36,7 @@
         "title": "TotkBits v0.0.9",
         "width": 800,
         "height": 600,
+        "dragDropEnabled": true,
         "useHttpsScheme": true
       }
     ]
