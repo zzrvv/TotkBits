@@ -264,11 +264,21 @@ body {
   position: relative;
   z-index: 20;
   overflow-x: auto;
+  overflow-y: hidden;
+  align-items: flex-start;
+  scrollbar-width: thin;
   background: #202126;
   border-bottom: 1px solid #444;
 }
 
 .document-tab, .document-tab-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  height: 32px;
+  box-sizing: border-box;
+  line-height: 1;
   border: 0;
   border-right: 1px solid #444;
   background: #292b31;
@@ -279,6 +289,8 @@ body {
 }
 
 .document-tab.active { background: #3b3e47; color: white; }
-.document-tab-close { margin-left: 10px; padding: 0 3px; border-radius: 3px; }
+.document-tab > span:first-child { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.document-tab-close { display: inline-flex; align-items: center; margin-left: 10px; padding: 0 3px; border-radius: 3px; }
 .document-tab-close:hover { background: #b44; }
 .document-tab-add { font-size: 18px; min-width: 36px; }
+.empty-workspace { display: grid; place-items: center; height: calc(100vh - var(--menu-bar-h) - var(--document-tabs-h) - 24px); color: #aaa; font-size: 18px; }

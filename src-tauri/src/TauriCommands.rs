@@ -19,6 +19,31 @@ use std::{
 };
 use tauri::Manager;
 use updater::TotkbitsVersion::TotkbitsVersion;
+use windows::{
+    core::PCWSTR,
+    Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK},
+};
+
+fn show_open_error(data: &SendData) {
+    let message = if data.status_text.is_empty() {
+        &data.text
+    } else {
+        &data.status_text
+    };
+    let message: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
+    let title: Vec<u16> = "TotkBits - Open error"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        let _ = MessageBoxW(
+            None,
+            PCWSTR(message.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            MB_OK,
+        );
+    }
+}
 
 macro_rules! with_document_mut {
     ($handle:expr, $id:expr, $app:ident, $body:expr) => {{
@@ -134,6 +159,50 @@ pub fn edit_internal_file(
     path: String,
 ) -> Option<SendData> {
     with_document_mut!(app_handle, documentId, app, app.edit_internal_file(path))
+}
+
+#[tauri::command]
+pub fn expand_nested_sarc(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    outerPath: String,
+) -> SendData {
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.expand_nested_sarc(outerPath)
+    )
+}
+
+#[tauri::command]
+pub fn edit_nested_sarc_file(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    outerPath: String,
+    innerPath: String,
+) -> SendData {
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.edit_nested_sarc_file(outerPath, innerPath)
+    )
+}
+
+#[tauri::command]
+pub fn extract_nested_sarc_file(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    outerPath: String,
+    innerPath: String,
+) -> Option<SendData> {
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.extract_nested_sarc_file(outerPath, innerPath)
+    )
 }
 
 #[tauri::command]
@@ -260,7 +329,13 @@ pub fn open_file_struct(
     documentId: String,
     _window: tauri::Window,
 ) -> Option<SendData> {
-    with_document_mut!(app_handle, documentId, app, app.open())
+    let result = with_document_mut!(app_handle, documentId, app, app.open());
+    if let Some(data) = &result {
+        if data.tab == "ERROR" {
+            show_open_error(data);
+        }
+    }
+    result
 }
 
 #[tauri::command]
@@ -269,12 +344,18 @@ pub fn open_file_from_path(
     documentId: String,
     path: String,
 ) -> Option<SendData> {
-    with_document_mut!(
+    let result = with_document_mut!(
         app_handle,
         documentId,
         app,
         app.open_from_path(path.replace("\\", "/"))
-    )
+    );
+    if let Some(data) = &result {
+        if data.tab == "ERROR" {
+            show_open_error(data);
+        }
+    }
+    result
 }
 
 #[tauri::command]

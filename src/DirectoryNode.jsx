@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { extractRootFolderClick, extractFolderClick, editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick, addEmptyByml,addFilesFromDirRecursively } from './ButtonClicks';
+import { extractRootFolderClick, extractFolderClick, editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick, addEmptyByml,addFilesFromDirRecursively, expandNestedSarc, editNestedSarcFile, extractNestedSarcFile } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 import {compareInternalFileWithOVanila} from './Comparer';
 
@@ -216,6 +216,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
 
   const contextMenuActions = isFile ? [
     { label: 'Edit', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: 'F3' },
+    { label: 'Expand archive', method: () => { closeContextMenu(); expandNestedSarc(fullPath, setStatusText, setpaths); }, icon: 'context_menu/dir_opened.png', shortcut: '' },
     { label: 'Compare', method: handleCompareInternalSarcFile, icon: 'context_menu/compare.png', shortcut: '' },
     { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },
     { label: 'Replace', method: handleReplaceInternalSarcFile, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R' },
@@ -247,6 +248,19 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
         />
         <span onClick={toggleCollapse}>{name}</span>
       </div>
+      {isFile && sarcPaths.nested_paths?.[fullPath]?.length > 0 && (
+        <ul style={{ marginLeft: '40px', listStyleType: 'none', padding: 0 }}>
+          {sarcPaths.nested_paths[fullPath].map((innerPath) => (
+            <li key={`${fullPath}:${innerPath}`}>
+              <div style={{ ...nodeStyle, backgroundColor: 'transparent' }}>
+                <img src={fileIcon} alt="" style={{ marginRight: '5px', width: iconSize, height: iconSize }} />
+                <span onDoubleClick={(event) => { event.stopPropagation(); editNestedSarcFile(fullPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent); }}>{innerPath}</span>
+                <button style={{ marginLeft: '8px' }} onClick={(event) => { event.stopPropagation(); extractNestedSarcFile(fullPath, innerPath, setStatusText); }}>Extract</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
       {!isFile && (
         <div className={`node-children ${isCollapsed ? 'collapsed' : 'expanded'}`}>
           <ul style={{ marginLeft: '40px', listStyleType: 'none', padding: 0 }}>

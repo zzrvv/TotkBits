@@ -3,7 +3,7 @@
 import "./App.css";
 import "./Comparer.css";
 import { debounce } from "lodash"; // or any other method/utility to debounce
-import React, { useEffect } from "react";
+import React, { useEffect, useSyncExternalStore } from "react";
 // import ReactDiffViewer from 'react-diff-viewer-continued';
 import ActiveTabDisplay from "./ActiveTab";
 import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
@@ -19,11 +19,14 @@ import { useEditorContext } from './StateManager';
 import { checkIfUpdateNeeded } from './ButtonClicks';
 import  OptionsEditor  from './OptionsEditor';
 import DocumentTabs from './DocumentTabs';
+import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
 
 
 let triggered = false
 
 function App() {
+  const { documents } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
+  const hasOpenDocuments = documents.some((document) => !document.clean);
 
 
 
@@ -130,7 +133,7 @@ function App() {
       )}
       <MenuBarDisplayWithUpdater />
       <DocumentTabs />
-      <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
+      {hasOpenDocuments && <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />}
       {/* {activeTab === 'LOADING' ? <div className="modal-overlay">Loading...</div> : null} */}
       <AddOrRenameFilePrompt
         isOpen={isModalOpen}
@@ -152,7 +155,7 @@ function App() {
         setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
       </SearchTextInSarcPrompt>
 
-      <ButtonsDisplay
+      {hasOpenDocuments && <ButtonsDisplay
         editorRef={editorRef}
         updateEditorContent={updateEditorContent}
         setStatusText={setStatusText}
@@ -163,8 +166,9 @@ function App() {
         selectedPath={selectedPath}
         setIsModalOpen={setIsModalOpen}
         setIsAddPrompt={setIsAddPrompt}
-      />
-      {<DirectoryTree
+      />}
+      {!hasOpenDocuments && <div className="empty-workspace">open file to start work</div>}
+      {hasOpenDocuments && <DirectoryTree
         onNodeSelect={handleNodeSelect}
         sarcPaths={paths}
         //For buttons clicks
@@ -172,7 +176,7 @@ function App() {
         activeTab={activeTab}
         style={{ display: activeTab === 'SARC' ? "block" : "none" }}
       />}
-      {<RstbTree
+      {hasOpenDocuments && <RstbTree
         onNodeSelect={handleNodeSelect}
         sarcPaths={paths}
         //For buttons clicks
@@ -180,10 +184,10 @@ function App() {
         activeTab={activeTab}
         style={{ display: activeTab === 'RSTB' ? "block" : "none" }}
       />}
-      {<Comparer setStatusText={setStatusText} activeTab={activeTab}/>}
+      {hasOpenDocuments && <Comparer setStatusText={setStatusText} activeTab={activeTab}/>}
       
 
-      <div ref={editorContainerRef} className="code_editor" style={{ display: activeTab === 'YAML' ? "block" : "none" }}></div>
+      <div ref={editorContainerRef} className="code_editor" style={{ display: hasOpenDocuments && activeTab === 'YAML' ? "block" : "none" }}></div>
       {/* <div className="statusbar" style={statusStyle}>Current path: "{selectedPath.path} {selectedPath.endian}"</div> */}
       <div className="statusbar" style={statusStyle}>{statusText}</div>
     </div>

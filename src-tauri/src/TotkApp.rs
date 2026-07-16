@@ -2,6 +2,7 @@ use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Esetb::Esetb;
 use crate::file_format::Pack::{PackComparer, SarcPaths};
 use crate::Comparer::DiffComparer;
+use crate::NestedSarc::{NestedArchive, NestedArchives};
 use crate::Open_and_Save::{
     check_if_save_in_romfs, file_from_disk_to_senddata, get_binary_by_filetype,
     get_string_from_data, open_sarc, SaveFileDialog, SendData,
@@ -33,6 +34,8 @@ pub struct TotkBitsApp<'a> {
     // pub zstd_cpp: Arc<ZstdCppCompressor>,
     pub pack: Option<PackComparer<'a>>,
     pub internal_file: Option<InternalFile<'a>>,
+    pub nested_archives: NestedArchives,
+    pub nested_edit: Option<(String, String)>,
 }
 
 unsafe impl<'a> Send for TotkBitsApp<'a> {}
@@ -51,6 +54,8 @@ impl Default for TotkBitsApp<'_> {
                             zstd: zstd.clone(),
                             pack: None,
                             internal_file: None,
+                            nested_archives: NestedArchives::default(),
+                            nested_edit: None,
                         };
                     }
                     Err(_) => {
@@ -264,6 +269,8 @@ impl<'a> TotkBitsApp<'a> {
         self.status_text = "Ready".to_string();
         self.pack = None;
         self.internal_file = None;
+        self.nested_archives.clear();
+        self.nested_edit = None;
         data.status_text = "Closed all opened files".to_string();
         data.sarc_paths = SarcPaths::default();
         Some(data)
@@ -616,6 +623,33 @@ impl<'a> TotkBitsApp<'a> {
         let mut data = SendData::default();
         let mut is_reload = false;
         let text = &save_data.text;
+        if let Some((outer_path, inner_path)) = self.nested_edit.clone() {
+            let internal_file = self.internal_file.as_ref()?;
+            let rawdata = get_binary_by_filetype(
+                internal_file.file_type,
+                text,
+                internal_file.endian.unwrap_or(roead::Endian::Little),
+                self.zstd.clone(),
+                &inner_path,
+                &mut self.opened_file,
+            )?;
+            let archive = self.nested_archives.get_mut(&outer_path)?;
+            archive.set(&inner_path, rawdata);
+            let encoded = archive.to_encoded(self.zstd.clone()).ok()?;
+            let pack = self.pack.as_mut()?;
+            let opened = pack.opened.as_mut()?;
+            opened.writer.add_file(&outer_path, encoded);
+            pack.compare_and_reload();
+            data.tab = "YAML".to_string();
+            data.status_text = format!("Saved {} inside {}", inner_path, outer_path);
+            data.get_sarc_paths(pack);
+            for (path, nested_archive) in &self.nested_archives {
+                data.sarc_paths
+                    .nested_paths
+                    .insert(path.clone(), nested_archive.paths());
+            }
+            return Some(data);
+        }
         if let Some(internal_file) = &self.internal_file {
             if let Some(pack) = &mut self.pack {
                 if let Some(opened) = &mut pack.opened {
@@ -777,6 +811,7 @@ impl<'a> TotkBitsApp<'a> {
     }
 
     pub fn edit_internal_file(&mut self, path: String) -> Option<SendData> {
+        self.nested_edit = None;
         if path.is_empty() || !path.contains(".") {
             return None;
         }
@@ -814,6 +849,94 @@ impl<'a> TotkBitsApp<'a> {
         }
 
         None
+    }
+
+    pub fn expand_nested_sarc(&mut self, outer_path: String) -> SendData {
+        let mut data = SendData::default();
+        data.tab = "SARC".to_string();
+        let result = (|| -> Result<Vec<String>, String> {
+            if !self.nested_archives.contains_key(&outer_path) {
+                let bytes = self
+                    .pack
+                    .as_mut()
+                    .and_then(|pack| pack.opened.as_mut())
+                    .and_then(|opened| opened.writer.get_file(&outer_path))
+                    .ok_or_else(|| format!("{} was not found in the root SARC", outer_path))?
+                    .to_vec();
+                let archive = NestedArchive::parse(&bytes, self.zstd.clone())
+                    .map_err(|error| error.to_string())?;
+                self.nested_archives.insert(outer_path.clone(), archive);
+            }
+            Ok(self.nested_archives.get(&outer_path).unwrap().paths())
+        })();
+        match result {
+            Ok(_paths) => {
+                data.status_text = format!("Expanded archive {}", outer_path);
+                if let Some(pack) = &self.pack {
+                    data.get_sarc_paths(pack);
+                }
+                for (path, archive) in &self.nested_archives {
+                    data.sarc_paths
+                        .nested_paths
+                        .insert(path.clone(), archive.paths());
+                }
+            }
+            Err(error) => {
+                data.tab = "ERROR".to_string();
+                data.status_text = format!("Error: unable to expand archive: {error}");
+            }
+        }
+        data
+    }
+
+    pub fn edit_nested_sarc_file(&mut self, outer_path: String, inner_path: String) -> SendData {
+        let mut data = SendData::default();
+        let result = self
+            .nested_archives
+            .get_mut(&outer_path)
+            .and_then(|archive| archive.get(&inner_path))
+            .and_then(|bytes| {
+                get_string_from_data(inner_path.clone(), bytes.to_vec(), self.zstd.clone())
+            });
+        if let Some((internal, text)) = result {
+            self.internal_file = Some(internal);
+            self.nested_edit = Some((outer_path.clone(), inner_path.clone()));
+            let internal = self.internal_file.as_ref().unwrap();
+            data.tab = "YAML".to_string();
+            data.text = text;
+            data.lang = "yaml".to_string();
+            data.path = Pathlib::new(&inner_path);
+            data.status_text = format!("Opened {} inside {}", inner_path, outer_path);
+            data.get_file_label(internal.file_type, internal.endian);
+        } else {
+            data.tab = "ERROR".to_string();
+            data.status_text = format!("Error: unsupported or missing nested entry {}", inner_path);
+        }
+        data
+    }
+
+    pub fn extract_nested_sarc_file(
+        &mut self,
+        outer_path: String,
+        inner_path: String,
+    ) -> Option<SendData> {
+        let bytes = self
+            .nested_archives
+            .get_mut(&outer_path)?
+            .get(&inner_path)?
+            .to_vec();
+        let destination = FileDialog::new()
+            .set_file_name(Pathlib::new(&inner_path).name)
+            .save_file()?;
+        fs::write(&destination, bytes).ok()?;
+        let mut data = SendData::default();
+        data.status_text = format!(
+            "Extracted {} from {} to {}",
+            inner_path,
+            outer_path,
+            destination.display()
+        );
+        Some(data)
     }
 
     pub fn search_in_sarc(&mut self, query: String) -> Option<SendData> {

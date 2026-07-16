@@ -9,6 +9,7 @@ const documentCommands = new Set([
     'rstb_get_entries', 'rstb_edit_entry', 'rstb_remove_entry', 'search_in_sarc',
     'clear_search_in_sarc', 'compare_files', 'compare_internal_file_with_vanila',
     'close_all_opened_files',
+    'expand_nested_sarc', 'edit_nested_sarc_file', 'extract_nested_sarc_file',
 ]);
 
 const createDocument = (title = 'Untitled') => ({ id: crypto.randomUUID(), title, clean: true });
@@ -38,8 +39,10 @@ export const addCleanDocument = () => {
     return document.id;
 };
 
-const updateTitle = (id, title) => {
-    documents = documents.map((document) => document.id === id ? { ...document, title: title || document.title, clean: false } : document);
+const updateTitle = (id, title, opened = false) => {
+    documents = documents.map((document) => document.id === id
+        ? { ...document, title: title || document.title, clean: opened ? false : document.clean }
+        : document);
     emit();
 };
 
@@ -70,9 +73,13 @@ export const invoke = async (command, args = {}) => {
     try {
         const result = await tauriInvoke(command, { ...args, documentId });
         if (isOpen) {
-            if (!result) await closeDocument(documentId);
+            const failed = !result || result.tab === 'ERROR';
+            if (failed) {
+                await closeDocument(documentId);
+                return null;
+            }
             else {
-                updateTitle(documentId, result.path?.name || result.file_label?.split(' [')[0] || 'Document');
+                updateTitle(documentId, result.path?.name || result.file_label?.split(' [')[0] || 'Document', true);
                 // Existing open handlers update the visible pane after invoke resolves.
                 // Re-select the originating document so those updates cannot overwrite
                 // a different document if the user switched while opening.

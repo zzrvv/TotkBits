@@ -162,6 +162,29 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
 
 
 }
+
+export async function expandNestedSarc(outerPath, setStatusText, setpaths) {
+  const content = await invoke('expand_nested_sarc', { outerPath });
+  if (!content) return;
+  setStatusText(content.status_text);
+  if (content.tab !== 'ERROR') setpaths(content.sarc_paths);
+}
+
+export async function editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent) {
+  const content = await invoke('edit_nested_sarc_file', { outerPath, innerPath });
+  if (!content) return;
+  setStatusText(content.status_text);
+  if (content.tab === 'YAML') {
+    updateEditorContent(content.text, content.lang);
+    setLabelTextDisplay((previous) => ({ ...previous, yaml: content.file_label }));
+    setActiveTab('YAML');
+  }
+}
+
+export async function extractNestedSarcFile(outerPath, innerPath, setStatusText) {
+  const content = await invoke('extract_nested_sarc_file', { outerPath, innerPath });
+  if (content) setStatusText(content.status_text);
+}
 export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
     setStatusText("Opening file...");
@@ -198,6 +221,10 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
     // setActiveTab("LOADING");
     setStatusText("Opening file...");
     const content = await invoke('open_file_struct');
+    if (!content) {
+      setStatusText("Ready");
+      return;
+    }
     setStatusText(content.status_text);
     if (content.tab === 'SARC') {
       setActiveTab(content.tab);
