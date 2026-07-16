@@ -2,7 +2,12 @@ use std::{collections::HashMap, io, sync::Arc};
 
 use roead::sarc::{Sarc, SarcWriter};
 
-use crate::Zstd::{is_sarc, TotkZstd};
+use crate::{
+    file_format::Archive::{
+        ArchiveCodec, Rar::RarFile, RootArchive, SevenZip::SevenZipFile, Zip::ZipFile,
+    },
+    Zstd::{is_sarc, TotkZstd},
+};
 
 #[derive(Clone, Copy, Debug)]
 enum NestedEncoding {
@@ -13,12 +18,34 @@ enum NestedEncoding {
 }
 
 pub struct NestedArchive {
-    writer: SarcWriter,
-    encoding: NestedEncoding,
+    kind: NestedKind,
+}
+
+enum NestedKind {
+    Sarc {
+        writer: SarcWriter,
+        encoding: NestedEncoding,
+    },
+    Generic(RootArchive),
 }
 
 impl NestedArchive {
-    pub fn parse(data: &[u8], zstd: Arc<TotkZstd<'_>>) -> io::Result<Self> {
+    pub fn parse_named(name: &str, data: &[u8], zstd: Arc<TotkZstd<'_>>) -> io::Result<Self> {
+        let lower = name.to_ascii_lowercase();
+        let generic = if lower.ends_with(".zip") {
+            ZipFile::from_bytes(data).map(RootArchive::Zip)
+        } else if lower.ends_with(".7z") {
+            SevenZipFile::from_bytes(data).map(RootArchive::SevenZip)
+        } else if lower.ends_with(".rar") {
+            RarFile::from_bytes(data).map(RootArchive::Rar)
+        } else {
+            Err("not a generic archive extension".into())
+        };
+        if let Ok(archive) = generic {
+            return Ok(Self {
+                kind: NestedKind::Generic(archive),
+            });
+        }
         let (raw, encoding) = if is_sarc(data) {
             (data.to_vec(), NestedEncoding::Raw)
         } else if data.starts_with(b"Yaz0") {
@@ -46,27 +73,101 @@ impl NestedArchive {
         let sarc =
             Sarc::new(raw).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         Ok(Self {
-            writer: SarcWriter::from_sarc(&sarc),
-            encoding,
+            kind: NestedKind::Sarc {
+                writer: SarcWriter::from_sarc(&sarc),
+                encoding,
+            },
         })
     }
 
+    pub fn parse(data: &[u8], zstd: Arc<TotkZstd<'_>>) -> io::Result<Self> {
+        Self::parse_named("nested.sarc", data, zstd)
+    }
+
     pub fn paths(&self) -> Vec<String> {
-        let mut paths: Vec<_> = self.writer.files.keys().cloned().collect();
+        let mut paths: Vec<_> = match &self.kind {
+            NestedKind::Sarc { writer, .. } => writer.files.keys().cloned().collect(),
+            NestedKind::Generic(a) => a.entries().keys().cloned().collect(),
+        };
         paths.sort_by_key(|path| path.to_lowercase());
         paths
     }
 
     pub fn get(&mut self, path: &str) -> Option<&[u8]> {
-        self.writer.get_file(path).map(Vec::as_slice)
+        match &mut self.kind {
+            NestedKind::Sarc { writer, .. } => writer.get_file(path).map(Vec::as_slice),
+            NestedKind::Generic(a) => a.get(path),
+        }
     }
     pub fn set(&mut self, path: &str, data: Vec<u8>) {
-        self.writer.add_file(path, data);
+        match &mut self.kind {
+            NestedKind::Sarc { writer, .. } => writer.add_file(path, data),
+            NestedKind::Generic(a) => {
+                a.entries_mut().insert(path.into(), data);
+            }
+        }
+    }
+
+    pub fn remove_prefix(&mut self, path: &str) -> io::Result<usize> {
+        let prefix = format!("{}/", path.trim_end_matches('/'));
+        let keys: Vec<_> = self
+            .paths()
+            .into_iter()
+            .filter(|p| p == path || p.starts_with(&prefix))
+            .collect();
+        if keys.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, path));
+        }
+        for key in &keys {
+            match &mut self.kind {
+                NestedKind::Sarc { writer, .. } => {
+                    writer.remove_file(key);
+                }
+                NestedKind::Generic(a) => {
+                    a.entries_mut().remove(key);
+                }
+            }
+        }
+        Ok(keys.len())
+    }
+
+    pub fn rename_prefix(&mut self, from: &str, to: &str) -> io::Result<usize> {
+        let prefix = format!("{}/", from.trim_end_matches('/'));
+        let keys: Vec<_> = self
+            .paths()
+            .into_iter()
+            .filter(|p| p == from || p.starts_with(&prefix))
+            .collect();
+        if keys.is_empty() {
+            return Err(io::Error::new(io::ErrorKind::NotFound, from));
+        }
+        let mut replacements = Vec::new();
+        for old in &keys {
+            let new = if old == from {
+                to.into()
+            } else {
+                format!("{}{}", to.trim_end_matches('/'), &old[from.len()..])
+            };
+            replacements.push((new, self.get(old).unwrap().to_vec()));
+        }
+        self.remove_prefix(from)?;
+        for (new, bytes) in replacements {
+            self.set(&new, bytes);
+        }
+        Ok(keys.len())
     }
 
     pub fn to_encoded(&mut self, zstd: Arc<TotkZstd<'_>>) -> io::Result<Vec<u8>> {
-        let raw = self.writer.to_binary();
-        match self.encoding {
+        let (writer, encoding) = match &mut self.kind {
+            NestedKind::Generic(a) => {
+                return a
+                    .to_bytes()
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            }
+            NestedKind::Sarc { writer, encoding } => (writer, *encoding),
+        };
+        let raw = writer.to_binary();
+        match encoding {
             NestedEncoding::Raw => Ok(raw),
             NestedEncoding::Yaz0 => Ok(roead::yaz0::compress(&raw)),
             NestedEncoding::ZstdPack => zstd.cpp_compressor.compress_pack(&raw),

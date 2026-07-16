@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { extractRootFolderClick, extractFolderClick, editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick, addEmptyByml,addFilesFromDirRecursively, expandNestedSarc, editNestedSarcFile, extractNestedSarcFile } from './ButtonClicks';
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import { extractRootFolderClick, extractFolderClick, editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick, addEmptyByml,addFilesFromDirRecursively, expandNestedSarc, editNestedSarcFile, extractNestedSarcFile, mutateNestedArchive } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 import {compareInternalFileWithOVanila} from './Comparer';
 
@@ -18,32 +18,66 @@ const buildNestedTree = (paths) => {
 };
 
 const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onSelect }) => {
-  const { setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent } = useEditorContext();
+  const { settings, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, paths, setpaths, setPathsFilters } = useEditorContext();
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
   const isFile = node === null;
   const innerPath = innerParent ? `${innerParent}/${name}` : name;
+  const childChain = `${outerPath}::${innerPath}`;
+  const expandedArchive = paths.nested_paths?.[childChain];
   const identity = `nested:${outerPath}:${innerPath}`;
   const selectedStyle = selected === identity ? '#303030' : 'transparent';
   const select = (event) => { event.stopPropagation(); onSelect(innerPath, isFile, identity, false); };
-  const open = (event) => {
+  const open = async (event) => {
     event.stopPropagation();
-    if (isFile) editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    if (isFile) {
+      if (expandedArchive) { setIsCollapsed((value) => !value); return; }
+      const expanded = await expandNestedSarc(childChain, setStatusText, setpaths, setPathsFilters);
+      if (expanded) setIsCollapsed(false);
+      else editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+    }
     else setIsCollapsed((value) => !value);
   };
+  const mutate = async (action, options = {}) => { setContextMenu({ visible: false, x: 0, y: 0 }); await mutateNestedArchive(outerPath, options.path ?? innerPath, action, setStatusText, setpaths, options); };
+  const chooseFile = async () => await invoke('open_file_dialog');
+  const chooseDir = async () => await invoke('open_dir_dialog');
+  const rename = async () => { const name = window.prompt('Rename nested entry:', innerPath.split('/').pop()); if (!name) return; const parent = innerPath.includes('/') ? innerPath.slice(0, innerPath.lastIndexOf('/') + 1) : ''; await mutate('rename', { newPath: `${parent}${name}` }); };
   const actions = isFile ? [
+    { label: 'Edit', method: () => { setContextMenu({ visible: false, x: 0, y: 0 }); editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent); }, icon: 'context_menu/edit.png', shortcut: 'F3' },
+    { label: 'Expand archive', method: async () => { setContextMenu({ visible: false, x: 0, y: 0 }); if (await expandNestedSarc(childChain, setStatusText, setpaths, setPathsFilters)) setIsCollapsed(false); }, icon: 'dir_opened.png', shortcut: '' },
     { label: 'Extract', method: () => { setContextMenu({ visible: false, x: 0, y: 0 }); extractNestedSarcFile(outerPath, innerPath, setStatusText); }, icon: 'context_menu/extract.png', shortcut: '' },
+    { label: 'Replace', method: async () => { const sourcePath = await chooseFile(); if (sourcePath) await mutate('replace', { sourcePath }); }, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R' },
+    { label: 'Delete', method: async () => { if (window.confirm(`Delete ${innerPath}?`)) await mutate('delete'); }, icon: 'context_menu/remove.png', shortcut: '' },
+    { label: 'Rename', method: rename, icon: 'context_menu/rename.png', shortcut: '' },
+    { label: 'Compare', method: () => { setContextMenu({ visible: false, x: 0, y: 0 }); setStatusText('Compare is unavailable for nested archives because there is no unambiguous vanilla source.'); }, icon: 'context_menu/compare.png', shortcut: '' },
     { label: 'Copy path', method: () => { navigator.clipboard.writeText(innerPath); setStatusText('Copied to clipboard'); setContextMenu({ visible: false, x: 0, y: 0 }); }, icon: 'context_menu/copy.png', shortcut: '' },
-  ] : [];
+    { label: 'Close', method: () => setContextMenu({ visible: false, x: 0, y: 0 }), icon: 'context_menu/close.png', shortcut: '' },
+  ] : [
+    { label: 'Add file', method: async () => { const sourcePath = await chooseFile(); if (sourcePath) { const fileName = sourcePath.replace(/\\/g, '/').split('/').pop(); await mutate('add', { sourcePath, newPath: null, path: `${innerPath}/${fileName}` }); } }, icon: 'context_menu/add_file.png', shortcut: '' },
+    { label: 'Add folder', method: async () => { const sourcePath = await chooseDir(); if (sourcePath) await mutate('add_dir', { sourcePath }); }, icon: 'context_menu/add_dir.png', shortcut: '' },
+    { label: 'Extract', method: () => mutate('extract_folder'), icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },
+    { label: 'New byml', method: () => mutate('new_byml'), icon: 'context_menu/byml.png', shortcut: '' },
+    { label: 'Delete', method: async () => { if (window.confirm(`Delete ${innerPath} and its contents?`)) await mutate('delete'); }, icon: 'context_menu/remove.png', shortcut: '' },
+    { label: 'Rename', method: rename, icon: 'context_menu/rename.png', shortcut: '' },
+    { label: 'Close', method: () => setContextMenu({ visible: false, x: 0, y: 0 }), icon: 'context_menu/close.png', shortcut: '' },
+  ];
   return <li onClick={select}>
     <div style={{ borderRadius: '5px', width: '95%', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'white', backgroundColor: selectedStyle }}
       onDoubleClick={open}
-      onContextMenu={(event) => { if (!isFile) return; event.preventDefault(); event.stopPropagation(); setContextMenu({ visible: true, x: event.clientX, y: event.clientY }); }}>
+      onContextMenu={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setContextMenu({ visible: true, x: event.clientX, y: event.clientY });
+      }}>
       <img src={isFile ? fileIcon : isCollapsed ? dirClosed : dirOpened} alt={name}
         style={{ marginRight: '5px', width: iconSize, height: iconSize }}
         onClick={(event) => { event.stopPropagation(); if (!isFile) setIsCollapsed((value) => !value); }} />
       <span>{name}</span>
     </div>
+    {isFile && !isCollapsed && expandedArchive?.length > 0 && <ul style={{ marginLeft: '40px', listStyleType: 'none', padding: 0 }}>
+      {Object.entries(buildNestedTree(expandedArchive)).map(([childName, child]) => <NestedDirectoryNode key={childName}
+        node={child} name={childName} innerParent="" outerPath={childChain} selected={selected} onSelect={onSelect} />)}
+    </ul>}
     {!isFile && <div className={`node-children ${isCollapsed ? 'collapsed' : 'expanded'}`}>
       <ul style={{ marginLeft: '40px', listStyleType: 'none', padding: 0 }}>
         {Object.entries(node).map(([childName, child]) => <NestedDirectoryNode key={childName} node={child} name={childName}
@@ -51,19 +85,33 @@ const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onS
       </ul>
     </div>}
     {contextMenu.visible && <ContextMenu x={contextMenu.x} y={contextMenu.y}
-      onClose={() => setContextMenu({ visible: false, x: 0, y: 0 })} actions={actions} settings={{ contextMenuFontSize: 14 }} />}
+      onClose={() => setContextMenu({ visible: false, x: 0, y: 0 })} actions={actions} settings={settings} />}
   </li>;
 };
 
 const ContextMenu = ({ x, y, onClose, actions, settings }) => {
+  const menuRef = useRef(null);
+  const [position, setPosition] = useState({ x, y });
+
+  useLayoutEffect(() => {
+    const bounds = menuRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const margin = 8;
+    setPosition({
+      x: Math.max(margin, Math.min(x, window.innerWidth - bounds.width - margin)),
+      y: Math.max(margin, Math.min(y, window.innerHeight - bounds.height - margin)),
+    });
+  }, [x, y, actions.length]);
+
   return (
     <ul
+      ref={menuRef}
       className="context-menu"
       style={{
         fontSize: settings.contextMenuFontSize,
-        position: 'absolute',
-        top: y,
-        left: x,
+        position: 'fixed',
+        top: position.y,
+        left: position.x,
         listStyleType: 'none',
         padding: '6px',
         boxShadow: '0 2px 10px rgba(0,0,0,0.2)',
@@ -239,31 +287,12 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
 
   const handleIconContextMenu = (e) => {
     e.preventDefault();
-    let offsetX = window.scrollX || document.documentElement.scrollLeft;
-    let offsetY = window.scrollY || document.documentElement.scrollTop;
-    offsetX = offsetX - 5;
-    offsetY = offsetY - 5;
-    // If the tree container itself has a scroll, add this offset too
-    // You need to replace '.tree-container' with the actual selector of your container
-    const treeContainer = document.querySelector('.directory-tree');
-    if (treeContainer) {
-      offsetX += treeContainer.scrollLeft - treeContainer.getBoundingClientRect().left;
-      offsetY += treeContainer.scrollTop - treeContainer.getBoundingClientRect().top;
-    }
-    const height = 350;
-    let yval = e.clientY + offsetY + height;
-    if (yval > window.innerHeight) {
-      yval = window.innerHeight - height;
-    }
-    yval =  e.clientY + offsetY;
-    // console.log(parseInt(yval, 10), parseInt(yval, 10)+height, window.innerHeight, parseInt(yval, 10)+height-window.innerHeight);
+    e.stopPropagation();
     setContextMenu({
       visible: true,
-      x: e.clientX + offsetX,
-      y: yval 
-      // y: e.clientY + offsetY > window.innerHeight ? window.innerHeight - height : yval,
+      x: e.clientX,
+      y: e.clientY,
     });
-    e.stopPropagation();
     onContextMenu && onContextMenu(fullPath);
   };
 
@@ -292,7 +321,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   ];
 
   return (
-    <li onContextMenu={onContextMenu} onClick={handleSelect}>
+    <li onClick={handleSelect}>
       <div style={nodeStyle}
         onContextMenu={handleIconContextMenu}
         onDoubleClick={handleDoubleClick}>

@@ -1,3 +1,4 @@
+use crate::file_format::Archive::ArchiveDocument;
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Esetb::Esetb;
 use crate::file_format::Pack::{PackComparer, SarcPaths};
@@ -33,6 +34,7 @@ pub struct TotkBitsApp<'a> {
     pub zstd: Arc<TotkZstd<'a>>,
     // pub zstd_cpp: Arc<ZstdCppCompressor>,
     pub pack: Option<PackComparer<'a>>,
+    pub archive: Option<ArchiveDocument>,
     pub internal_file: Option<InternalFile<'a>>,
     pub nested_archives: NestedArchives,
     pub nested_edit: Option<(String, String)>,
@@ -53,6 +55,7 @@ impl Default for TotkBitsApp<'_> {
                             status_text: "Ready".to_string(),
                             zstd: zstd.clone(),
                             pack: None,
+                            archive: None,
                             internal_file: None,
                             nested_archives: NestedArchives::default(),
                             nested_edit: None,
@@ -75,6 +78,82 @@ impl Default for TotkBitsApp<'_> {
 }
 
 impl<'a> TotkBitsApp<'a> {
+    fn root_entry(&mut self, path: &str) -> Option<Vec<u8>> {
+        if let Some(archive) = &self.archive {
+            return archive.get(path).map(<[u8]>::to_vec);
+        }
+        self.pack
+            .as_mut()?
+            .opened
+            .as_mut()?
+            .writer
+            .get_file(path)
+            .cloned()
+    }
+    fn set_root_entry(&mut self, path: &str, bytes: Vec<u8>) -> Result<(), String> {
+        if let Some(archive) = &mut self.archive {
+            return archive.set(path, bytes);
+        }
+        let pack = self.pack.as_mut().ok_or("no root archive")?;
+        pack.opened
+            .as_mut()
+            .ok_or("root SARC unavailable")?
+            .writer
+            .add_file(path, bytes);
+        pack.compare_and_reload();
+        Ok(())
+    }
+    fn flush_nested_chain(&mut self, chain: &str) -> Result<(), String> {
+        let mut current = chain.to_string();
+        loop {
+            let encoded = self
+                .nested_archives
+                .get_mut(&current)
+                .ok_or_else(|| format!("nested archive cache missing: {current}"))?
+                .to_encoded(self.zstd.clone())
+                .map_err(|e| e.to_string())?;
+            if let Some((parent, entry)) = current.rsplit_once("::") {
+                self.nested_archives
+                    .get_mut(parent)
+                    .ok_or_else(|| format!("parent archive cache missing: {parent}"))?
+                    .set(entry, encoded);
+                current = parent.to_string();
+            } else {
+                self.set_root_entry(&current, encoded)?;
+                break;
+            }
+        }
+        Ok(())
+    }
+    fn add_nested_paths(&self, data: &mut SendData) {
+        for (chain, archive) in &self.nested_archives {
+            data.sarc_paths
+                .nested_paths
+                .insert(chain.clone(), archive.paths());
+        }
+    }
+    fn drop_nested_descendants(&mut self, chain: &str, path: &str) {
+        let identity = format!("{chain}::{path}");
+        let prefix = format!("{identity}::");
+        self.nested_archives
+            .retain(|key, _| key != &identity && !key.starts_with(&prefix));
+    }
+    fn archive_send_data(&self, status: String) -> SendData {
+        let mut data = SendData::default();
+        data.tab = "SARC".to_string();
+        data.status_text = status;
+        if let Some(archive) = &self.archive {
+            data.path = Pathlib::new(archive.path.clone());
+            data.file_label = format!("{} [Archive]", data.path.name);
+            data.sarc_paths.paths = archive.paths();
+            data.sarc_paths.added_paths = archive.added.iter().cloned().collect();
+            data.sarc_paths.modded_paths = archive.modified.iter().cloned().collect();
+        } else if let Some(pack) = &self.pack {
+            data.get_sarc_paths(pack);
+        }
+        self.add_nested_paths(&mut data);
+        data
+    }
     //RSTB
     pub fn get_rstb_entries_by_query(&mut self, entry: String) -> Option<SendData> {
         let mut data = SendData::default();
@@ -155,6 +234,17 @@ impl<'a> TotkBitsApp<'a> {
             .set_title("Choose folder to extract to")
             .pick_folder();
         if let Some(dest_folder) = dest_folder {
+            if let Some(archive) = &self.archive {
+                for path in archive.paths() {
+                    let destination = dest_folder.join(&path);
+                    if let Some(parent) = destination.parent() {
+                        fs::create_dir_all(parent).ok()?;
+                    }
+                    fs::write(destination, archive.get(&path)?).ok()?;
+                }
+                data.status_text = format!("Extracted archive to {}", dest_folder.display());
+                return Some(data);
+            }
             if let Some(pack) = &self.pack {
                 match pack.extract_all_to_folder(&dest_folder) {
                     Ok(m) => {
@@ -189,6 +279,28 @@ impl<'a> TotkBitsApp<'a> {
             .set_title("Choose folder to extract to")
             .pick_folder()?;
         let mut data = SendData::default();
+        if let Some(archive) = &self.archive {
+            let prefix = if source_folder.is_empty() {
+                String::new()
+            } else {
+                format!("{}/", source_folder.trim_end_matches('/'))
+            };
+            let paths: Vec<_> = archive
+                .paths()
+                .into_iter()
+                .filter(|p| p.starts_with(&prefix))
+                .collect();
+            for path in &paths {
+                let relative = path.strip_prefix(&prefix).unwrap_or(path);
+                let destination = dest_folder.join(relative);
+                if let Some(parent) = destination.parent() {
+                    fs::create_dir_all(parent).ok()?;
+                }
+                fs::write(destination, archive.get(path)?).ok()?;
+            }
+            data.status_text = format!("Extracted {} archive entries", paths.len());
+            return Some(data);
+        }
         let pack = self.pack.as_mut()?;
         match pack.extract_folder_to(&source_folder, &dest_folder) {
             Ok(message) => data.status_text = message,
@@ -198,6 +310,16 @@ impl<'a> TotkBitsApp<'a> {
     }
 
     pub fn remove_internal_elem(&mut self, internal_path: String) -> Option<SendData> {
+        if let Some(archive) = &mut self.archive {
+            return Some(match archive.remove_prefix(&internal_path) {
+                Ok(count) => self.archive_send_data(format!("Removed {count} archive entries")),
+                Err(error) => {
+                    let mut d = self.archive_send_data(format!("Error: {error}"));
+                    d.tab = "ERROR".into();
+                    d
+                }
+            });
+        }
         let mut data = SendData::default();
         let mut is_reload = false;
 
@@ -268,6 +390,7 @@ impl<'a> TotkBitsApp<'a> {
         self.text = String::new();
         self.status_text = "Ready".to_string();
         self.pack = None;
+        self.archive = None;
         self.internal_file = None;
         self.nested_archives.clear();
         self.nested_edit = None;
@@ -307,6 +430,12 @@ impl<'a> TotkBitsApp<'a> {
         }
 
         let mut data = SendData::default();
+        if let Some(archive) = &self.archive {
+            let rawdata = archive.get(&internal_path)?;
+            fs::write(&path, rawdata).ok()?;
+            data.status_text = format!("Extracted {} to {}", internal_path, path);
+            return Some(data);
+        }
         if let Some(pack) = &mut self.pack {
             if let Some(opened) = &mut pack.opened {
                 if let Some(rawdata) = opened.writer.get_file(&internal_path) {
@@ -331,6 +460,34 @@ impl<'a> TotkBitsApp<'a> {
         new_internal_path: String,
     ) -> Option<SendData> {
         let mut data = SendData::default();
+        if let Some(archive) = &mut self.archive {
+            let target = if internal_path.contains('/') {
+                format!(
+                    "{}/{}",
+                    Path::new(&internal_path)
+                        .parent()
+                        .unwrap_or(Path::new(""))
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                    Path::new(&new_internal_path).file_name()?.to_string_lossy()
+                )
+                .trim_start_matches('/')
+                .to_string()
+            } else {
+                Path::new(&new_internal_path)
+                    .file_name()?
+                    .to_string_lossy()
+                    .into_owned()
+            };
+            return Some(match archive.rename_prefix(&internal_path, &target) {
+                Ok(count) => self.archive_send_data(format!("Renamed {count} archive entries")),
+                Err(error) => {
+                    let mut d = self.archive_send_data(format!("Error: {error}"));
+                    d.tab = "ERROR".into();
+                    d
+                }
+            });
+        }
         let p1 = Pathlib::new(internal_path.clone());
         let p2 = Pathlib::new(new_internal_path.clone());
         println!(
@@ -457,6 +614,21 @@ impl<'a> TotkBitsApp<'a> {
         overwrite: bool,
     ) -> Option<SendData> {
         let mut data = SendData::default();
+        if let Some(archive) = &mut self.archive {
+            let normalized = internal_path.replace('\\', "/");
+            if archive.get(&normalized).is_some() && !overwrite {
+                return None;
+            }
+            let bytes = fs::read(&path).ok()?;
+            return Some(match archive.set(&normalized, bytes) {
+                Ok(()) => self.archive_send_data(format!("Added/replaced: {normalized}")),
+                Err(error) => {
+                    let mut d = self.archive_send_data(format!("Error: {error}"));
+                    d.tab = "ERROR".into();
+                    d
+                }
+            });
+        }
         println!("trying to add  {} to sarc path {}", &path, &internal_path);
         let mut is_reload = false;
         if let Some(pack) = &mut self.pack {
@@ -513,6 +685,10 @@ impl<'a> TotkBitsApp<'a> {
             format!("Save {} as", save_data.tab),
         );
         dialog.generate_filters_and_name();
+        if let Some(archive) = &self.archive {
+            dialog.name = Some(Pathlib::new(archive.path.clone()).name);
+            dialog.filters_from_path(&archive.path);
+        }
         if self.opened_file.path.full_path.is_empty() {
             if let Some(internal_file) = &self.internal_file {
                 dialog.name = Some(internal_file.path.name.clone());
@@ -565,6 +741,16 @@ impl<'a> TotkBitsApp<'a> {
                     return Some(data);
                 }
                 "SARC" => {
+                    if let Some(archive) = &mut self.archive {
+                        return Some(match archive.save_atomic(Path::new(&dest_file)) {
+                            Ok(()) => self.archive_send_data(format!("Saved archive {dest_file}")),
+                            Err(error) => {
+                                let mut d = self.archive_send_data(format!("Error: {error}"));
+                                d.tab = "ERROR".into();
+                                d
+                            }
+                        });
+                    }
                     let mut is_reload = false;
                     if let Some(pack) = &mut self.pack {
                         if let Some(opened) = &mut pack.opened {
@@ -635,22 +821,33 @@ impl<'a> TotkBitsApp<'a> {
             )?;
             let archive = self.nested_archives.get_mut(&outer_path)?;
             archive.set(&inner_path, rawdata);
-            let encoded = archive.to_encoded(self.zstd.clone()).ok()?;
-            let pack = self.pack.as_mut()?;
-            let opened = pack.opened.as_mut()?;
-            opened.writer.add_file(&outer_path, encoded);
-            pack.compare_and_reload();
+            self.flush_nested_chain(&outer_path).ok()?;
             data.tab = "YAML".to_string();
             data.status_text = format!("Saved {} inside {}", inner_path, outer_path);
-            data.get_sarc_paths(pack);
-            for (path, nested_archive) in &self.nested_archives {
-                data.sarc_paths
-                    .nested_paths
-                    .insert(path.clone(), nested_archive.paths());
+            if let Some(pack) = &self.pack {
+                data.get_sarc_paths(pack);
+            } else if let Some(root) = &self.archive {
+                data.sarc_paths.paths = root.paths();
             }
+            self.add_nested_paths(&mut data);
             return Some(data);
         }
         if let Some(internal_file) = &self.internal_file {
+            if self.archive.is_some() {
+                let path = internal_file.path.full_path.clone();
+                let rawdata = get_binary_by_filetype(
+                    internal_file.file_type,
+                    text,
+                    internal_file.endian.unwrap_or(roead::Endian::Little),
+                    self.zstd.clone(),
+                    &path,
+                    &mut self.opened_file,
+                )?;
+                self.archive.as_mut()?.set(&path, rawdata).ok()?;
+                data.tab = "YAML".into();
+                data.status_text = format!("Updated {path} in archive (save archive to write it)");
+                return Some(data);
+            }
             if let Some(pack) = &mut self.pack {
                 if let Some(opened) = &mut pack.opened {
                     let path = &internal_file.path.full_path;
@@ -728,6 +925,18 @@ impl<'a> TotkBitsApp<'a> {
                 return self.save_tab_yaml(save_data);
             }
             "SARC" => {
+                if let Some(archive) = &mut self.archive {
+                    let destination = PathBuf::from(&archive.path);
+                    return Some(match archive.save_atomic(&destination) {
+                        Ok(()) => self
+                            .archive_send_data(format!("Saved archive {}", destination.display())),
+                        Err(error) => {
+                            let mut d = self.archive_send_data(format!("Error: {error}"));
+                            d.tab = "ERROR".into();
+                            d
+                        }
+                    });
+                }
                 if let Some(pack) = &mut self.pack {
                     if let Some(opened) = &mut pack.opened {
                         if !check_if_save_in_romfs(&opened.path.full_path, self.zstd.clone()) {
@@ -816,6 +1025,25 @@ impl<'a> TotkBitsApp<'a> {
             return None;
         }
         let mut data = SendData::default();
+        if let Some(archive) = &self.archive {
+            let raw_data = archive.get(&path)?.to_vec();
+            if let Some((intern, text)) =
+                get_string_from_data(path.clone(), raw_data, self.zstd.clone())
+            {
+                self.internal_file = Some(intern);
+                self.opened_file = OpenedFile::default();
+                let internal = self.internal_file.as_ref()?;
+                data.text = text;
+                data.path = internal.path.clone();
+                data.tab = "YAML".into();
+                data.status_text = format!("Opened {} from archive", path);
+                data.get_file_label(internal.file_type, internal.endian);
+            } else {
+                data.tab = "ERROR".into();
+                data.status_text = format!("Error: unsupported data type for {path}");
+            }
+            return Some(data);
+        }
         if let Some(pack) = &mut self.pack {
             if let Some(opened) = &mut pack.opened {
                 let raw_data = opened.sarc.get_data(&path);
@@ -856,14 +1084,24 @@ impl<'a> TotkBitsApp<'a> {
         data.tab = "SARC".to_string();
         let result = (|| -> Result<Vec<String>, String> {
             if !self.nested_archives.contains_key(&outer_path) {
-                let bytes = self
-                    .pack
-                    .as_mut()
-                    .and_then(|pack| pack.opened.as_mut())
-                    .and_then(|opened| opened.writer.get_file(&outer_path))
-                    .ok_or_else(|| format!("{} was not found in the root SARC", outer_path))?
-                    .to_vec();
-                let archive = NestedArchive::parse(&bytes, self.zstd.clone())
+                let (name, bytes) = if let Some((parent, entry)) = outer_path.rsplit_once("::") {
+                    (
+                        entry.to_string(),
+                        self.nested_archives
+                            .get_mut(parent)
+                            .and_then(|a| a.get(entry))
+                            .ok_or_else(|| format!("{entry} was not found in {parent}"))?
+                            .to_vec(),
+                    )
+                } else {
+                    (
+                        outer_path.clone(),
+                        self.root_entry(&outer_path).ok_or_else(|| {
+                            format!("{} was not found in the root archive", outer_path)
+                        })?,
+                    )
+                };
+                let archive = NestedArchive::parse_named(&name, &bytes, self.zstd.clone())
                     .map_err(|error| error.to_string())?;
                 self.nested_archives.insert(outer_path.clone(), archive);
             }
@@ -874,12 +1112,10 @@ impl<'a> TotkBitsApp<'a> {
                 data.status_text = format!("Expanded archive {}", outer_path);
                 if let Some(pack) = &self.pack {
                     data.get_sarc_paths(pack);
+                } else if let Some(root) = &self.archive {
+                    data.sarc_paths.paths = root.paths();
                 }
-                for (path, archive) in &self.nested_archives {
-                    data.sarc_paths
-                        .nested_paths
-                        .insert(path.clone(), archive.paths());
-                }
+                self.add_nested_paths(&mut data);
             }
             Err(error) => {
                 data.tab = "ERROR".to_string();
@@ -939,6 +1175,137 @@ impl<'a> TotkBitsApp<'a> {
         Some(data)
     }
 
+    pub fn mutate_nested_archive(
+        &mut self,
+        chain: String,
+        path: String,
+        action: String,
+        new_path: Option<String>,
+        source_path: Option<String>,
+    ) -> SendData {
+        let result = (|| -> Result<String, String> {
+            match action.as_str() {
+                "delete" => {
+                    let count = self
+                        .nested_archives
+                        .get_mut(&chain)
+                        .ok_or("nested archive is not expanded")?
+                        .remove_prefix(&path)
+                        .map_err(|e| e.to_string())?;
+                    self.drop_nested_descendants(&chain, &path);
+                    self.flush_nested_chain(&chain)?;
+                    Ok(format!("Deleted {count} nested entries"))
+                }
+                "rename" => {
+                    let target = new_path.ok_or("missing rename target")?;
+                    let count = self
+                        .nested_archives
+                        .get_mut(&chain)
+                        .ok_or("nested archive is not expanded")?
+                        .rename_prefix(&path, &target)
+                        .map_err(|e| e.to_string())?;
+                    self.drop_nested_descendants(&chain, &path);
+                    self.flush_nested_chain(&chain)?;
+                    Ok(format!("Renamed {count} nested entries"))
+                }
+                "replace" | "add" => {
+                    let source = source_path.ok_or("missing source file")?;
+                    let bytes = fs::read(&source).map_err(|e| e.to_string())?;
+                    self.nested_archives
+                        .get_mut(&chain)
+                        .ok_or("nested archive is not expanded")?
+                        .set(&path, bytes);
+                    self.flush_nested_chain(&chain)?;
+                    Ok(format!("Updated nested entry {path}"))
+                }
+                "add_dir" => {
+                    let source = source_path.ok_or("missing source directory")?;
+                    let files = list_files_recursively(&source);
+                    for file in &files {
+                        let relative = Path::new(file)
+                            .strip_prefix(&source)
+                            .map_err(|e| e.to_string())?
+                            .to_string_lossy()
+                            .replace('\\', "/");
+                        let target = format!("{}/{}", path.trim_end_matches('/'), relative)
+                            .trim_start_matches('/')
+                            .to_string();
+                        let bytes = fs::read(file).map_err(|e| e.to_string())?;
+                        self.nested_archives
+                            .get_mut(&chain)
+                            .ok_or("nested archive is not expanded")?
+                            .set(&target, bytes);
+                    }
+                    self.flush_nested_chain(&chain)?;
+                    Ok(format!("Added {} nested files", files.len()))
+                }
+                "new_byml" => {
+                    let mut index = 1;
+                    loop {
+                        let target = format!("{}/new_{index}.byml", path.trim_end_matches('/'))
+                            .trim_start_matches('/')
+                            .to_string();
+                        if self
+                            .nested_archives
+                            .get_mut(&chain)
+                            .ok_or("nested archive is not expanded")?
+                            .get(&target)
+                            .is_none()
+                        {
+                            self.nested_archives
+                                .get_mut(&chain)
+                                .unwrap()
+                                .set(&target, Byml::default().to_binary(roead::Endian::Little));
+                            break;
+                        }
+                        index += 1;
+                    }
+                    self.flush_nested_chain(&chain)?;
+                    Ok("Added nested BYML".into())
+                }
+                "extract_folder" => {
+                    let destination = FileDialog::new().pick_folder().ok_or("cancelled")?;
+                    let prefix = if path.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{}/", path.trim_end_matches('/'))
+                    };
+                    let paths: Vec<_> = self
+                        .nested_archives
+                        .get(&chain)
+                        .ok_or("nested archive is not expanded")?
+                        .paths()
+                        .into_iter()
+                        .filter(|p| p.starts_with(&prefix))
+                        .collect();
+                    for entry in &paths {
+                        let output = destination.join(entry.strip_prefix(&prefix).unwrap_or(entry));
+                        if let Some(parent) = output.parent() {
+                            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+                        }
+                        let bytes = self
+                            .nested_archives
+                            .get_mut(&chain)
+                            .unwrap()
+                            .get(entry)
+                            .unwrap();
+                        fs::write(output, bytes).map_err(|e| e.to_string())?;
+                    }
+                    Ok(format!("Extracted {} nested entries", paths.len()))
+                }
+                _ => Err(format!("unsupported nested action: {action}")),
+            }
+        })();
+        match result {
+            Ok(status) => self.archive_send_data(status),
+            Err(error) => {
+                let mut data = self.archive_send_data(format!("Error: {error}"));
+                data.tab = "ERROR".into();
+                data
+            }
+        }
+    }
+
     pub fn search_in_sarc(&mut self, query: String) -> Option<SendData> {
         let mut data = SendData::default();
         let pattern = query.to_lowercase();
@@ -995,8 +1362,24 @@ impl<'a> TotkBitsApp<'a> {
                 self.internal_file = None;
                 return Some(data);
             }
+            match ArchiveDocument::open(Path::new(&file_name)) {
+                Ok(Some(archive)) => {
+                    self.pack = None;
+                    self.internal_file = None;
+                    self.opened_file = OpenedFile::default();
+                    self.archive = Some(archive);
+                    return Some(self.archive_send_data(format!("Opened archive {file_name}")));
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    data.tab = "ERROR".into();
+                    data.status_text = format!("Error: {error}");
+                    return Some(data);
+                }
+            }
             let res = file_from_disk_to_senddata(&file_name, self.zstd.clone());
             if let Some(res) = res {
+                self.archive = None;
                 self.opened_file = res.0;
                 self.internal_file = None;
                 return Some(res.1);

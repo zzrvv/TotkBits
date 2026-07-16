@@ -116,6 +116,12 @@ export default function DocumentTabs() {
             type="button" role="tab" aria-selected={document.id === activeDocumentId}
             className={`document-tab ${document.id === activeDocumentId ? 'active' : ''}`}
             key={document.id} onClick={() => activateDocument(document.id)}
+            onAuxClick={(event) => {
+                if (event.button === 1) {
+                    event.preventDefault();
+                    handleClose(event, document.id);
+                }
+            }}
         >
             <span>{document.title}</span>
             <span className="document-tab-close" onClick={(event) => handleClose(event, document.id)}>×</span>

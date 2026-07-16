@@ -206,6 +206,24 @@ pub fn extract_nested_sarc_file(
 }
 
 #[tauri::command]
+pub fn mutate_nested_archive(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    chain: String,
+    path: String,
+    action: String,
+    newPath: Option<String>,
+    sourcePath: Option<String>,
+) -> SendData {
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.mutate_nested_archive(chain, path, action, newPath, sourcePath)
+    )
+}
+
+#[tauri::command]
 pub fn extract_opened_sarc(app_handle: tauri::AppHandle, documentId: String) -> Option<SendData> {
     with_document!(app_handle, documentId, app, app.extract_opened_sarc())
 }

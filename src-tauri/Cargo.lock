@@ -28,6 +28,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "sevenz-rust",
  "sha2",
  "tauri",
  "tauri-build",
@@ -45,6 +46,7 @@ dependencies = [
  "walkdir",
  "windows 0.58.0",
  "winreg 0.52.0",
+ "zip",
  "zstd",
 ]
 
