@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'; // Import Tauri invoke method
+import { invoke } from './DocumentState';
 import React, { useState, useEffect } from 'react';
 
 function AddOrRenameFilePrompt({

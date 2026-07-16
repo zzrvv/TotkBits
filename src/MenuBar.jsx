@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'; // Import Tauri invoke method
+import { invoke } from './DocumentState';
 import React, { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { addFilesFromDirRecursivelyToRoot, extractRootFolderClick, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
@@ -207,7 +207,8 @@ function MenuBarDisplay() {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
     
-    setIsModalOpen(true);
+    // Settings owns its own modal state; keep the add/rename dialog closed.
+    setIsModalOpen(false);
     setIsOptionsOpen(!isOptionsOpen);
     console.log("Config options open: ", isOptionsOpen);
   }
@@ -247,7 +248,7 @@ function MenuBarDisplay() {
     { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S' },
     { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S' },
     { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },
-    { label: 'Options', onClick: handleEditOptions, icon: 'menu/edit_config.png', shortcut: '' },
+    { label: 'Settings', onClick: handleEditOptions, icon: 'menu/edit_config.png', shortcut: '' },
     { label: 'Restart', onClick: restartAppClick, icon: 'menu/restart.png', shortcut: '' },
     { label: 'Exit', onClick: useExitApp, icon: 'menu/exit.png', shortcut: '' }
   ];

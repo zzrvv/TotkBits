@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './DocumentState';
 import React, { useEffect, useRef, useState } from 'react';
 import { useEditorContext } from './StateManager';
 

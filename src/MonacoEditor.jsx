@@ -1,6 +1,7 @@
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from './DocumentState';
 import * as monaco from "monaco-editor";
 import { OpenFileFromPath } from './ButtonClicks';
+import { getActiveDocumentId } from './DocumentState';
 
 
 const InitializeEditor = (props) => {
@@ -20,15 +21,23 @@ const InitializeEditor = (props) => {
 
   console.log("Initializing Monaco editor");
 
+  const initialDocumentId = getActiveDocumentId();
+  const initialModel = monaco.editor.createModel(
+    editorValue,
+    settings.lang,
+    monaco.Uri.parse(`inmemory://totkbits/${initialDocumentId}`),
+  );
   // Create the editor with default options
   editorRef.current = monaco.editor.create(editorContainerRef.current, {
-    value: editorValue,
-    language: settings.lang,
+    model: initialModel,
     theme: settings.theme,
     minimap: { enabled: settings.minimap },
     wordWrap: 'on',
     fontSize: settings.fontSize,
   });
+  if (props.documentModels) {
+    props.documentModels.current.set(initialDocumentId, initialModel);
+  }
 
   invoke('get_startup_data').then((data) => {
     // Use object spread to combine default settings with fetched data

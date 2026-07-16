@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useRef, useState } from 'react';
+import * as monaco from 'monaco-editor';
 
 const EditorContext = createContext();
 
@@ -8,6 +9,9 @@ export const EditorProvider = ({ children }) => {
   const [activeTab, setActiveTab] = useState('SARC'); // Adjust this initial value as needed
   const editorContainerRef = useRef(null); //monaco editor container
   const editorRef = useRef(null); //monaco editor reference
+  const documentModels = useRef(new Map());
+  const documentViewStates = useRef(new Map());
+  const documentSnapshots = useRef(new Map());
   const [editorValue, setEditorValue] = useState(''); //monaco editor content
   const [lang, setLang] = useState('yaml'); //monaco editor content
   const [statusText, setStatusText] = useState("Ready"); //status bar text
@@ -46,6 +50,7 @@ export const EditorProvider = ({ children }) => {
     //setText(content);
     if (editorRef.current) {
       editorRef.current.setValue(content);
+      if (lang) monaco.editor.setModelLanguage(editorRef.current.getModel(), lang);
     }
   };
   const changeModal = () => {
@@ -61,6 +66,7 @@ export const EditorProvider = ({ children }) => {
     configLoading, setConfigLoading,
     updateState, setUpdateState,
     compareData, setCompareData,
+    documentModels, documentViewStates, documentSnapshots,
     settings, setSettings,
     searchInSarcQuery, setSearchInSarcQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,

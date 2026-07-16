@@ -1,8 +1,9 @@
 //tauri commands
 use crate::{
+    DocumentState::DocumentState,
     Open_and_Save::SendData,
     Settings::{spawn_updater, NO_WINDOW_FLAG},
-    TotkApp::{SaveData, TotkBitsApp},
+    TotkApp::SaveData,
 };
 use reqwest::blocking::{get, Client};
 use rfd::MessageDialog;
@@ -15,10 +16,23 @@ use std::{
     os::windows::process::CommandExt,
     path::Path,
     process::{self, Command},
-    sync::Mutex,
 };
 use tauri::Manager;
 use updater::TotkbitsVersion::TotkbitsVersion;
+
+macro_rules! with_document_mut {
+    ($handle:expr, $id:expr, $app:ident, $body:expr) => {{
+        let documents = $handle.state::<DocumentState>();
+        documents.with_mut(&$id, |$app| $body)
+    }};
+}
+
+macro_rules! with_document {
+    ($handle:expr, $id:expr, $app:ident, $body:expr) => {{
+        let documents = $handle.state::<DocumentState>();
+        documents.with(&$id, |$app| $body)
+    }};
+}
 
 #[tauri::command]
 pub fn restart_app() -> Option<()> {
@@ -56,11 +70,14 @@ pub fn restart_app() -> Option<()> {
 }
 
 #[tauri::command]
-pub fn edit_config(app_handle: tauri::AppHandle) -> Option<()> {
+pub fn edit_config(app_handle: tauri::AppHandle, documentId: String) -> Option<()> {
     let no_window_flag = NO_WINDOW_FLAG;
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    let file_path = app.zstd.clone().totk_config.config_path.clone();
+    let file_path = with_document!(
+        app_handle,
+        documentId,
+        app,
+        app.zstd.totk_config.config_path.clone()
+    );
     let os_type = env::consts::OS;
 
     let result = match os_type {
@@ -95,79 +112,66 @@ pub fn edit_config(app_handle: tauri::AppHandle) -> Option<()> {
 #[tauri::command]
 pub fn extract_internal_file(
     app_handle: tauri::AppHandle,
+    documentId: String,
     internalPath: String,
 ) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-
-    match app.extract_file(internalPath) {
-        Some(result) => Some(result), // Safely return the result if present
-        None => None,                 // Return None if no result
-    }
+    with_document_mut!(app_handle, documentId, app, app.extract_file(internalPath))
 }
 
 #[tauri::command]
-pub fn add_empty_byml_file(app_handle: tauri::AppHandle, path: String) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-
-    match app.add_empty_byml(path) {
-        Some(result) => Some(result), // Safely return the result if present
-        None => None,                 // Return None if no result
-    }
+pub fn add_empty_byml_file(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+) -> Option<SendData> {
+    with_document_mut!(app_handle, documentId, app, app.add_empty_byml(path))
 }
 
 #[tauri::command]
-pub fn edit_internal_file(app_handle: tauri::AppHandle, path: String) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-
-    match app.edit_internal_file(path) {
-        Some(result) => Some(result), // Safely return the result if present
-        None => None,                 // Return None if no result
-    }
+pub fn edit_internal_file(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+) -> Option<SendData> {
+    with_document_mut!(app_handle, documentId, app, app.edit_internal_file(path))
 }
 
 #[tauri::command]
-pub fn extract_opened_sarc(app_handle: tauri::AppHandle) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let app = binding.lock().expect("Failed to lock state");
-
-    match app.extract_opened_sarc() {
-        Some(result) => Some(result), // Safely return the result if present
-        None => None,                 // Return None if no result
-    }
+pub fn extract_opened_sarc(app_handle: tauri::AppHandle, documentId: String) -> Option<SendData> {
+    with_document!(app_handle, documentId, app, app.extract_opened_sarc())
 }
 
 #[tauri::command]
 pub fn extract_folder_from_opened_sarc(
     app_handle: tauri::AppHandle,
+    documentId: String,
     source_folder: String,
 ) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    app.extract_folder_from_opened_sarc(source_folder)
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.extract_folder_from_opened_sarc(source_folder)
+    )
 }
 
 #[tauri::command]
-pub fn get_toml_config(app_handle: tauri::AppHandle) -> Result<Value, String> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let app = binding
-        .lock()
-        .map_err(|_| "Failed to lock state".to_string())?;
-    app.zstd.totk_config.to_json().map_err(|e| e.to_string())
+pub fn get_toml_config(app_handle: tauri::AppHandle, documentId: String) -> Result<Value, String> {
+    with_document!(
+        app_handle,
+        documentId,
+        app,
+        app.zstd.totk_config.to_json().map_err(|e| e.to_string())
+    )
 }
 
 #[tauri::command]
 pub fn update_toml_config(
     app_handle: tauri::AppHandle,
+    documentId: String,
     new_config: HashMap<String, Value>,
 ) -> Result<SendData, String> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let app = binding
-        .lock()
-        .map_err(|_| "Failed to lock state".to_string())?;
-    let mut config = (*app.zstd.totk_config).clone();
+    let mut config = with_document!(app_handle, documentId, app, (*app.zstd.totk_config).clone());
     config.update_from_json_data(new_config);
     if !crate::TotkConfig::TotkConfig::check_for_zsdic(&config.romfs) {
         return Err("ZSTD dictionary pack was not found in the selected romfs".to_string());
@@ -180,62 +184,63 @@ pub fn update_toml_config(
 }
 
 #[tauri::command]
-pub fn save_as_click(app_handle: tauri::AppHandle, save_data: SaveData) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-
-    match app.save_as(save_data) {
-        Some(result) => Some(result), // Safely return the result if present
-        None => None,                 // Return None if no result
-    }
+pub fn save_as_click(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    save_data: SaveData,
+) -> Option<SendData> {
+    with_document_mut!(app_handle, documentId, app, app.save_as(save_data))
 }
 
 #[tauri::command]
 pub fn add_click(
     app_handle: tauri::AppHandle,
+    documentId: String,
     internalPath: String,
     path: String,
     overwrite: bool,
 ) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
     println!("internal_path: {}", internalPath);
-    match app.add_internal_file_from_path(internalPath, path, overwrite) {
-        Some(result) => Some(result), // Safely return the result if present
-        None => None,                 // Return None if no result
-    }
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.add_internal_file_from_path(internalPath, path, overwrite)
+    )
 }
 
 #[tauri::command]
 pub fn add_files_from_dir_recursively(
     app_handle: tauri::AppHandle,
+    documentId: String,
     internalPath: String,
     path: String,
 ) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
     println!("internal_path: {}", internalPath);
     // if path_
-    match app.add_dir_to_sarc(internalPath, path) {
-        Some(result) => Some(result), // Safely return the result if present
-        None => None,                 // Return None if no result
-    }
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.add_dir_to_sarc(internalPath, path)
+    )
 }
 
 #[tauri::command]
 pub fn add_to_dir_click(
     app_handle: tauri::AppHandle,
+    documentId: String,
     internalPath: String,
     path: String,
 ) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
     println!("internal_path: {}", internalPath);
     // if path_
-    match app.add_internal_file_to_dir(internalPath, path) {
-        Some(result) => Some(result), // Safely return the result if present
-        None => None,                 // Return None if no result
-    }
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.add_internal_file_to_dir(internalPath, path)
+    )
 }
 
 // #[tauri::command]
@@ -250,87 +255,79 @@ pub fn add_to_dir_click(
 // }
 
 #[tauri::command]
-pub fn open_file_struct(app_handle: tauri::AppHandle, _window: tauri::Window) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.open() {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+pub fn open_file_struct(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    _window: tauri::Window,
+) -> Option<SendData> {
+    with_document_mut!(app_handle, documentId, app, app.open())
 }
 
 #[tauri::command]
-pub fn open_file_from_path(app_handle: tauri::AppHandle, path: String) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.open_from_path(path.replace("\\", "/")) {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+pub fn open_file_from_path(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+) -> Option<SendData> {
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.open_from_path(path.replace("\\", "/"))
+    )
 }
 
 #[tauri::command]
 pub fn remove_internal_sarc_file(
     app_handle: tauri::AppHandle,
+    documentId: String,
     internalPath: String,
 ) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.remove_internal_elem(internalPath) {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.remove_internal_elem(internalPath)
+    )
 }
 
 #[tauri::command]
-pub fn save_file_struct(app_handle: tauri::AppHandle, save_data: SaveData) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.save(save_data) {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+pub fn save_file_struct(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    save_data: SaveData,
+) -> Option<SendData> {
+    with_document_mut!(app_handle, documentId, app, app.save(save_data))
 }
 #[tauri::command]
 pub fn rename_internal_sarc_file(
     app_handle: tauri::AppHandle,
+    documentId: String,
     internalPath: String,
     newInternalPath: String,
 ) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.rename_internal_file_from_path(internalPath, newInternalPath) {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.rename_internal_file_from_path(internalPath, newInternalPath)
+    )
 }
 
 #[tauri::command]
-pub fn close_all_opened_files(app_handle: tauri::AppHandle) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.close_all_click() {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+pub fn close_all_opened_files(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+) -> Option<SendData> {
+    let documents = app_handle.state::<DocumentState>();
+    let response = documents.with_mut(&documentId, |app| app.close_all_click());
+    documents.close_all();
+    response
+}
+
+#[tauri::command]
+pub fn close_document(app_handle: tauri::AppHandle, documentId: String) -> bool {
+    app_handle.state::<DocumentState>().close(&documentId)
 }
 
 #[tauri::command]
@@ -363,103 +360,75 @@ pub fn open_dir_dialog() -> Option<String> {
 }
 
 #[tauri::command]
-pub fn rstb_get_entries(app_handle: tauri::AppHandle, entry: String) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.get_rstb_entries_by_query(entry) {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+pub fn rstb_get_entries(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    entry: String,
+) -> Option<SendData> {
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.get_rstb_entries_by_query(entry)
+    )
 }
 
 #[tauri::command]
 pub fn rstb_edit_entry(
     app_handle: tauri::AppHandle,
+    documentId: String,
     entry: String,
     val: String,
 ) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.rstb_edit_entry(entry, val) {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+    with_document_mut!(app_handle, documentId, app, app.rstb_edit_entry(entry, val))
 }
 
 #[tauri::command]
-pub fn rstb_remove_entry(app_handle: tauri::AppHandle, entry: String) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.rstb_remove_entry(entry) {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+pub fn rstb_remove_entry(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    entry: String,
+) -> Option<SendData> {
+    with_document_mut!(app_handle, documentId, app, app.rstb_remove_entry(entry))
 }
 
 #[tauri::command]
-pub fn search_in_sarc(app_handle: tauri::AppHandle, query: String) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.search_in_sarc(query) {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+pub fn search_in_sarc(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    query: String,
+) -> Option<SendData> {
+    with_document_mut!(app_handle, documentId, app, app.search_in_sarc(query))
 }
 
 #[tauri::command]
-pub fn clear_search_in_sarc(app_handle: tauri::AppHandle) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.clear_search_in_sarc() {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+pub fn clear_search_in_sarc(app_handle: tauri::AppHandle, documentId: String) -> Option<SendData> {
+    with_document_mut!(app_handle, documentId, app, app.clear_search_in_sarc())
 }
 
 //COMPARE stuff
 #[tauri::command]
-pub fn compare_files(app_handle: tauri::AppHandle, isFromDisk: bool) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let app = binding.lock().expect("Failed to lock state");
-    match app.compare_files(isFromDisk) {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+pub fn compare_files(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    isFromDisk: bool,
+) -> Option<SendData> {
+    with_document!(app_handle, documentId, app, app.compare_files(isFromDisk))
 }
 
 #[tauri::command]
 pub fn compare_internal_file_with_vanila(
     app_handle: tauri::AppHandle,
+    documentId: String,
     internal_path: String,
     is_from_sarc: bool,
 ) -> Option<SendData> {
-    let binding = app_handle.state::<Mutex<TotkBitsApp>>();
-    let mut app = binding.lock().expect("Failed to lock state");
-    match app.compare_internal_file_with_original(internal_path, is_from_sarc) {
-        Some(result) => {
-            return Some(result);
-        } // Safely return the result if present
-        None => {} // Return None if no result
-    }
-    None
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.compare_internal_file_with_original(internal_path, is_from_sarc)
+    )
 }
 
 #[tauri::command]

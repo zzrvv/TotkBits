@@ -6,7 +6,6 @@ use miow::pipe::NamedPipeBuilder;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::Duration;
 use std::{env, io, thread};
@@ -15,6 +14,7 @@ use tauri::Manager;
 use Settings::BACKUP_UPDATER_NAME;
 use Zstd::get_executable_dir;
 mod Comparer;
+mod DocumentState;
 mod Open_and_Save;
 mod Settings;
 mod TauriCommands;
@@ -22,18 +22,18 @@ mod TotkApp;
 mod TotkConfig;
 mod Zstd;
 mod file_format;
+use crate::DocumentState::DocumentState as Documents;
 use crate::Settings::{get_startup_data, StartupData};
 use crate::TauriCommands::{
     add_click, add_empty_byml_file, add_files_from_dir_recursively, add_to_dir_click,
-    check_if_update_needed, clear_search_in_sarc, close_all_opened_files, compare_files,
-    compare_internal_file_with_vanila, edit_config, edit_internal_file, exit_app,
+    check_if_update_needed, clear_search_in_sarc, close_all_opened_files, close_document,
+    compare_files, compare_internal_file_with_vanila, edit_config, edit_internal_file, exit_app,
     extract_folder_from_opened_sarc, extract_internal_file, extract_opened_sarc, get_toml_config,
     open_dir_dialog, open_file_dialog, open_file_from_path, open_file_struct,
     remove_internal_sarc_file, rename_internal_sarc_file, restart_app, rstb_edit_entry,
     rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,
     update_app, update_toml_config,
 };
-use crate::TotkApp::TotkBitsApp;
 use updater::TotkbitsVersion::TotkbitsVersion;
 
 fn main() -> io::Result<()> {
@@ -42,7 +42,7 @@ fn main() -> io::Result<()> {
     // return Ok(());
     let startup_data = StartupData::new()?.to_json()?;
     // println!("{:?}", startup_data);
-    let app = Mutex::<TotkBitsApp>::default();
+    let documents = Documents::default();
     if let Err(err) = tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_os::init())
@@ -58,7 +58,7 @@ fn main() -> io::Result<()> {
 
             Ok(())
         })
-        .manage(app)
+        .manage(documents)
         .invoke_handler(tauri::generate_handler![
             add_empty_byml_file,
             extract_opened_sarc,
@@ -78,6 +78,7 @@ fn main() -> io::Result<()> {
             extract_internal_file,
             rename_internal_sarc_file,
             close_all_opened_files,
+            close_document,
             remove_internal_sarc_file,
             exit_app,
             open_file_dialog,

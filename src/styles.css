@@ -3,13 +3,14 @@
   --background-color: #1E1E1E;
   --text-color: #fff;
   
-  --main-top-offset: calc(var(--menu-bar-h) + var(--tab-switcher-h) + var(--buttons-h) );
+  --main-top-offset: calc(var(--menu-bar-h) + var(--document-tabs-h) + var(--tab-switcher-h) + var(--buttons-h));
   font-family:  Consolas,Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 24px;
   font-weight: 400;
   --menu-bar-padding: 10px;
   --menu-bar-h: 28px;
+  --document-tabs-h: 33px;
   --tab-switcher-h: 45px;
   --buttons-h: 45px;
 
@@ -194,6 +195,8 @@ h1 {
 }
 
 .buttons-container {
+  position: relative;
+  z-index: 20;
   padding-left: 5px;
   /* margin-left: -10px;
   margin-right: -8px;
@@ -431,6 +434,34 @@ button {
   margin: auto;
 }
 
+.settings-modal {
+  max-height: 82vh;
+  overflow-y: auto;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings-header h2 {
+  margin: 0;
+}
+
+.settings-close {
+  border: 0;
+  border-radius: 4px;
+  padding: 2px 10px;
+  font-size: 24px;
+  line-height: 28px;
+  cursor: pointer;
+}
+
+.settings-close:hover {
+  background: #a33;
+}
+
 .options-modal-footer {
   display: flex;
   justify-content: center;
@@ -469,4 +500,13 @@ button {
 
 .config-value input[type="checkbox"] {
   width: auto; /* Prevent checkboxes from stretching */
+}
+
+.settings-control {
+  gap: 8px;
+}
+
+.settings-control button {
+  flex: 0 0 auto;
+  padding: 6px 10px;
 }

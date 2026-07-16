@@ -18,6 +18,7 @@ import { SearchTextInSarcPrompt } from './SearchTextInSarc';
 import { useEditorContext } from './StateManager';
 import { checkIfUpdateNeeded } from './ButtonClicks';
 import  OptionsEditor  from './OptionsEditor';
+import DocumentTabs from './DocumentTabs';
 
 
 let triggered = false
@@ -36,6 +37,7 @@ function App() {
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
+    documentModels,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, compareData
   } = useEditorContext();
@@ -58,6 +60,7 @@ function App() {
         editorRef,
         editorContainerRef,
         editorValue,
+        documentModels,
         // lang,
         setStatusText,
         setActiveTab,
@@ -126,6 +129,7 @@ function App() {
         </div>
       )}
       <MenuBarDisplayWithUpdater />
+      <DocumentTabs />
       <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
       {/* {activeTab === 'LOADING' ? <div className="modal-overlay">Loading...</div> : null} */}
       <AddOrRenameFilePrompt
