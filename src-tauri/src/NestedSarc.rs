@@ -4,7 +4,8 @@ use roead::sarc::{Sarc, SarcWriter};
 
 use crate::{
     file_format::Archive::{
-        ArchiveCodec, Rar::RarFile, RootArchive, SevenZip::SevenZipFile, Zip::ZipFile,
+        detect_archive_magic, ArchiveCodec, ArchiveMagic, Rar::RarFile, RootArchive,
+        SevenZip::SevenZipFile, Zip::ZipFile,
     },
     Zstd::{is_sarc, TotkZstd},
 };
@@ -30,18 +31,18 @@ enum NestedKind {
 }
 
 impl NestedArchive {
-    pub fn parse_named(name: &str, data: &[u8], zstd: Arc<TotkZstd<'_>>) -> io::Result<Self> {
-        let lower = name.to_ascii_lowercase();
-        let generic = if lower.ends_with(".zip") {
-            ZipFile::from_bytes(data).map(RootArchive::Zip)
-        } else if lower.ends_with(".7z") {
-            SevenZipFile::from_bytes(data).map(RootArchive::SevenZip)
-        } else if lower.ends_with(".rar") {
-            RarFile::from_bytes(data).map(RootArchive::Rar)
-        } else {
-            Err("not a generic archive extension".into())
+    pub fn parse_named(_name: &str, data: &[u8], zstd: Arc<TotkZstd<'_>>) -> io::Result<Self> {
+        let generic = match detect_archive_magic(data) {
+            Some(ArchiveMagic::Zip) => Some(ZipFile::from_bytes(data).map(RootArchive::Zip)),
+            Some(ArchiveMagic::SevenZip) => {
+                Some(SevenZipFile::from_bytes(data).map(RootArchive::SevenZip))
+            }
+            Some(ArchiveMagic::Rar) => Some(RarFile::from_bytes(data).map(RootArchive::Rar)),
+            None => None,
         };
-        if let Ok(archive) = generic {
+        if let Some(archive) = generic {
+            let archive =
+                archive.map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
             return Ok(Self {
                 kind: NestedKind::Generic(archive),
             });

@@ -167,12 +167,16 @@ pub fn expand_nested_sarc(
     documentId: String,
     outerPath: String,
 ) -> SendData {
-    with_document_mut!(
+    let result = with_document_mut!(
         app_handle,
         documentId,
         app,
         app.expand_nested_sarc(outerPath)
-    )
+    );
+    if result.tab == "ERROR" && result.status_text.contains("WinRAR rar.exe was not found") {
+        show_open_error(&result);
+    }
+    result
 }
 
 #[tauri::command]

@@ -10,6 +10,28 @@ pub mod Zip;
 
 pub type ArchiveResult<T> = Result<T, String>;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArchiveMagic {
+    Zip,
+    SevenZip,
+    Rar,
+}
+
+pub fn detect_archive_magic(data: &[u8]) -> Option<ArchiveMagic> {
+    if data.starts_with(b"PK\x03\x04")
+        || data.starts_with(b"PK\x05\x06")
+        || data.starts_with(b"PK\x07\x08")
+    {
+        Some(ArchiveMagic::Zip)
+    } else if data.starts_with(b"7z\xBC\xAF\x27\x1C") {
+        Some(ArchiveMagic::SevenZip)
+    } else if data.starts_with(b"Rar!\x1A\x07\x00") || data.starts_with(b"Rar!\x1A\x07\x01\x00") {
+        Some(ArchiveMagic::Rar)
+    } else {
+        None
+    }
+}
+
 pub enum RootArchive {
     Zip(Zip::ZipFile),
     SevenZip(SevenZip::SevenZipFile),
@@ -25,21 +47,15 @@ pub struct ArchiveDocument {
 
 impl ArchiveDocument {
     pub fn open(path: &Path) -> ArchiveResult<Option<Self>> {
-        let extension = path
-            .extension()
-            .and_then(|v| v.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if !matches!(extension.as_str(), "zip" | "7z" | "rar") {
-            return Ok(None);
-        }
         let bytes =
             fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-        let archive = match extension.as_str() {
-            "zip" => RootArchive::Zip(Zip::ZipFile::from_bytes(&bytes)?),
-            "7z" => RootArchive::SevenZip(SevenZip::SevenZipFile::from_bytes(&bytes)?),
-            "rar" => RootArchive::Rar(Rar::RarFile::from_bytes(&bytes)?),
-            _ => unreachable!(),
+        let archive = match detect_archive_magic(&bytes) {
+            Some(ArchiveMagic::Zip) => RootArchive::Zip(Zip::ZipFile::from_bytes(&bytes)?),
+            Some(ArchiveMagic::SevenZip) => {
+                RootArchive::SevenZip(SevenZip::SevenZipFile::from_bytes(&bytes)?)
+            }
+            Some(ArchiveMagic::Rar) => RootArchive::Rar(Rar::RarFile::from_bytes(&bytes)?),
+            None => return Ok(None),
         };
         Ok(Some(Self {
             archive,
@@ -256,6 +272,23 @@ pub fn validate_entry_path(path: &str) -> ArchiveResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn archive_detection_uses_magic_only() {
+        assert_eq!(
+            detect_archive_magic(b"PK\x03\x04payload"),
+            Some(ArchiveMagic::Zip)
+        );
+        assert_eq!(
+            detect_archive_magic(b"7z\xBC\xAF\x27\x1Cpayload"),
+            Some(ArchiveMagic::SevenZip)
+        );
+        assert_eq!(
+            detect_archive_magic(b"Rar!\x1A\x07\x01\x00payload"),
+            Some(ArchiveMagic::Rar)
+        );
+        assert_eq!(detect_archive_magic(b"example.zip"), None);
+    }
+
     #[test]
     fn rejects_zip_slip_paths() {
         assert!(validate_entry_path("../evil").is_err());

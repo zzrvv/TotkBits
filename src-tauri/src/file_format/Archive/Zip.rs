@@ -1,4 +1,4 @@
-use super::{validate_entry_path, ArchiveCodec, ArchiveResult};
+use super::{detect_archive_magic, validate_entry_path, ArchiveCodec, ArchiveMagic, ArchiveResult};
 use std::{
     collections::BTreeMap,
     io::{Cursor, Read, Write},
@@ -12,6 +12,9 @@ pub struct ZipFile {
 
 impl ArchiveCodec for ZipFile {
     fn from_bytes(data: &[u8]) -> ArchiveResult<Self> {
+        if detect_archive_magic(data) != Some(ArchiveMagic::Zip) {
+            return Err("ZIP magic bytes do not match".into());
+        }
         let mut archive =
             ZipArchive::new(Cursor::new(data)).map_err(|e| format!("invalid ZIP: {e}"))?;
         let mut entries = BTreeMap::new();

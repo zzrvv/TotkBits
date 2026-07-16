@@ -1,4 +1,4 @@
-use super::{validate_entry_path, ArchiveCodec, ArchiveResult};
+use super::{detect_archive_magic, validate_entry_path, ArchiveCodec, ArchiveMagic, ArchiveResult};
 use std::{
     collections::BTreeMap,
     fs,
@@ -89,6 +89,9 @@ impl RarFile {
 
 impl ArchiveCodec for RarFile {
     fn from_bytes(data: &[u8]) -> ArchiveResult<Self> {
+        if detect_archive_magic(data) != Some(ArchiveMagic::Rar) {
+            return Err("RAR magic bytes do not match".into());
+        }
         let rar = Self::discover_executable()?;
         let workspace = Self::temporary_dir("rar-read")?;
         let archive_path = workspace.join("archive.rar");

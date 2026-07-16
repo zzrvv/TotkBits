@@ -1,4 +1,4 @@
-use super::{validate_entry_path, ArchiveCodec, ArchiveResult};
+use super::{detect_archive_magic, validate_entry_path, ArchiveCodec, ArchiveMagic, ArchiveResult};
 use sevenz_rust::{Password, SevenZArchiveEntry, SevenZReader, SevenZWriter};
 use std::{
     collections::BTreeMap,
@@ -12,6 +12,9 @@ pub struct SevenZipFile {
 
 impl ArchiveCodec for SevenZipFile {
     fn from_bytes(data: &[u8]) -> ArchiveResult<Self> {
+        if detect_archive_magic(data) != Some(ArchiveMagic::SevenZip) {
+            return Err("7z magic bytes do not match".into());
+        }
         let cursor = Cursor::new(data.to_vec());
         let mut reader = SevenZReader::new(cursor, data.len() as u64, Password::empty())
             .map_err(|e| format!("invalid, encrypted, or unsupported 7z archive: {e}"))?;
