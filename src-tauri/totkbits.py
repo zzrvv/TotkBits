@@ -2,27 +2,43 @@ import io
 import os
 import sys
 import tempfile
+import traceback
+import time
 from typing import Dict
 import oead
 import evfl
 CWD = os.getcwd()
-sys.path.append(os.path.join(CWD, "bin/ainb/ainb"))
+sys.path.append(os.path.join(CWD, "bin/ainb"))
 sys.path.append(os.path.join(CWD, "bin/asb"))
 sys.path.append(os.path.join(CWD, "bin/ptcl"))
 
+def log(message):
+    """Diagnostics belong on stderr; stdout is the command's data protocol."""
+    print(f"[totkbits.py] {message}", file=sys.stderr, flush=True)
+
+log(f"startup cwd={CWD!r} python={sys.executable!r} argv={sys.argv!r}")
+
 try:
-    import bin.ainb.ainb.ainb as ainb_lib
+    import ainb as ainb_lib
     # from bin.ainb.ainb.converter import ainb_to_json, json_to_ainb, ainb_to_yaml, yaml_to_ainb
 except ImportError as e:
-    sys.stdout.buffer.write(b"Error Import: 16 " + str(e).encode("utf-8"))
+    ainb_lib = None
+    log(f"AINB import failed: {e!r}")
+    traceback.print_exc(file=sys.stderr)
 try:
     from bin.asb.asb import ASB, asb_from_zs
 except ImportError as e:
-    sys.stdout.buffer.write(b"Error Import: 20 " + str(e).encode("utf-8"))
+    ASB = None
+    asb_from_zs = None
+    log(f"ASB import failed: {e!r}")
+    traceback.print_exc(file=sys.stderr)
 try:
     from bin.ptcl.ptcl  import ptcl_binary_to_text_lib, ptcl_apply_edits_lib
 except ImportError as e:
-    sys.stdout.buffer.write(b"Error Import: 24 " + str(e).encode("utf-8"))
+    ptcl_binary_to_text_lib = None
+    ptcl_apply_edits_lib = None
+    log(f"PTCL import failed: {e!r}")
+    traceback.print_exc(file=sys.stderr)
 import json
 try:
     import yaml
@@ -105,25 +121,54 @@ def asb_text_to_binary(encoding="utf-8"): # Converts input JSON file to ASB
         sys.stdout.buffer.write(b"Error: " + str(e).encode(encoding))
     
 def ainb_binary_to_text(): # Converts input AINB file to JSON
+    stage = "read stdin"
+    started = time.monotonic()
     try:
         data = sys.stdin.buffer.read()
-        file = ainb_lib.AINB(data)
-        text = yaml.dump(file.output_dict, sort_keys=False, allow_unicode=True, indent=4, encoding='utf-8')
+        log(f"ainb_binary_to_text: received {len(data)} bytes")
+        if ainb_lib is None:
+            raise RuntimeError("AINB library import failed; see startup diagnostics")
+        stage = "validate input"
+        if not data.startswith(b"AIB "):
+            raise ValueError("invalid AINB magic (expected AIB + space)")
+        stage = "parse binary"
+        file = ainb_lib.AINB.from_binary(data)
+        log(f"ainb_binary_to_text: parsed version={file.version:#x} filename={file.filename!r} nodes={len(file.nodes)}")
+        stage = "serialize YAML"
+        text = yaml.dump(file.as_dict(), sort_keys=False, allow_unicode=True, indent=4, encoding='utf-8')
+        log(f"ainb_binary_to_text: produced {len(text)} bytes in {time.monotonic() - started:.3f}s")
         sys.stdout.buffer.write(text)
     except Exception as e:
+        log(f"ainb_binary_to_text failed during {stage}: {type(e).__name__}: {e}")
+        traceback.print_exc(file=sys.stderr)
         sys.stdout.buffer.write(b"Error: " + str(e).encode("utf-8"))
 
 def ainb_text_to_binary(encoding="utf-8"): # Converts input JSON file to AINB
+    stage = "read stdin"
+    started = time.monotonic()
     try:
         data = sys.stdin.buffer.read()
-        # json_data = json.loads(data.decode(encoding))
-        json_data = yaml.safe_load(data.decode(encoding))
-        file = ainb_lib.AINB(json_data, from_dict=True)
-        
-        cursor = io.BytesIO(bytearray())
-        file.ToBytes(file, cursor)
-        sys.stdout.buffer.write(cursor.getvalue())
+        log(f"ainb_text_to_binary: received {len(data)} bytes encoding={encoding}")
+        if ainb_lib is None:
+            raise RuntimeError("AINB library import failed; see startup diagnostics")
+        stage = "decode text"
+        decoded = data.decode(encoding)
+        stage = "parse YAML"
+        json_data = yaml.safe_load(decoded)
+        if not isinstance(json_data, dict):
+            raise ValueError(f"AINB YAML root must be a mapping, got {type(json_data).__name__}")
+        log(f"ainb_text_to_binary: YAML parsed with {len(json_data)} top-level keys")
+        stage = "construct AINB"
+        file = ainb_lib.AINB.from_dict(json_data)
+        stage = "serialize binary"
+        result = file.to_binary()
+        if not result.startswith(b"AIB "):
+            raise ValueError("AINB serializer returned data with invalid magic")
+        log(f"ainb_text_to_binary: produced {len(result)} bytes in {time.monotonic() - started:.3f}s")
+        sys.stdout.buffer.write(result)
     except Exception as e:
+        log(f"ainb_text_to_binary failed during {stage}: {type(e).__name__}: {e}")
+        traceback.print_exc(file=sys.stderr)
         sys.stdout.buffer.write(b"Error: " + str(e).encode(encoding))
 
 def byml_text_to_binary(encoding="utf-8"): # Converts input JSON file to AINB
@@ -151,7 +196,10 @@ if __name__ == "__main__":
         # Execute the function based on the command line argument
         if sys.argv[1] in commands.keys():
             # sys.stdout.write(f"Executing command '{sys.argv[1]}'\n")
-            commands[sys.argv[1]]()
+            command = sys.argv[1]
+            log(f"dispatch command={command!r}")
+            commands[command]()
+            log(f"command={command!r} completed")
         else:
             print(f"Command '{sys.argv[1]}' not recognized.")
     else:

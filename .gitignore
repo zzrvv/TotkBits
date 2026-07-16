@@ -44,5 +44,6 @@ ext_projects/bphcl/__pycache__
 /ext_projects/bphcl/main*
 
 /__pycache__
+*__pycache__*
 **__init__.py
 package-lock.json
