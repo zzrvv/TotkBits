@@ -11,6 +11,7 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+libloading = "0.8.0"
 # zstud-sys = {git = "https://github.com/SolidLink95/zstud-sys-rs"}
 #BymlText
 ryml = "0.3.2"

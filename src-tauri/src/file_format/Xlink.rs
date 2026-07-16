@@ -1,127 +1,191 @@
-use std::{ffi::CStr, io, path::Path, sync::Arc};
+use std::{
+    ffi::CStr,
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use libloading::{Library, Symbol};
 use roead::Endian;
 
-use crate::{file_format::BinTextFile::OpenedFile, Open_and_Save::SendData, Settings::Pathlib, Zstd::{is_xlink, TotkFileType, TotkZstd}};
+use crate::{
+    file_format::BinTextFile::OpenedFile,
+    Open_and_Save::SendData,
+    Settings::Pathlib,
+    Zstd::{is_xlink, TotkFileType, TotkZstd},
+};
 
 type XlinkBinaryToYaml = unsafe extern "C" fn(data: *const i8, size: usize) -> *const i8;
 type XlinkYamlToBinary =
     unsafe extern "C" fn(data: *const i8, size: usize, out_size: *mut usize) -> *mut i8;
 type FreeXlinkBinary = unsafe extern "C" fn(data: *mut i8);
-type FreeXlinkString = unsafe extern "C" fn(str_: *mut i8);
+type FreeXlinkString = unsafe extern "C" fn(data: *mut i8);
 
+/// A lazily-created handle to the optional native XLink converter.
+///
+/// Keeping `Library` in this value guarantees that resolved symbols remain valid
+/// for the duration of each conversion. Construction is only attempted when an
+/// XLink file is actually opened or saved, so a missing DLL cannot break startup.
 pub struct Xlink_rs<'a> {
-    pub zstd: Arc<TotkZstd<'a>>
+    pub zstd: Arc<TotkZstd<'a>>,
+    library: Library,
+    library_path: PathBuf,
 }
 
-impl<'a> Xlink_rs<'_> {
-    pub fn new(zstd: Arc<TotkZstd<'a>>) -> io::Result<Xlink_rs<'a>> {
+impl<'a> Xlink_rs<'a> {
+    pub fn new(zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
+        let library_path = Self::find_library()?;
+        let library = unsafe { Library::new(&library_path) }.map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "failed to load XLink converter DLL {}: {error}",
+                    library_path.display()
+                ),
+            )
+        })?;
+        Ok(Self {
+            zstd,
+            library,
+            library_path,
+        })
+    }
 
-        let res = Xlink_rs {
-            zstd: zstd.clone()
-        };
-        Ok(res)
+    fn find_library() -> io::Result<PathBuf> {
+        let relative = Path::new("bin").join("dlls").join("xlink_tool.dll");
+        let mut candidates = Vec::new();
+        if let Ok(current_dir) = std::env::current_dir() {
+            candidates.push(current_dir.join(&relative));
+        }
+        if let Ok(executable) = std::env::current_exe() {
+            if let Some(directory) = executable.parent() {
+                candidates.push(directory.join(&relative));
+            }
+        }
+        if let Some(path) = candidates.iter().find(|path| path.is_file()) {
+            return Ok(path.clone());
+        }
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "XLink converter DLL was not found; checked {}",
+                candidates
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ))
+    }
+
+    fn symbol_error(&self, symbol: &str, error: libloading::Error) -> io::Error {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            format!(
+                "XLink DLL {} does not export {symbol}: {error}",
+                self.library_path.display()
+            ),
+        )
     }
 
     pub fn binary_to_yaml(&self, data: &[u8]) -> io::Result<String> {
-        let rawdata = if !is_xlink(data) {
-            self.zstd.decompress_zs(&data.to_vec())?
-        } else {
+        let rawdata = if is_xlink(data) {
             data.to_vec()
+        } else {
+            self.zstd.decompressor.decompress_zs(&data.to_vec())?
         };
         if !is_xlink(&rawdata) {
             return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "Xlink_rs: Not a valid xlink binary",
+                io::ErrorKind::InvalidData,
+                "not a valid XLink binary (missing XLNK magic)",
             ));
         }
-        let xlink_binary_to_yaml: Symbol<XlinkBinaryToYaml> = self
-            .zstd
-            .dll_manager
-            .xlink_dll
-            .get_function("xlink_binary_to_yaml")?;
-        let free_xlink_string: Symbol<FreeXlinkString> = self
-            .zstd
-            .dll_manager
-            .xlink_dll
-            .get_function("free_xlink_string")?;
-        let c_binary = rawdata.as_ptr() as *const i8;
+
+        let convert: Symbol<XlinkBinaryToYaml> =
+            unsafe { self.library.get(b"xlink_binary_to_yaml\0") }
+                .map_err(|error| self.symbol_error("xlink_binary_to_yaml", error))?;
+        let free: Symbol<FreeXlinkString> = unsafe { self.library.get(b"free_xlink_string\0") }
+            .map_err(|error| self.symbol_error("free_xlink_string", error))?;
+
         unsafe {
-            let yaml_ptr = (xlink_binary_to_yaml)(c_binary, rawdata.len());
-            if !yaml_ptr.is_null() {
-                let yaml_cstr = CStr::from_ptr(yaml_ptr);
-                let yaml_str = yaml_cstr.to_string_lossy().into_owned();
-                // println!("YAML output: {}", yaml_cstr.to_string_lossy());
-                (free_xlink_string)(yaml_ptr as *mut i8);
-                return Ok(yaml_str);
+            let yaml_ptr = convert(rawdata.as_ptr() as *const i8, rawdata.len());
+            if yaml_ptr.is_null() {
+                return Err(io::Error::other(
+                    "XLink DLL failed to convert binary to YAML",
+                ));
             }
+            let yaml_bytes = CStr::from_ptr(yaml_ptr).to_bytes().to_vec();
+            free(yaml_ptr as *mut i8);
+            String::from_utf8(yaml_bytes).map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("XLink DLL returned invalid UTF-8 YAML: {error}"),
+                )
+            })
         }
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Xlink_rs: Failed to convert binary to YAML",
-        ))
     }
 
     pub fn yaml_to_binary(&self, data: &str) -> io::Result<Vec<u8>> {
-        let xlink_yaml_to_binary: Symbol<XlinkYamlToBinary> = self
-            .zstd
-            .dll_manager
-            .xlink_dll
-            .get_function("xlink_yaml_to_binary")?;
-        let free_xlink_binary: Symbol<FreeXlinkBinary> = self
-            .zstd
-            .dll_manager
-            .xlink_dll
-            .get_function("free_xlink_binary")?;
-        let rawdata = data.as_bytes();
-        // let c_binary = rawdata.as_ptr() as *const i8;
-        let mut out_size: usize = 0;
+        let convert: Symbol<XlinkYamlToBinary> =
+            unsafe { self.library.get(b"xlink_yaml_to_binary\0") }
+                .map_err(|error| self.symbol_error("xlink_yaml_to_binary", error))?;
+        let free: Symbol<FreeXlinkBinary> = unsafe { self.library.get(b"free_xlink_binary\0") }
+            .map_err(|error| self.symbol_error("free_xlink_binary", error))?;
+
+        let mut out_size = 0;
         unsafe {
-            let binary_ptr = (xlink_yaml_to_binary)(rawdata.as_ptr() as *const i8, rawdata.len(), &mut out_size);
-            if !binary_ptr.is_null() {
-                let binary_slice = std::slice::from_raw_parts(binary_ptr as *const u8, out_size);
-                let binary_vec = binary_slice.to_vec();
-                (free_xlink_binary)(binary_ptr as *mut i8);
-                return Ok(binary_vec);
+            let binary_ptr = convert(data.as_ptr() as *const i8, data.len(), &mut out_size);
+            if binary_ptr.is_null() {
+                return Err(io::Error::other(
+                    "XLink DLL failed to convert YAML to binary",
+                ));
             }
+            let binary = std::slice::from_raw_parts(binary_ptr as *const u8, out_size).to_vec();
+            free(binary_ptr);
+            if !is_xlink(&binary) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "XLink DLL returned binary data without XLNK magic",
+                ));
+            }
+            Ok(binary)
         }
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Xlink_rs: Failed to convert YAML to binary",
-        ))
     }
 
     pub fn binary_file_to_yaml(zstd: Arc<TotkZstd<'a>>, path: &Path) -> io::Result<String> {
-        let xlink = Xlink_rs::new(zstd)?;
         let data = std::fs::read(path)?;
-        xlink.binary_to_yaml(&data)
+        Self::new(zstd)?.binary_to_yaml(&data)
     }
 
-    pub fn open_xlink<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>)  -> Option<(OpenedFile<'static>, SendData)> {
+    pub fn open_xlink<P: AsRef<Path>>(
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'static>, SendData)> {
         let path = path.as_ref();
-        let pathlib_var = Pathlib::new(&path);
+        let pathlib = Pathlib::new(path);
         let rawdata = std::fs::read(path).ok()?;
-        let xlink = Xlink_rs::new(zstd).ok()?;
-        let mut opened_file = OpenedFile::default();
-        let mut data = SendData::default();
-        print!("Is {} a xlink file? ", path.display());
-        match xlink.binary_to_yaml(&rawdata) {
-            Ok(text) => {
-                println!("Yes\n");
-                opened_file.path = pathlib_var.clone();
-                opened_file.endian = Some(Endian::Little);
-                opened_file.file_type = TotkFileType::Xlink;
-                data.status_text = format!("Opened {}", &pathlib_var.full_path);
-                data.path = pathlib_var;
-                data.text = text;
-                data.get_file_label(opened_file.file_type, Some(Endian::Little));
-                return Some((opened_file, data));
-            }
-            Err(e) => {
-                println!("No\n{:?}", e);
+        print!("Is {} an XLink file? ", path.display());
+        let text = match Self::new(zstd).and_then(|xlink| xlink.binary_to_yaml(&rawdata)) {
+            Ok(text) => text,
+            Err(error) => {
+                println!("no: {error}");
                 return None;
             }
-        }
+        };
+        println!("yes");
+
+        let mut opened_file = OpenedFile::default();
+        opened_file.path = pathlib.clone();
+        opened_file.endian = Some(Endian::Little);
+        opened_file.file_type = TotkFileType::Xlink;
+
+        let mut data = SendData::default();
+        data.status_text = format!("Opened {}", pathlib.full_path);
+        data.path = pathlib;
+        data.text = text;
+        data.tab = "YAML".to_string();
+        data.lang = "yaml".to_string();
+        data.get_file_label(TotkFileType::Xlink, Some(Endian::Little));
+        Some((opened_file, data))
     }
 }

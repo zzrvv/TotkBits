@@ -12,6 +12,7 @@ dependencies = [
  "digest",
  "flate2",
  "fs2",
+ "libloading 0.8.3",
  "miow",
  "msbt",
  "msbt_bindings_rs",

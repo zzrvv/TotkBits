@@ -10,14 +10,15 @@ use crate::{
         Rstb::Restbl,
         TagProduct::TagProduct,
         Wrapper::PythonWrapper,
+        Xlink::Xlink_rs,
         SMO::SmoSaveFile::SmoSaveFile,
     },
     Comparer::DiffComparer,
     Settings::Pathlib,
     TotkApp::InternalFile,
     Zstd::{
-        is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, is_tagproduct, TotkFileType,
-        TotkZstd,
+        is_aamp, is_ainb, is_byml, is_esetb, is_gamedatalist, is_msyt, is_tagproduct, is_xlink,
+        is_xlink_path, TotkFileType, TotkZstd,
     },
 };
 use msbt_bindings_rs::MsbtCpp::MsbtCpp;
@@ -380,6 +381,17 @@ pub fn get_string_from_data<P: AsRef<Path>>(
             return Some((internal_file, text));
         }
     }
+    if is_xlink(&data) || is_xlink_path(&path) {
+        match Xlink_rs::new(zstd.clone()).and_then(|xlink| xlink.binary_to_yaml(&data)) {
+            Ok(text) => {
+                internal_file.endian = Some(roead::Endian::Little);
+                internal_file.path = Pathlib::new(path.clone());
+                internal_file.file_type = TotkFileType::Xlink;
+                return Some((internal_file, text));
+            }
+            Err(error) => println!("Unable to parse XLink entry {path}: {error}"),
+        }
+    }
     if is_byml(&data) {
         if let Ok(file_data) = BymlFile::byml_data_to_bytes(&data, zstd.clone()) {
             if let Ok(byml_file) = BymlFile::from_binary(file_data, zstd.clone(), path.clone()) {
@@ -497,6 +509,21 @@ pub fn get_binary_by_filetype(
     let is_zs = file_path.to_lowercase().ends_with(".zs");
     let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs");
     match file_type {
+        TotkFileType::Xlink => {
+            match Xlink_rs::new(zstd.clone()).and_then(|xlink| xlink.yaml_to_binary(text)) {
+                Ok(data) => {
+                    rawdata = if is_zs {
+                        zstd.cpp_compressor.compress_zs(&data).ok()?
+                    } else {
+                        data
+                    };
+                }
+                Err(error) => {
+                    println!("Unable to save XLink YAML for {file_path}: {error}");
+                    return None;
+                }
+            }
+        }
         TotkFileType::Evfl => {
             let evfl = Evfl::new(zstd.clone());
             if let Ok(new_data) = evfl.string_to_binary(text) {
@@ -822,21 +849,30 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     zstd: Arc<TotkZstd>,
 ) -> Option<(OpenedFile, SendData)> {
     let file_name = path.as_ref(); //.to_string_lossy().to_string().replace("\\", "/");
-    let res = open_tag(&file_name, zstd.clone())
-        .or_else(|| open_esetb(&file_name, zstd.clone()))
-        .or_else(|| open_restbl(&file_name, zstd.clone()))
-        .or_else(|| open_asb(&file_name, zstd.clone()))
-        .or_else(|| open_ainb(&file_name, zstd.clone()))
-        .or_else(|| open_byml(&file_name, zstd.clone()))
-        .or_else(|| open_msbt(&file_name))
-        .or_else(|| open_aamp(&file_name))
-        .or_else(|| Evfl::open_file(&file_name, zstd.clone()))
-        .or_else(|| open_smo_save_file(&file_name, zstd.clone()))
-        .or_else(|| open_text(&file_name))
-        .map(|(opened_file, data)| {
-            // self.opened_file = opened_file;
-            // self.internal_file = None;
-            (opened_file, data)
-        });
+    let is_xlink_file = is_xlink_path(file_name)
+        || fs::read(file_name)
+            .map(|contents| is_xlink(&contents))
+            .unwrap_or(false);
+    let res = if is_xlink_file {
+        Xlink_rs::open_xlink(file_name, zstd.clone())
+    } else {
+        None
+    }
+    .or_else(|| open_tag(&file_name, zstd.clone()))
+    .or_else(|| open_esetb(&file_name, zstd.clone()))
+    .or_else(|| open_restbl(&file_name, zstd.clone()))
+    .or_else(|| open_asb(&file_name, zstd.clone()))
+    .or_else(|| open_ainb(&file_name, zstd.clone()))
+    .or_else(|| open_byml(&file_name, zstd.clone()))
+    .or_else(|| open_msbt(&file_name))
+    .or_else(|| open_aamp(&file_name))
+    .or_else(|| Evfl::open_file(&file_name, zstd.clone()))
+    .or_else(|| open_smo_save_file(&file_name, zstd.clone()))
+    .or_else(|| open_text(&file_name))
+    .map(|(opened_file, data)| {
+        // self.opened_file = opened_file;
+        // self.internal_file = None;
+        (opened_file, data)
+    });
     res
 }

@@ -35,6 +35,7 @@ pub enum TotkFileType {
     Bcett,
     Esetb,
     Evfl,
+    Xlink,
     Text,
     Other,
     //SMO
@@ -560,6 +561,10 @@ pub fn is_ainb(data: &[u8]) -> bool {
     data.starts_with(b"AIB")
 }
 #[inline]
+pub fn is_xlink(data: &[u8]) -> bool {
+    data.starts_with(b"XLNK")
+}
+#[inline]
 pub fn is_asb(data: &[u8]) -> bool {
     data.starts_with(b"ASB ")
 }
@@ -593,6 +598,12 @@ pub fn is_tagproduct<P: AsRef<Path>>(path: P) -> bool {
         .to_ascii_lowercase()
         .starts_with("tag.product")
     // path.ends_with("GameDataList.Product.110.byml.zs")
+}
+
+#[inline]
+pub fn is_xlink_path<P: AsRef<Path>>(path: P) -> bool {
+    let path = path.as_ref().to_string_lossy().to_ascii_lowercase();
+    path.ends_with(".belnk") || path.ends_with(".belnk.zs")
 }
 
 #[inline]
