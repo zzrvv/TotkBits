@@ -94,7 +94,8 @@ impl<'a> BinaryReader<'a> {
         Ok(self.read_u8()? as i8)
     }
     pub fn read_u16(&mut self) -> io::Result<u16> {
-        let b: [u8; 2] = self.read_bytes(2)?.try_into().unwrap();
+        let mut b = [0; 2];
+        b.copy_from_slice(self.read_bytes(2)?);
         Ok(match self.endian {
             Endian::Little => u16::from_le_bytes(b),
             Endian::Big => u16::from_be_bytes(b),
@@ -104,7 +105,8 @@ impl<'a> BinaryReader<'a> {
         Ok(self.read_u16()? as i16)
     }
     pub fn read_u32(&mut self) -> io::Result<u32> {
-        let b: [u8; 4] = self.read_bytes(4)?.try_into().unwrap();
+        let mut b = [0; 4];
+        b.copy_from_slice(self.read_bytes(4)?);
         Ok(match self.endian {
             Endian::Little => u32::from_le_bytes(b),
             Endian::Big => u32::from_be_bytes(b),
@@ -114,7 +116,8 @@ impl<'a> BinaryReader<'a> {
         Ok(self.read_u32()? as i32)
     }
     pub fn read_u64(&mut self) -> io::Result<u64> {
-        let b: [u8; 8] = self.read_bytes(8)?.try_into().unwrap();
+        let mut b = [0; 8];
+        b.copy_from_slice(self.read_bytes(8)?);
         Ok(match self.endian {
             Endian::Little => u64::from_le_bytes(b),
             Endian::Big => u64::from_be_bytes(b),

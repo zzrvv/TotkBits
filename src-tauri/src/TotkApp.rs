@@ -1146,17 +1146,16 @@ impl<'a> TotkBitsApp<'a> {
                     if let Some((intern, text)) =
                         get_string_from_data(path.clone(), raw_data.to_vec(), self.zstd.clone())
                     {
-                        self.internal_file = Some(intern);
                         self.opened_file = OpenedFile::default();
-                        let i = self.internal_file.as_ref().unwrap();
                         data.text = text;
-                        data.path = i.path.clone();
+                        data.path = intern.path.clone();
                         data.status_text = format!(
                             "Opened {} [{:?}] from {}",
-                            &i.path.name, &i.file_type, &opened.path.name
+                            &intern.path.name, &intern.file_type, &opened.path.name
                         );
                         data.tab = "YAML".to_string();
-                        data.get_file_label(i.file_type, i.endian);
+                        data.get_file_label(intern.file_type, intern.endian);
+                        self.internal_file = Some(intern);
                         return Some(data);
                     } else {
                         data.status_text =
@@ -1199,7 +1198,10 @@ impl<'a> TotkBitsApp<'a> {
                     .map_err(|error| error.to_string())?;
                 self.nested_archives.insert(outer_path.clone(), archive);
             }
-            Ok(self.nested_archives.get(&outer_path).unwrap().paths())
+            self.nested_archives
+                .get(&outer_path)
+                .map(|archive| archive.paths())
+                .ok_or_else(|| format!("nested archive {outer_path} was not retained"))
         })();
         match result {
             Ok(_paths) => {
@@ -1229,15 +1231,14 @@ impl<'a> TotkBitsApp<'a> {
                 get_string_from_data(inner_path.clone(), bytes.to_vec(), self.zstd.clone())
             });
         if let Some((internal, text)) = result {
-            self.internal_file = Some(internal);
             self.nested_edit = Some((outer_path.clone(), inner_path.clone()));
-            let internal = self.internal_file.as_ref().unwrap();
             data.tab = "YAML".to_string();
             data.text = text;
             data.lang = "yaml".to_string();
             data.path = Pathlib::new(&inner_path);
             data.status_text = format!("Opened {} inside {}", inner_path, outer_path);
             data.get_file_label(internal.file_type, internal.endian);
+            self.internal_file = Some(internal);
         } else {
             data.tab = "ERROR".to_string();
             data.status_text = format!("Error: unsupported or missing nested entry {}", inner_path);
@@ -1386,7 +1387,7 @@ impl<'a> TotkBitsApp<'a> {
                         {
                             self.nested_archives
                                 .get_mut(&chain)
-                                .unwrap()
+                                .ok_or("nested archive is not expanded")?
                                 .set(&target, Byml::default().to_binary(roead::Endian::Little));
                             break;
                         }
@@ -1418,9 +1419,9 @@ impl<'a> TotkBitsApp<'a> {
                         let bytes = self
                             .nested_archives
                             .get_mut(&chain)
-                            .unwrap()
+                            .ok_or("nested archive is not expanded")?
                             .get(entry)
-                            .unwrap();
+                            .ok_or_else(|| format!("nested entry disappeared: {entry}"))?;
                         fs::write(output, bytes).map_err(|e| e.to_string())?;
                     }
                     Ok(format!("Extracted {} nested entries", paths.len()))

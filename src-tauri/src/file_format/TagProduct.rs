@@ -295,7 +295,7 @@ impl<'a> TagProduct<'a> {
 
             // Get Bit Table
             let mut bit_table_bytes: Vec<u8> = Vec::new();
-            for byte in pio["BitTable"].as_binary_data().unwrap() {
+            for byte in pio["BitTable"].as_binary_data()? {
                 bit_table_bytes.push(*byte);
             }
 
@@ -334,7 +334,7 @@ impl<'a> TagProduct<'a> {
                     .as_array()
                     .unwrap_or(&[roead::byml::Byml::default()])
                     .iter()
-                    .map(|t| t.as_string().unwrap().to_string()),
+                    .filter_map(|t| t.as_string().ok().map(|value| value.to_string())),
             );
 
             let rank_table_result =
@@ -367,8 +367,9 @@ pub fn sort_hashmap(h: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<Str
 
     // Sort each Vec<String> in the HashMap
     for key in keys.iter() {
-        let value = h.get(key).unwrap().to_vec();
-        map.insert(key.to_string(), value);
+        if let Some(value) = h.get(key) {
+            map.insert(key.to_string(), value.to_vec());
+        }
     }
     map
 }

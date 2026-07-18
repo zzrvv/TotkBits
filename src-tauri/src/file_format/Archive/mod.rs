@@ -138,7 +138,11 @@ impl ArchiveDocument {
             }
         }
         for (old, new) in replacements {
-            let bytes = self.archive.entries_mut().remove(&old).unwrap();
+            let bytes = self
+                .archive
+                .entries_mut()
+                .remove(&old)
+                .ok_or_else(|| format!("archive entry disappeared during rename: {old}"))?;
             self.archive.entries_mut().insert(new.clone(), bytes);
             self.added.remove(&old);
             self.modified.remove(&old);

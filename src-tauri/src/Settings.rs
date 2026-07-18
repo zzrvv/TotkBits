@@ -213,7 +213,9 @@ pub fn list_files_recursively<T: AsRef<Path>>(path: &T) -> Vec<String> {
 
 pub fn process_inline_content(mut input: String, inline_count: usize) -> String {
     // Regex to match content between { and }
-    let re = Regex::new(r"(\s*)\{(.*?)\}").unwrap();
+    let Ok(re) = Regex::new(r"(\s*)\{(.*?)\}") else {
+        return input;
+    };
 
     // Replace content in the input string
     input = re

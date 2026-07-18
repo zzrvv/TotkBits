@@ -96,7 +96,8 @@ impl Endian {
 
 fn get_string(data: &[u8], offset: usize) -> io::Result<String> {
     let end = data[offset..].iter().position(|&b| b == 0).unwrap_or(data.len() - offset);
-    Ok(String::from_utf8(data[offset..offset + end].to_vec()).unwrap())
+    String::from_utf8(data[offset..offset + end].to_vec())
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 struct Stream<T: Seek + Read> {

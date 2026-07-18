@@ -223,7 +223,10 @@ impl Exb {
         }
         for (i, signature) in signatures.iter().enumerate() {
             w.seek(signature_slots + i * 4);
-            w.write_u32(*strings.get(signature).unwrap());
+            let offset = strings.get(signature).ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "missing EXB signature string")
+            })?;
+            w.write_u32(*offset);
         }
         w.seek(8);
         w.write_u32(max_static);

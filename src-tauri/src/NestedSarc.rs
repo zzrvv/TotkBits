@@ -149,7 +149,13 @@ impl NestedArchive {
             } else {
                 format!("{}{}", to.trim_end_matches('/'), &old[from.len()..])
             };
-            replacements.push((new, self.get(old).unwrap().to_vec()));
+            let bytes = self.get(old).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    format!("missing archive entry {old}"),
+                )
+            })?;
+            replacements.push((new, bytes.to_vec()));
         }
         self.remove_prefix(from)?;
         for (new, bytes) in replacements {

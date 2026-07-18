@@ -145,11 +145,10 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
             if let Ok(byml_file) = BymlFile::from_binary(file_data, zstd.clone(), path.clone()) {
                 // let text = Byml::to_text(&byml_file.pio);
                 let text = byml_file.to_string();
+                internal_file.endian = byml_file.endian;
+                internal_file.file_type = byml_file.file_data.file_type;
                 internal_file.byml = Some(byml_file);
-                let byml_ref = internal_file.byml.as_ref().unwrap(); // Safe due to the line above
-                internal_file.endian = byml_ref.endian.clone();
                 internal_file.path = Pathlib::new(path);
-                internal_file.file_type = byml_ref.file_data.file_type.clone(); // Set file type
                 return Some((internal_file, text));
             }
         }

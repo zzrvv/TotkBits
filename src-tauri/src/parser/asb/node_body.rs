@@ -522,7 +522,10 @@ fn merge(m: &mut Mapping, c: NodeConnections) -> io::Result<()> {
     Ok(())
 }
 fn put<T: serde::Serialize>(m: &mut Mapping, k: &str, v: T) {
-    m.insert(Value::String(k.into()), serde_yaml::to_value(v).unwrap());
+    m.insert(
+        Value::String(k.into()),
+        serde_yaml::to_value(v).unwrap_or(Value::Null),
+    );
 }
 fn read_tags(
     r: &mut BinaryReader<'_>,

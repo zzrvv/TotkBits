@@ -726,14 +726,15 @@ impl<'a> AsbWriter<'a> {
                     }
                 });
                 w.write_u8(e.allow_multiple_matches as u8);
-                let gi = e
-                    .command_group
-                    .as_ref()
-                    .map(|g| {
-                        push_unique(&mut groups, g.clone());
-                        groups.iter().position(|x| x == g).unwrap() as u16 + 1
-                    })
-                    .unwrap_or(0);
+                let gi = if let Some(g) = &e.command_group {
+                    push_unique(&mut groups, g.clone());
+                    groups.iter().position(|x| x == g).ok_or_else(|| {
+                        io::Error::other("transition command group was not retained")
+                    })? as u16
+                        + 1
+                } else {
+                    0
+                };
                 w.write_u16(gi);
                 w.write_u32(self.strings.offset(&e.parameter));
                 write_parameter(w, &mut self.strings, &e.value)?;
@@ -782,8 +783,11 @@ impl<'a> AsbWriter<'a> {
                     let mut v = self.strings.offset(&e.name);
                     if let Some(f) = &e.file_reference {
                         push_unique(&mut refs, f.filename.clone());
-                        v |= 0x8000_0000
-                            | ((refs.iter().position(|x| x == &f.filename).unwrap() as u32) << 24);
+                        let reference_index =
+                            refs.iter().position(|x| x == &f.filename).ok_or_else(|| {
+                                io::Error::other("blackboard reference was not retained")
+                            })?;
+                        v |= 0x8000_0000 | ((reference_index as u32) << 24);
                     }
                     w.write_u32(v);
                 }

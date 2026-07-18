@@ -329,7 +329,9 @@ fn deg_to_rad(deg: f64) -> f64 {
 
 #[allow(dead_code)]
 fn lower_float_precision(input: &str) -> String {
-    let re = Regex::new(r"\[([^\]]+)\]").unwrap();
+    let Ok(re) = Regex::new(r"\[([^\]]+)\]") else {
+        return input.to_string();
+    };
     let text = re
         .replace_all(input, |caps: &regex::Captures| {
             let inner = &caps[1];
@@ -359,7 +361,9 @@ fn lower_float_precision(input: &str) -> String {
         })
         .into_owned();
 
-    let re = Regex::new(r"\{([^}]+)\}").unwrap();
+    let Ok(re) = Regex::new(r"\{([^}]+)\}") else {
+        return text;
+    };
     re.replace_all(&text, |caps: &regex::Captures| {
         let inner = &caps[1];
         // Process each key-value pair within the braces
@@ -397,7 +401,9 @@ fn lower_float_precision(input: &str) -> String {
 
 /// Finds and replaces `Rotate: [...]` with radian values converted to degrees
 fn process_Rotate_in_banc(input: &str, deg_to_rad: bool) -> String {
-    let re = Regex::new(r"Rotate:\s*\[([^\]]+)\]").unwrap();
+    let Ok(re) = Regex::new(r"Rotate:\s*\[([^\]]+)\]") else {
+        return input.to_string();
+    };
     re.replace_all(input, |caps: &regex::Captures| {
         let array: Vec<f64> = if deg_to_rad {
             caps[1]
@@ -432,7 +438,9 @@ fn process_Rotate_in_banc(input: &str, deg_to_rad: bool) -> String {
 
 /// Finds and replaces `Rotate: [...]` with degree values converted to radians
 pub fn replace_rotate_deg_to_rad(input: &str) -> String {
-    let re = Regex::new(r"Rotate:\s*\[([^\]]+)\]").unwrap();
+    let Ok(re) = Regex::new(r"Rotate:\s*\[([^\]]+)\]") else {
+        return input.to_string();
+    };
     re.replace_all(input, |caps: &regex::Captures| {
         let array: Vec<f64> = caps[1]
             .split(',')
