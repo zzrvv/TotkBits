@@ -24,7 +24,7 @@
   },
   "productName": "TotkBits",
   "mainBinaryName": "TotkBits",
-  "version": "0.0.9",
+  "version": "1.0.1",
   "identifier": "com.solidlink.totkbits",
   "plugins": {},
   "app": {
@@ -33,7 +33,7 @@
     },
     "windows": [
       {
-        "title": "TotkBits v0.0.9",
+        "title": "TotkBits v1.0.1",
         "width": 800,
         "height": 600,
         "dragDropEnabled": true,

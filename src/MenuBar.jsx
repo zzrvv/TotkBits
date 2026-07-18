@@ -1,13 +1,12 @@
-import { invoke } from './DocumentState';
-import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import "./App.css";
-import { addFilesFromDirRecursivelyToRoot, extractRootFolderClick, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, openFolderContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
-import { ImageButton } from "./Buttons";
-import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
-import { useEditorContext } from './StateManager';
-import CommandsHelp from './CommandsHelp';
-import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
 import { open } from '@tauri-apps/plugin-shell';
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import "./App.css";
+import { addFilesFromDirRecursivelyToRoot, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, extractRootFolderClick, fetchAndSetEditorContent, openFolderContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
+import { ImageButton } from "./Buttons";
+import CommandsHelp from './CommandsHelp';
+import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
+import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
+import { useEditorContext } from './StateManager';
 
 function MenuBarDisplay({ updateButton = null }) {
   const { documents, activeDocumentId } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
@@ -217,7 +216,7 @@ function MenuBarDisplay({ updateButton = null }) {
     console.log("Edit options clicked");
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
-    
+
     // Settings owns its own modal state; keep the add/rename dialog closed.
     setIsModalOpen(false);
     setIsOptionsOpen(!isOptionsOpen);
@@ -307,49 +306,29 @@ function MenuBarDisplay({ updateButton = null }) {
     <div>
       <div className="menu-bar" >
         <div className="menu-items">
-        <div className="menu-item" onClick={() => toggleDropdown('file')} ref={el => dropdownRefs.current.file = el}>
-          File
-          <div className="dropdown-content" style={{ display: showDropdown.file ? 'block' : 'none' }}>
-            {fileMenuItems.map((item, id) => (
-              <li
-                key={id}
-                className="menu-item"
-                onClick={item.onClick}
-                style={menuItemStyle}
-              >
-                <div style={menuDivStyle}>
-                  <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
-                  {item.label}
-                </div>
-                <span style={menuSpanStyle}>{item.shortcut}</span>
-              </li>
-            ))}
+          <div className="menu-item" onClick={() => toggleDropdown('file')} ref={el => dropdownRefs.current.file = el}>
+            File
+            <div className="dropdown-content" style={{ display: showDropdown.file ? 'block' : 'none' }}>
+              {fileMenuItems.map((item, id) => (
+                <li
+                  key={id}
+                  className="menu-item"
+                  onClick={item.onClick}
+                  style={menuItemStyle}
+                >
+                  <div style={menuDivStyle}>
+                    <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
+                    {item.label}
+                  </div>
+                  <span style={menuSpanStyle}>{item.shortcut}</span>
+                </li>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="menu-item" onClick={() => toggleDropdown('compare')} ref={el => dropdownRefs.current.compare = el}>
-          Compare
-          <div className="dropdown-content" style={{ display: showDropdown.compare ? 'block' : 'none' }}>
-            {compareMenuItems.map((item, id) => (
-              item.condition ? (<li
-                key={id}
-                className="menu-item"
-                onClick={item.onClick}
-                style={menuItemStyle}
-              >
-                <div style={menuDivStyle}>
-                  <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
-                  {item.label}
-                </div>
-                <span style={menuSpanStyle}>{item.shortcut}</span>
-              </li>
-              ) : null))}
-          </div>
-        </div>
-        {activeTab === "SARC" && isToolsMenuVisible && (
-          <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
-            Tools
-            <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
-              {toolsMenuItems.map((item, id) => (
+          <div className="menu-item" onClick={() => toggleDropdown('compare')} ref={el => dropdownRefs.current.compare = el}>
+            Compare
+            <div className="dropdown-content" style={{ display: showDropdown.compare ? 'block' : 'none' }}>
+              {compareMenuItems.map((item, id) => (
                 item.condition ? (<li
                   key={id}
                   className="menu-item"
@@ -365,19 +344,39 @@ function MenuBarDisplay({ updateButton = null }) {
                 ) : null))}
             </div>
           </div>
-        )}
-        <div className="menu-item" onClick={() => toggleDropdown('about')} ref={el => dropdownRefs.current.about = el}>
-          About
-          <div className="dropdown-content" style={{ display: showDropdown.about ? 'block' : 'none' }}>
-            <li className="menu-item" style={menuItemStyle} onClick={(event) => {
-              event.stopPropagation();
-              closeMenu();
-              setIsCommandsOpen(true);
-            }}>
-              <div style={menuDivStyle}><img src={blankIcon} alt="Commands" style={menuItemImgStyle} />Commands</div>
-            </li>
+          {activeTab === "SARC" && isToolsMenuVisible && (
+            <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
+              Tools
+              <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>
+                {toolsMenuItems.map((item, id) => (
+                  item.condition ? (<li
+                    key={id}
+                    className="menu-item"
+                    onClick={item.onClick}
+                    style={menuItemStyle}
+                  >
+                    <div style={menuDivStyle}>
+                      <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
+                      {item.label}
+                    </div>
+                    <span style={menuSpanStyle}>{item.shortcut}</span>
+                  </li>
+                  ) : null))}
+              </div>
+            </div>
+          )}
+          <div className="menu-item" onClick={() => toggleDropdown('about')} ref={el => dropdownRefs.current.about = el}>
+            About
+            <div className="dropdown-content" style={{ display: showDropdown.about ? 'block' : 'none' }}>
+              <li className="menu-item" style={menuItemStyle} onClick={(event) => {
+                event.stopPropagation();
+                closeMenu();
+                setIsCommandsOpen(true);
+              }}>
+                <div style={menuDivStyle}><img src={blankIcon} alt="Commands" style={menuItemImgStyle} />Commands</div>
+              </li>
+            </div>
           </div>
-        </div>
         </div>
         <div className="menu-right-content">
           <div className="menu-file-metadata">{fileMetadata}</div>
@@ -396,6 +395,7 @@ function MenuBarDisplayWithUpdater() {
     updateState, setUpdateState, setStatusText, settings
   } = useEditorContext();
   const handleUpdateClick = async (event) => {
+    if (!updateState.isUpdateNeeded) { return null; }
     try {
       await open('https://github.com/SolidLink95/TotkBits/releases/latest');
     } catch (error) {
@@ -414,28 +414,28 @@ function MenuBarDisplayWithUpdater() {
       // fontWeight: 'bold',
     }}>
       <MenuBarDisplay updateButton={SHOW_UPDATE_BUTTON ? <ImageButton
-          key={isUp ? 'UpdaterButton' : 'NoUpdaterButton'}
-          src={isUp ? 'update.png' : 'noupdate.png'}
-          alt={
-            isUp
-              ? `Update to ${updateState.latestVersion}`
-              : 'Totkbits is up to date'
-          }
-          onClick={handleUpdateClick}
-          title={
-            isUp
-              ? `Update to ${updateState.latestVersion}`
-              : 'Totkbits is up to date'
-          }
-          style={{
-            padding: '5px',
-            backgroundColor: '#232529',
-            width: iconSize,
-            height: iconSize,
-          }}
-        /> : null} />
+        key={isUp ? 'UpdaterButton' : 'NoUpdaterButton'}
+        src={isUp ? 'update.png' : 'noupdate.png'}
+        alt={
+          isUp
+            ? `Update to ${updateState.latestVersion}`
+            : 'Totkbits is up to date'
+        }
+        onClick={handleUpdateClick}
+        title={
+          isUp
+            ? `Update to ${updateState.latestVersion}`
+            : 'Totkbits is up to date'
+        }
+        style={{
+          padding: '5px',
+          backgroundColor: '#232529',
+          width: iconSize,
+          height: iconSize,
+        }}
+      /> : null} />
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-      {settings.zstd_msg && <div style={{padding: '2px', color: 'yellow'}}>{settings.zstd_msg}</div>}
+        {settings.zstd_msg && <div style={{ padding: '2px', color: 'yellow' }}>{settings.zstd_msg}</div>}
       </div>
     </div>
   );
