@@ -1,6 +1,7 @@
 use super::{
     flowchart::Flowchart,
     radix_tree::{read_keys, read_offset_array, read_string},
+    timeline::Timeline,
 };
 use crate::parser::binary::BinaryReader;
 use serde::{Deserialize, Serialize};
@@ -15,9 +16,7 @@ pub struct BfevDocument {
     pub file_name: String,
     pub version: String,
     pub flowcharts: BTreeMap<String, Flowchart>,
-    // Timeline support is represented explicitly rather than silently dropping
-    // data. Parsing currently rejects files containing one.
-    pub timelines: BTreeMap<String, serde_json::Value>,
+    pub timelines: BTreeMap<String, Timeline>,
 }
 
 impl BfevDocument {
@@ -48,15 +47,8 @@ impl BfevDocument {
         reader.skip(4)?;
         let flowchart_offsets_pointer = reader.read_u64()?;
         let flowchart_dictionary_pointer = reader.read_u64()?;
-        let _timeline_offsets_pointer = reader.read_u64()?;
-        let _timeline_dictionary_pointer = reader.read_u64()?;
-
-        if timeline_count != 0 {
-            return Err(io::Error::new(
-                ErrorKind::Unsupported,
-                "BFEV timeline blocks are not supported yet",
-            ));
-        }
+        let timeline_offsets_pointer = reader.read_u64()?;
+        let timeline_dictionary_pointer = reader.read_u64()?;
         let names = read_keys(data, flowchart_dictionary_pointer)?;
         let offsets = read_offset_array(data, flowchart_offsets_pointer, flowchart_count)?;
         if names.len() != flowchart_count || offsets.len() != flowchart_count {
@@ -69,11 +61,23 @@ impl BfevDocument {
         for (name, offset) in names.into_iter().zip(offsets) {
             flowcharts.insert(name, Flowchart::read(data, offset)?);
         }
+        let timeline_names = read_keys(data, timeline_dictionary_pointer)?;
+        let timeline_offsets = read_offset_array(data, timeline_offsets_pointer, timeline_count)?;
+        if timeline_names.len() != timeline_count || timeline_offsets.len() != timeline_count {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "timeline table length mismatch",
+            ));
+        }
+        let mut timelines = BTreeMap::new();
+        for (name, offset) in timeline_names.into_iter().zip(timeline_offsets) {
+            timelines.insert(name, Timeline::read(data, offset)?);
+        }
         Ok(Self {
             file_name,
             version,
             flowcharts,
-            timelines: BTreeMap::new(),
+            timelines,
         })
     }
 

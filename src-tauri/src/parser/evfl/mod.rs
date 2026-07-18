@@ -5,5 +5,17 @@ mod entry_point;
 mod event;
 mod flowchart;
 mod radix_tree;
+mod timeline;
+mod timeline_clip;
+mod timeline_cut;
+mod timeline_oneshot;
+mod timeline_subtimeline;
+mod timeline_trigger;
 
 pub use document::BfevDocument;
+pub use timeline::Timeline;
+pub use timeline_clip::Clip;
+pub use timeline_cut::Cut;
+pub use timeline_oneshot::Oneshot;
+pub use timeline_subtimeline::SubTimeline;
+pub use timeline_trigger::Trigger;

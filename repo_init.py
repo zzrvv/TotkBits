@@ -92,15 +92,6 @@ def repo_init():
     if bin_path_p.exists() and bin_path_p.is_dir():
         shutil.rmtree(bin_path)
     bin_path_p.mkdir(parents=True, exist_ok=True)
-    # dotnet
-    # build_dotnet(cwd_path)
-    if not (CWD / "ext_projects/oead").exists():
-        p = subprocess.run(["git", "submodule", "init"])
-        p = subprocess.run(["git", "submodule", "update", "--init", "--recursive"])
-        if p.returncode != 0:
-            raise Exception("[-] Failed to update git submodule")
-    copy_files(bin_path)
-    tmp_path = CWD / "tmp"
 
     print(f"[+] Copying compressed json files")
 
