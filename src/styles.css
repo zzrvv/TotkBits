@@ -3,16 +3,18 @@
   --background-color: #1E1E1E;
   --text-color: #fff;
   
-  --main-top-offset: calc(var(--menu-bar-h) + var(--document-tabs-h) + var(--tab-switcher-h) + var(--buttons-h));
+  --main-top-offset: calc(var(--menu-bar-h) + var(--document-tabs-h) + var(--buttons-h));
   font-family:  Consolas,Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 24px;
   font-weight: 400;
   --menu-bar-padding: 10px;
   --menu-bar-h: 28px;
-  --document-tabs-h: 41px;
+  --document-tabs-h: 28px;
   --tab-switcher-h: 45px;
-  --buttons-h: 45px;
+  --buttons-h: 33px;
+  --status-bar-h: 35px;
+  --bottom-search-h: 53px;
 
   -ms-overflow-style: none;
   /* Internet Explorer and Edge */
@@ -197,7 +199,9 @@ h1 {
 .buttons-container {
   position: relative;
   z-index: 20;
-  padding-left: 5px;
+  height: var(--buttons-h);
+  box-sizing: border-box;
+  padding-left: 0px;
   /* margin-left: -10px;
   margin-right: -8px;
   padding: 5px 10px 10px 10px;  */
@@ -210,7 +214,7 @@ h1 {
   background-color: #232529;
 
 
-  height: var(--buttons-h);
+  /* height: var(--buttons-h); */
   /* Fixed height for example */
   flex-shrink: 0;
   /* Prevent these elements from shrinking */
@@ -229,6 +233,25 @@ h1 {
   overflow: hidden;
   /* or 'hidden' if you do not want a scrollbar */
 
+}
+
+.buttons-container .button {
+  box-sizing: border-box;
+}
+
+.toolbar-close-button {
+  box-sizing: border-box;
+  margin-left: auto;
+  height: var(--buttons-h);
+  padding: 0 10px;
+  color: #eeeeee;
+  background: #303238;
+  border-color: #454851;
+  cursor: pointer;
+}
+
+.toolbar-close-button:hover {
+  background: #41444b;
 }
 
 
@@ -335,7 +358,8 @@ button {
   padding: 5px;
   text-align: left;
   /* z-index: 1000; */
-  height: 25px;
+  height: var(--status-bar-h);
+  box-sizing: border-box;
   /* Fixed height for example */
   flex-shrink: 0;
   /* Prevent these elements from shrinking */
@@ -358,17 +382,48 @@ button {
   flex-shrink: 0;
   /* Prevent these elements from shrinking */
   text-align: left;
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  position: relative;
+  box-sizing: border-box;
   /* position: absolute;
   left: 0;
   top: 0; */
   width: 100%;
   background-color: #333;
   color: white;
-  justify-content: left;
+  justify-content: flex-start;
   /* padding: var(--menu-bar-padding) 0; */
   /* z-index: 1000; Ensures menu bar is above other content */
   /* height: var(--menu-bar-h); Example height */
+}
+
+.menu-items {
+  display: flex;
+  min-width: 0;
+}
+
+.menu-right-content {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 30;
+  height: var(--menu-bar-h);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  background-color: #333;
+}
+
+.menu-file-metadata {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 2px 10px;
+  color: #ddd;
+  white-space: nowrap;
+  text-align: right;
 }
 
 .menu-item {

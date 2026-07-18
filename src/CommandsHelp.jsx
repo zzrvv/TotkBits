@@ -7,7 +7,6 @@ const operations = [
     ['dir_to_archive', '<zip|7z|rar|sarc> <input-directory> <output-archive>', 'Build an archive from a directory.'],
     ['decompress', '<input-file> <output-file>', 'Decompress ZSTD data by trying every available dictionary.'],
     ['compress', '<zs|pack|empty|bcett> <input-file> <output-file>', 'Compress ZSTD data with the specified dictionary.'],
-    ['ainb_roundtrip', '<input-directory> <report-file>', 'Parse and rebuild every AINB file with Rust, recording SHA-256 hashes.'],
 ];
 
 export default function CommandsHelp({ isOpen, onClose }) {
@@ -35,8 +34,7 @@ Totkbits.exe -c text_to_bin byml input.yml output.byml
 Totkbits.exe --cli extract_archive 7z input.7z output-folder
 Totkbits.exe -c dir_to_archive sarc input-folder output.pack
 Totkbits.exe --cli decompress input.pack.zs output.pack
-Totkbits.exe -c compress pack input.pack output.pack.zs
-Totkbits.exe --cli ainb_roundtrip input-folder ainb-report.tsv`}</pre>
+Totkbits.exe -c compress pack input.pack output.pack.zs`}</pre>
             <p><code>A successful command exits without opening the GUI. If validation or conversion fails, TotkBits reports the error and opens normally.</code></p>
             <div className="options-modal-footer"><button className="generic_button" onClick={onClose}>Close</button></div>
         </div>

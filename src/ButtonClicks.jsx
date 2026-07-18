@@ -1,6 +1,7 @@
 import { invoke } from './DocumentState';
 import { set } from 'lodash';
 import { act } from 'react';
+import { flushSync } from 'react-dom';
 
 
 export async function addEmptyByml(fullPath,setStatusText, setpaths) {
@@ -195,36 +196,39 @@ export async function mutateNestedArchive(chain, path, action, setStatusText, se
   if (content) { setStatusText(content.status_text); if (content.tab !== 'ERROR') setpaths(content.sarc_paths); }
   return content;
 }
-export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
+export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent, silent = false) {
   try {
     setStatusText("Opening file...");
-    const content = await invoke('open_file_from_path', { path: argv1 });
+    const content = await invoke('open_file_from_path', { path: argv1, suppressErrorDialog: silent });
     if (content === null) {
       console.log("No content returned from process_argv");
-      setStatusText("Error: unable to open file: " + argv1);
-      return;
+      if (!silent) setStatusText("Error: unable to open file: " + argv1);
+      return false;
     }
-    setStatusText(content.status_text);
-    if (content.tab === 'SARC') {
-      setActiveTab(content.tab);
-      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label.replace(/\/\//g, '/') }));
-      setpaths(content.sarc_paths);
-    } else if (content.tab === 'YAML') {
-      setActiveTab(content.tab);
-      updateEditorContent(content.text, content.lang);
-      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
-    } else if (content.tab === 'RSTB') {
-      setActiveTab(content.tab);
-      setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label.replace(/\/\//g, '/') }));
-
-    } else if (content.tab === 'ERROR') {
-      console.log("Error opening file, no tab set");
-    }
+    flushSync(() => {
+      setStatusText(content.status_text);
+      if (content.tab === 'SARC') {
+        setActiveTab(content.tab);
+        setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label.replace(/\/\//g, '/') }));
+        setpaths(content.sarc_paths);
+      } else if (content.tab === 'YAML') {
+        setActiveTab(content.tab);
+        updateEditorContent(content.text, content.lang);
+        setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
+      } else if (content.tab === 'RSTB') {
+        setActiveTab(content.tab);
+        setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label.replace(/\/\//g, '/') }));
+      } else if (content.tab === 'ERROR') {
+        console.log("Error opening file, no tab set");
+      }
+    });
 
   } catch (error) {
     console.error('Failed to process argv[1]:', error);
-    setStatusText("Error: failed to open file: " + argv1);
+      if (!silent) setStatusText("Error: failed to open file: " + argv1);
+      return false;
   }
+  return true;
 }
 export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
@@ -421,6 +425,7 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
     // console.log(content);
     if (content === null) {
       console.log("No content returned from save_file_struct");
+      setStatusText("Ready");
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
@@ -452,6 +457,7 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
     const content = await invoke('save_as_click', { saveData: save_data });
     if (content === null) {
       console.log("No content returned from save_as_click");
+      setStatusText("Ready");
       return;
     }
     if (content.sarc_paths.paths.length > 0) {

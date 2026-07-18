@@ -115,6 +115,7 @@ impl<'a> TotkBitsApp<'a> {
             None => format!("Opened {path} from archive"),
         };
         data.get_file_label(internal.file_type, internal.endian);
+        data.set_file_metadata(internal.file_type, internal.zstd_dictionary);
         self.opened_file = OpenedFile::default();
         self.internal_file = Some(internal);
         self.internal_parent = Some(InternalParentLink {
@@ -1486,11 +1487,20 @@ impl<'a> TotkBitsApp<'a> {
 
     pub fn open_from_path(&mut self, file_name: String) -> Option<SendData> {
         let mut data = SendData::default();
+        let dictionary = if file_name.to_ascii_lowercase().ends_with(".zs") {
+            fs::read(&file_name)
+                .ok()
+                .and_then(|bytes| self.zstd.try_decompress_with_dictionary(&bytes).ok())
+                .map(|(_, dictionary)| dictionary)
+        } else {
+            None
+        };
         //let file_name = file.to_string_lossy().to_string().replace("\\", "/");
         if check_if_filepath_valid(&file_name) {
-            if let Some((pack, data)) = PackComparer::open_sarc(&file_name, self.zstd.clone()) {
+            if let Some((pack, mut data)) = PackComparer::open_sarc(&file_name, self.zstd.clone()) {
                 self.pack = Some(pack);
                 self.internal_file = None;
+                data.set_file_metadata(TotkFileType::Sarc, dictionary);
                 return Some(data);
             }
             match ArchiveDocument::open(Path::new(&file_name)) {
@@ -1499,7 +1509,9 @@ impl<'a> TotkBitsApp<'a> {
                     self.internal_file = None;
                     self.opened_file = OpenedFile::default();
                     self.archive = Some(archive);
-                    return Some(self.archive_send_data(format!("Opened archive {file_name}")));
+                    let mut data = self.archive_send_data(format!("Opened archive {file_name}"));
+                    data.set_file_metadata(TotkFileType::Sarc, dictionary);
+                    return Some(data);
                 }
                 Ok(None) => {}
                 Err(error) => {
@@ -1509,11 +1521,12 @@ impl<'a> TotkBitsApp<'a> {
                 }
             }
             let res = file_from_disk_to_senddata(&file_name, self.zstd.clone());
-            if let Some(res) = res {
+            if let Some((opened, mut data)) = res {
                 self.archive = None;
-                self.opened_file = res.0;
+                data.set_file_metadata(opened.file_type, dictionary);
+                self.opened_file = opened;
                 self.internal_file = None;
-                return Some(res.1);
+                return Some(data);
             }
             // let res = open_tag(file_name.clone(), self.zstd.clone())
             //     .or_else(|| open_esetb(file_name.clone(), self.zstd.clone()))
@@ -1676,18 +1689,21 @@ impl<'a> TotkBitsApp<'a> {
                     }
                 }
                 // println!("{} {}", text1.len(), text2.len());
-
-                if text2.is_empty() && (!text1.is_empty() || is_from_sarc) {
-                    text2 = self
-                        .zstd
-                        .clone()
-                        .find_vanila_internal_file_data_in_romfs(&path, self.zstd.clone())
-                        .unwrap_or_else(|err| {
-                            data.status_text = format!("ERROR: {:?}", &err);
-                            String::new()
-                        });
-                }
             }
+        }
+
+        // Internal editor child documents deliberately do not own their parent's
+        // pack. Resolve the vanilla entry globally when it was not available from
+        // a directly associated vanilla archive.
+        if text2.is_empty() {
+            text2 = self
+                .zstd
+                .clone()
+                .find_vanila_internal_file_data_in_romfs(&path, self.zstd.clone())
+                .unwrap_or_else(|err| {
+                    data.status_text = format!("ERROR: {:?}", &err);
+                    String::new()
+                });
         }
 
         // println!("{} {}", text1.len(), text2.len());

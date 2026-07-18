@@ -1,4 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+const IS_ACTIVETAB_ENABLED = false;
 
 export const BackendEnum = {
   SARC: 'SARC',
@@ -9,6 +11,9 @@ export const BackendEnum = {
 };
 
 function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {
+  if (!IS_ACTIVETAB_ENABLED) {
+    return null;
+  }
   const labelTextRef = useRef(null);
   const activetabRef = useRef(null);
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);

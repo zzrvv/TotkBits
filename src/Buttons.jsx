@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { removeInternalFileClick, replaceInternalFileClick, clearSearchInSarcClick, searchTextInSarcClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
+import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
 import { useEditorContext } from './StateManager';
 import { set } from 'lodash';
 
@@ -36,6 +37,8 @@ function ImageButton({ src, onClick, alt, title, style }) {
 }
 
 const ButtonsDisplay = () => {
+  const { documents } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
+  const showCloseButton = documents.length > 1 || (documents.length === 1 && !documents[0].clean);
   const {
     searchInSarcQuery, setSearchInSarcQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
@@ -89,6 +92,7 @@ const ButtonsDisplay = () => {
     setIsModalOpen(true);
   }
   const handleSearchClick = () => {
+    if (!Array.isArray(paths?.paths) || paths.paths.length === 0) return;
     setIsSearchInSarcOpened(!isSearchInSarcOpened);
   };
   const handleReplaceSarcNodeClick = () => {
@@ -286,7 +290,7 @@ const ButtonsDisplay = () => {
         handleSaveAsClick();
       }
 
-      switch (event.key) {
+      switch (event.key.toLowerCase()) {
         case 'o': // Ctrl+O
           event.preventDefault(); // Prevent the browser's default action
           handleOpenFileClick();
@@ -307,6 +311,10 @@ const ButtonsDisplay = () => {
           if (activeTabRef.current === 'SARC') {
             event.preventDefault();
           }
+          break;
+        case 'w': // Ctrl+W
+          event.preventDefault();
+          window.dispatchEvent(new CustomEvent('totkbits:close-active-document'));
           break;
         // case 'c': // Ctrl+C
         //   event.preventDefault();
@@ -360,6 +368,15 @@ const ButtonsDisplay = () => {
             title="Clear active search"
           >
             Clear search
+          </button>
+        )}
+        {showCloseButton && (
+          <button
+            className="toolbar-close-button"
+            onClick={() => window.dispatchEvent(new CustomEvent('totkbits:close-active-document'))}
+            title="Close current tab (Ctrl+W)"
+          >
+            Close
           </button>
         )}
       </div>

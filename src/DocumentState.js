@@ -13,11 +13,14 @@ const documentCommands = new Set([
     'mutate_nested_archive',
 ]);
 
-const createDocument = (title = 'Untitled') => ({ id: crypto.randomUUID(), title, fullPath: '', clean: true });
+const createDocument = (title = 'Untitled') => ({
+    id: crypto.randomUUID(), title, fullPath: '', fileMetadata: '', parentDocumentId: null, clean: true,
+});
 let documents = [createDocument()];
 let activeDocumentId = documents[0].id;
 let snapshot = { documents, activeDocumentId };
 const listeners = new Set();
+const comparisonSources = new Map();
 
 const emit = () => {
     snapshot = { documents, activeDocumentId };
@@ -54,13 +57,29 @@ const updateFullPath = (id, fullPath) => {
     emit();
 };
 
+const updateFileMetadata = (id, fileMetadata) => {
+    documents = documents.map((document) => document.id === id
+        ? { ...document, fileMetadata: fileMetadata || '' }
+        : document);
+    emit();
+};
+
 export const closeDocument = async (id) => {
     await tauriInvoke('close_document', { documentId: id });
     const wasActive = id === activeDocumentId;
     documents = documents.filter((document) => document.id !== id);
+    comparisonSources.delete(id);
     if (documents.length === 0) documents = [createDocument()];
     if (wasActive) activateDocument(documents[documents.length - 1].id);
     emit();
+};
+
+export const discardActiveComparisonDocument = async () => {
+    const comparisonDocumentId = activeDocumentId;
+    const sourceDocumentId = comparisonSources.get(comparisonDocumentId);
+    if (!sourceDocumentId) return;
+    await closeDocument(comparisonDocumentId);
+    activateDocument(sourceDocumentId);
 };
 
 const allocateOpenDocument = (command, args) => {
@@ -74,11 +93,15 @@ const allocateOpenDocument = (command, args) => {
     return id;
 };
 
-const allocateChildDocument = (args) => {
+const allocateChildDocument = (args, parentDocumentId) => {
     const rawPath = args?.innerPath || args?.path || 'Archive entry';
     const title = rawPath.replace(/\\/g, '/').split('/').pop();
     const id = addCleanDocument();
     updateTitle(id, title);
+    documents = documents.map((document) => document.id === id
+        ? { ...document, parentDocumentId }
+        : document);
+    emit();
     return id;
 };
 
@@ -86,9 +109,26 @@ export const invoke = async (command, args = {}) => {
     if (!documentCommands.has(command)) return tauriInvoke(command, args);
     const isOpen = command === 'open_file_struct' || command === 'open_file_from_path' || command === 'open_folder_struct';
     const isChildOpen = command === 'edit_internal_file' || command === 'edit_nested_sarc_file';
+    const isComparison = command === 'compare_files'
+        || command === 'compare_internal_file_with_vanila'
+        || (command === 'mutate_nested_archive' && args?.action === 'compare');
+    const sourceDocumentId = activeDocumentId;
     const parentDocumentId = isChildOpen ? activeDocumentId : null;
-    const documentId = isOpen ? allocateOpenDocument(command, args)
-        : isChildOpen ? allocateChildDocument(args) : activeDocumentId;
+    const comparisonDocumentId = isComparison ? addCleanDocument() : null;
+    if (comparisonDocumentId) {
+        comparisonSources.set(comparisonDocumentId, sourceDocumentId);
+        updateTitle(comparisonDocumentId, 'Comparison');
+    }
+    const documentId = isComparison ? sourceDocumentId
+        : isOpen ? allocateOpenDocument(command, args)
+            : isChildOpen ? allocateChildDocument(args, parentDocumentId) : activeDocumentId;
+
+    // Fast parsers (notably plain text and small YAML-backed formats) can return
+    // before React has attached Monaco to the newly allocated document. Wait for
+    // that activation commit so the open handler writes into the correct model.
+    if (isOpen || isChildOpen || isComparison) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
     try {
         const result = await tauriInvoke(command, {
             ...args, documentId,
@@ -103,11 +143,25 @@ export const invoke = async (command, args = {}) => {
             else {
                 updateTitle(documentId, result.path?.name || result.file_label?.split(' [')[0] || 'Document', true);
                 updateFullPath(documentId, result.path?.full_path || args?.innerPath || args?.path || '');
+                updateFileMetadata(documentId, result.file_metadata || '');
                 // Existing open handlers update the visible pane after invoke resolves.
                 // Re-select the originating document so those updates cannot overwrite
                 // a different document if the user switched while opening.
                 activateDocument(documentId);
             }
+        }
+        if (isComparison) {
+            const failed = !result || result.tab === 'ERROR'
+                || result.status_text?.toLowerCase().startsWith('error:');
+            if (failed) {
+                await closeDocument(comparisonDocumentId);
+                activateDocument(sourceDocumentId);
+                return result;
+            }
+            const firstLabel = result.compare_data?.file1?.label || 'Comparison';
+            const title = `Compare: ${firstLabel.replace(/\\/g, '/').split('/').pop()}`;
+            updateTitle(comparisonDocumentId, title, true);
+            activateDocument(comparisonDocumentId);
         }
         if (command === 'close_all_opened_files') {
             const oldDocuments = documents;
@@ -119,6 +173,10 @@ export const invoke = async (command, args = {}) => {
         return result;
     } catch (error) {
         if (isOpen || isChildOpen) await closeDocument(documentId);
+        if (isComparison && comparisonDocumentId) {
+            await closeDocument(comparisonDocumentId);
+            activateDocument(sourceDocumentId);
+        }
         throw error;
     }
 };

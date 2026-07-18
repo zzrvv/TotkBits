@@ -1,5 +1,6 @@
-import React, { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import * as monaco from 'monaco-editor';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import {
     activateDocument, addCleanDocument, closeDocument, getDocumentsSnapshot,
     subscribeDocuments,
@@ -32,7 +33,47 @@ export default function DocumentTabs() {
     const context = useEditorContext();
     const contextRef = useRef(context);
     const previousDocumentIdRef = useRef(activeDocumentId);
+    const tabsRef = useRef(null);
+    const [tabsOverflow, setTabsOverflow] = useState(false);
+    const [contextMenu, setContextMenu] = useState(null);
     contextRef.current = context;
+
+    useEffect(() => {
+        if (!contextMenu) return undefined;
+        const dismiss = () => setContextMenu(null);
+        const dismissOnEscape = (event) => {
+            if (event.key === 'Escape') dismiss();
+        };
+        window.addEventListener('mousedown', dismiss);
+        window.addEventListener('resize', dismiss);
+        window.addEventListener('keydown', dismissOnEscape);
+        return () => {
+            window.removeEventListener('mousedown', dismiss);
+            window.removeEventListener('resize', dismiss);
+            window.removeEventListener('keydown', dismissOnEscape);
+        };
+    }, [contextMenu]);
+
+    useLayoutEffect(() => {
+        const tabs = tabsRef.current;
+        if (!tabs) return undefined;
+
+        const updateOverflow = () => {
+            const overflowing = tabs.scrollWidth > tabs.clientWidth + 1;
+            setTabsOverflow((current) => current === overflowing ? current : overflowing);
+            document.documentElement.style.setProperty('--document-tabs-h', overflowing ? '36px' : '28px');
+        };
+
+        updateOverflow();
+        const observer = new ResizeObserver(updateOverflow);
+        observer.observe(tabs);
+        window.addEventListener('resize', updateOverflow);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', updateOverflow);
+            document.documentElement.style.setProperty('--document-tabs-h', '28px');
+        };
+    }, [documents]);
 
     useLayoutEffect(() => {
         const latest = contextRef.current;
@@ -111,12 +152,52 @@ export default function DocumentTabs() {
         else cleanup();
     };
 
-    return <div className="document-tabs" role="tablist">
+    useEffect(() => {
+        const handleCloseActiveDocument = () => {
+            if (activeDocumentId) {
+                void handleClose({ stopPropagation: () => {} }, activeDocumentId);
+            }
+        };
+        window.addEventListener('totkbits:close-active-document', handleCloseActiveDocument);
+        return () => window.removeEventListener('totkbits:close-active-document', handleCloseActiveDocument);
+    }, [activeDocumentId]);
+
+    const handleSwitchToParent = (event) => {
+        event.stopPropagation();
+        const child = documents.find((document) => document.id === contextMenu?.documentId);
+        const parentIsOpen = child?.parentDocumentId
+            && documents.some((document) => document.id === child.parentDocumentId);
+        setContextMenu(null);
+        if (parentIsOpen) activateDocument(child.parentDocumentId);
+        else contextRef.current.setStatusText('ERROR: parent file was closed');
+    };
+
+    // if (documents.length == 1 && documents[0].title == "Untitled") {
+    if (documents.length == 0 || (documents.length == 1 && documents[0].clean)) {
+        // console.log(documents[0]);
+        return null;
+    }
+
+    return <><div
+        ref={tabsRef}
+        className={`document-tabs ${tabsOverflow ? 'is-overflowing' : ''}`}
+        role="tablist"
+    >
         {documents.map((document) => <button
             type="button" role="tab" aria-selected={document.id === activeDocumentId}
             title={document.fullPath || document.title}
             className={`document-tab ${document.id === activeDocumentId ? 'active' : ''}`}
             key={document.id} onClick={() => activateDocument(document.id)}
+            onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!document.parentDocumentId) {
+                    setContextMenu(null);
+                    return;
+                }
+                activateDocument(document.id);
+                setContextMenu({ documentId: document.id, x: event.clientX, y: event.clientY });
+            }}
             onMouseDown={(event) => {
                 if (event.button === 1) {
                     event.preventDefault();
@@ -128,5 +209,13 @@ export default function DocumentTabs() {
             <span className="document-tab-close" onClick={(event) => handleClose(event, document.id)}>×</span>
         </button>)}
         <button type="button" className="document-tab-add" title="New document" onClick={addCleanDocument}>+</button>
-    </div>;
+    </div>
+        {contextMenu && createPortal(<div
+            className="document-tab-context-menu"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onMouseDown={(event) => event.stopPropagation()}
+        >
+            <button type="button" onClick={handleSwitchToParent}>Switch to parent</button>
+        </div>, document.body)}
+    </>;
 }

@@ -386,6 +386,7 @@ pub fn open_file_from_path(
     app_handle: tauri::AppHandle,
     documentId: String,
     path: String,
+    suppressErrorDialog: bool,
 ) -> Option<SendData> {
     let result = with_document_mut!(
         app_handle,
@@ -394,7 +395,7 @@ pub fn open_file_from_path(
         app.open_from_path(path.replace("\\", "/"))
     );
     if let Some(data) = &result {
-        if data.tab == "ERROR" {
+        if data.tab == "ERROR" && !suppressErrorDialog {
             show_open_error(data);
         }
     }

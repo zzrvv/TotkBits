@@ -1,4 +1,4 @@
-import { invoke } from './DocumentState';
+import { discardActiveComparisonDocument, invoke } from './DocumentState';
 import React, { useEffect, useRef, useState } from 'react';
 import { useEditorContext } from './StateManager';
 
@@ -61,6 +61,7 @@ export async function compareInternalFileWithOVanila(internalPath, setStatusText
     const text1 = data.file1.text ?? '';
     const text2 = data.file2.text ?? '';
     if (text1 === text2) {
+      await discardActiveComparisonDocument();
       setStatusText('Files are identical! Skipping comparison.');
       return;
     }
@@ -120,6 +121,7 @@ export async function compareInternalFileWithOVanilaMonaco(setStatusText, setAct
     const data = content.compare_data;
     const text2 = data.file2.text ?? '';
     if (text1 === text2) {
+      await discardActiveComparisonDocument();
       setStatusText('Files are identical! Skipping comparison.');
       return;
     }
@@ -155,6 +157,7 @@ export async function compareInternalFileWithOVanilaMonaco(setStatusText, setAct
 export async function compareFilesByDecision(setStatusText, setActiveTab, setCompareData, editorRef, isFromDisk, setLabelTextDisplay) {
   try {
     const isFromMonaco = !isFromDisk;
+    const editorText = editorRef.current?.getValue() ?? '';
     // const decision = compareData.decision ?? 'FilesFromDisk';
     // const path = compareData.filepath1 ?  '' : intOrRegularPath;
     const content = await invoke('compare_files', {
@@ -173,6 +176,13 @@ export async function compareFilesByDecision(setStatusText, setActiveTab, setCom
     }
     const data = content.compare_data;
     const text1 = data.file1.text ?? '';
+    const resolvedText1 = text1.length > 0 ? text1 : editorText;
+    const text2 = data.file2.text ?? '';
+    if (resolvedText1 === text2) {
+      await discardActiveComparisonDocument();
+      setStatusText('Files are identical! Skipping comparison.');
+      return;
+    }
 
     const full_path1 = data.file1.path.full_path.replace(/\\/g, '/');
     const full_path2 = data.file2.path.full_path.replace(/\\/g, '/');
@@ -183,15 +193,13 @@ export async function compareFilesByDecision(setStatusText, setActiveTab, setCom
     const lang = content.lang ?? 'yaml';
     setCompareData((prevData) => ({
       ...prevData,
-      content2: data.file2.text,
+      content2: text2,
       filepath1: full_path1,
       filepath2: full_path2,
       isInternal: data.file1.is_internal,
       label1: label1,
       label2: label2,
-      content1: data.file1.text.length > 0
-        ? data.file1.text
-        : editorRef.current?.getValue(),
+      content1: resolvedText1,
 
       isTiedToMonaco: isFromMonaco,
       lang: lang

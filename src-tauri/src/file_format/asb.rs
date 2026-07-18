@@ -23,6 +23,11 @@ impl AsbFile {
         zstd: Arc<TotkZstd<'a>>,
     ) -> Option<(OpenedFile<'a>, SendData)> {
         let path = path.as_ref();
+        let asb_data = read_maybe_compressed(path, &zstd, b"ASB ").ok()?;
+        if !asb_data.starts_with(b"ASB ") {
+            return None;
+        }
+
         let suggested_name = path
             .file_name()
             .and_then(|name| name.to_str())
@@ -36,7 +41,14 @@ impl AsbFile {
             dialog = dialog.set_directory(parent);
         }
         let baev_path = dialog.pick_file();
-        let file = Self::from_paths(path, baev_path.as_deref(), zstd).ok()?;
+        let baev_data = baev_path
+            .as_deref()
+            .map(|path| read_maybe_compressed(path, &zstd, b"BFFH"))
+            .transpose()
+            .ok()?;
+        let file = Self::from_binary(&asb_data)
+            .and_then(|file| file.with_baev(baev_data.as_deref()))
+            .ok()?;
         let text = file.to_yaml().ok()?;
         let mut opened_file = OpenedFile::default();
         opened_file.path = Pathlib::new(path);

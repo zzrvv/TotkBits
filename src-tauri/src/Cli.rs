@@ -41,24 +41,18 @@ impl CliCommand {
             .and_then(|value| value.to_str())
             .unwrap_or_default()
             .to_ascii_lowercase();
-        let expected_arguments = if matches!(
+        let is_public_operation = matches!(
             operation.as_str(),
-            "decompress"
-                | "ainb_roundtrip"
-                | "asb_native_yaml"
-                | "baev_native_yaml"
-                | "asb_yaml_roundtrip"
-                | "asb_yaml_to_binary"
-                | "asb_native_events"
-                | "asb_native_connections"
-                | "asb_validate"
-        ) {
-            5
-        } else {
-            6
-        };
-        if arguments.len() != expected_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>\n  Totkbits.exe --cli ainb_roundtrip <input-directory> <report-file>\n  Totkbits.exe --cli asb_validate <asb-directory> <report-file>\n  Totkbits.exe --cli asb_yaml_roundtrip <input-yaml> <output-yaml>\n  Totkbits.exe --cli asb_yaml_to_binary <input-yaml> <output-asb>");
+            "bin_to_text"
+                | "text_to_bin"
+                | "extract_archive"
+                | "dir_to_archive"
+                | "decompress"
+                | "compress"
+        );
+        let expected_arguments = if operation == "decompress" { 5 } else { 6 };
+        if !is_public_operation || arguments.len() != expected_arguments {
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -75,18 +69,7 @@ impl CliCommand {
                 cwd.join(path)
             }
         };
-        if matches!(
-            operation.as_str(),
-            "decompress"
-                | "ainb_roundtrip"
-                | "asb_native_yaml"
-                | "baev_native_yaml"
-                | "asb_yaml_roundtrip"
-                | "asb_yaml_to_binary"
-                | "asb_native_events"
-                | "asb_native_connections"
-                | "asb_validate"
-        ) {
+        if operation == "decompress" {
             Some(Self {
                 operation,
                 file_type: String::new(),
@@ -114,14 +97,6 @@ impl CliCommand {
             "dir_to_archive" => self.dir_to_archive(),
             "decompress" => self.decompress(),
             "compress" => self.compress(),
-            "ainb_roundtrip" => self.ainb_roundtrip(),
-            "asb_validate" => self.asb_validate(),
-            "asb_native_yaml" => self.asb_native_yaml(),
-            "baev_native_yaml" => self.baev_native_yaml(),
-            "asb_yaml_roundtrip" => self.asb_yaml_roundtrip(),
-            "asb_yaml_to_binary" => self.asb_yaml_to_binary(),
-            "asb_native_events" => self.asb_native_events(),
-            "asb_native_connections" => self.asb_native_connections(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }

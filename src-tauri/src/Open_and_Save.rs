@@ -523,6 +523,7 @@ pub struct SendData {
     pub text: String,
     pub path: Pathlib,
     pub file_label: String,
+    pub file_metadata: String,
     pub status_text: String,
     pub tab: String,
     pub rstb_paths: Vec<serde_json::Value>,
@@ -537,6 +538,7 @@ impl Default for SendData {
             text: "".to_string(),
             path: Pathlib::default(),
             file_label: "".to_string(),
+            file_metadata: "".to_string(),
             status_text: "".to_string(),
             tab: "YAML".to_string(),
             rstb_paths: Vec::default(),
@@ -548,6 +550,7 @@ impl Default for SendData {
 }
 impl SendData {
     pub fn get_file_label(&mut self, filetype: TotkFileType, endian: Option<roead::Endian>) {
+        self.set_file_metadata(filetype, None);
         let mut e = String::new();
         if let Some(endian) = endian {
             e = match endian {
@@ -560,6 +563,17 @@ impl SendData {
         } else {
             self.file_label = format!("{} [{:?}]", self.path.name, filetype)
         }
+    }
+
+    pub fn set_file_metadata(
+        &mut self,
+        filetype: TotkFileType,
+        dictionary: Option<ZstdDictionary>,
+    ) {
+        self.file_metadata = match dictionary {
+            Some(dictionary) => format!("[{filetype:?}] [ZSTD: {dictionary:?}]"),
+            None => format!("[{filetype:?}]"),
+        };
     }
     pub fn get_sarc_paths(&mut self, pack: &PackComparer<'_>) {
         if let Some(opened) = &pack.opened {

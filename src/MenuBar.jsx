@@ -1,13 +1,17 @@
 import { invoke } from './DocumentState';
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import "./App.css";
 import { addFilesFromDirRecursivelyToRoot, extractRootFolderClick, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, openFolderContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
 import { ImageButton } from "./Buttons";
 import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
 import { useEditorContext } from './StateManager';
 import CommandsHelp from './CommandsHelp';
+import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
+import { open } from '@tauri-apps/plugin-shell';
 
-function MenuBarDisplay() {
+function MenuBarDisplay({ updateButton = null }) {
+  const { documents, activeDocumentId } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
+  const fileMetadata = documents.find((document) => document.id === activeDocumentId)?.fileMetadata || '';
   // const [backupPaths, setBackupPaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
 
   const {
@@ -109,10 +113,10 @@ function MenuBarDisplay() {
     closeMenu();
     try {
       if (activeTab === 'SARC') {
-        compareInternalFileWithOVanila(selectedPath.path, setStatusText, setActiveTab, setCompareData);
+        await compareInternalFileWithOVanila(selectedPath.path, setStatusText, setActiveTab, setCompareData);
       } else if (activeTab === 'YAML') {
         //empty internal path, irrelevant
-        compareInternalFileWithOVanilaMonaco(setStatusText, setActiveTab, setCompareData, editorRef);
+        await compareInternalFileWithOVanilaMonaco(setStatusText, setActiveTab, setCompareData, editorRef);
       } else {
         setStatusText("Switch to SARC or YAML tab to compare files!"); //should be unreachable
         return;
@@ -141,7 +145,7 @@ function MenuBarDisplay() {
         decision: 'FilesFromDisk', // simplest decision, no other arguments needed
       }));
       // compareFilesByDecision('', setStatusText, activeTab, setActiveTab, compareData, setCompareData, editorRef, 'FilesFromDisk', isFromDisk);
-      compareFilesByDecision(setStatusText, setActiveTab, setCompareData, editorRef, isFromDisk, setLabelTextDisplay);
+      await compareFilesByDecision(setStatusText, setActiveTab, setCompareData, editorRef, isFromDisk, setLabelTextDisplay);
 
       const success = activeTab === 'COMPARER';
       if (success) {
@@ -251,7 +255,7 @@ function MenuBarDisplay() {
   const blankIcon = 'menu/blank.png';
 
   const fileMenuItems = [
-    { label: 'Open', onClick: handleOpenFileClick, icon: 'menu/open.png', shortcut: 'Ctrl+O' },
+    { label: 'Open file', onClick: handleOpenFileClick, icon: 'menu/open.png', shortcut: 'Ctrl+O' },
     { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
     { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S' },
     { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S' },
@@ -302,7 +306,7 @@ function MenuBarDisplay() {
   return (
     <div>
       <div className="menu-bar" >
-
+        <div className="menu-items">
         <div className="menu-item" onClick={() => toggleDropdown('file')} ref={el => dropdownRefs.current.file = el}>
           File
           <div className="dropdown-content" style={{ display: showDropdown.file ? 'block' : 'none' }}>
@@ -374,6 +378,11 @@ function MenuBarDisplay() {
             </li>
           </div>
         </div>
+        </div>
+        <div className="menu-right-content">
+          <div className="menu-file-metadata">{fileMetadata}</div>
+          {updateButton}
+        </div>
       </div>
       <CommandsHelp isOpen={isCommandsOpen} onClose={() => setIsCommandsOpen(false)} />
     </div>
@@ -387,26 +396,16 @@ function MenuBarDisplayWithUpdater() {
     updateState, setUpdateState, setStatusText, settings
   } = useEditorContext();
   const handleUpdateClick = async (event) => {
-    console.log("Update button clicked!");
-
     try {
-      if (updateState.latestVersion === '') {
-        setStatusText('ERROR: No update available');
-        return;
-      }
-      const content = await invoke('update_app', { latestVer: updateState.latestVersion });
-      console.log(content);
-      const msg = content ?? '';
-      if (msg !== '') {
-        setStatusText(msg);
-      }
+      await open('https://github.com/SolidLink95/TotkBits/releases/latest');
     } catch (error) {
-      console.error('Failed to update app: ', error);
+      console.error('Failed to open release page: ', error);
+      setStatusText('ERROR: Failed to open release page');
     }
   }
   const iconSize = '28px';
   const isUp = updateState.isUpdateNeeded;
-  const SHOW_UPDATE_BUTTON = false;
+  const SHOW_UPDATE_BUTTON = true;
   return (
     <div style={{
       display: 'flex',
@@ -414,10 +413,7 @@ function MenuBarDisplayWithUpdater() {
       backgroundColor: '#333',
       // fontWeight: 'bold',
     }}>
-      <MenuBarDisplay />
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-      {settings.zstd_msg && <div style={{padding: '2px', color: 'yellow'}}>{settings.zstd_msg}</div>}
-        {SHOW_UPDATE_BUTTON && <ImageButton
+      <MenuBarDisplay updateButton={SHOW_UPDATE_BUTTON ? <ImageButton
           key={isUp ? 'UpdaterButton' : 'NoUpdaterButton'}
           src={isUp ? 'update.png' : 'noupdate.png'}
           alt={
@@ -425,7 +421,7 @@ function MenuBarDisplayWithUpdater() {
               ? `Update to ${updateState.latestVersion}`
               : 'Totkbits is up to date'
           }
-          onClick={isUp ? handleUpdateClick : null}
+          onClick={handleUpdateClick}
           title={
             isUp
               ? `Update to ${updateState.latestVersion}`
@@ -437,7 +433,9 @@ function MenuBarDisplayWithUpdater() {
             width: iconSize,
             height: iconSize,
           }}
-        />}
+        /> : null} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      {settings.zstd_msg && <div style={{padding: '2px', color: 'yellow'}}>{settings.zstd_msg}</div>}
       </div>
     </div>
   );

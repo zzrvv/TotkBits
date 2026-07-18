@@ -140,6 +140,9 @@ const RstbTree = ({ onNodeSelect, sarcPaths, setStatusText, activeTab }) => {
           placeholder="Type at least 3 characters"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') handleSearch();
+          }}
           style={{ width: 'calc(100% - 90px)', padding: '5px', color: 'white', }}
         />
         <input

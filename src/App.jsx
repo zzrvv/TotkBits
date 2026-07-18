@@ -5,7 +5,6 @@ import "./Comparer.css";
 import { debounce } from "lodash"; // or any other method/utility to debounce
 import React, { useEffect } from "react";
 // import ReactDiffViewer from 'react-diff-viewer-continued';
-import ActiveTabDisplay from "./ActiveTab";
 import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
 import ButtonsDisplay from "./Buttons";
 import DirectoryTree from "./DirectoryTree";
@@ -42,7 +41,7 @@ function App() {
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, compareData
   } = useEditorContext();
   
-  const isFileHovering = useFileDropHandler(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+  const { isFileHovering, parsingFile } = useFileDropHandler(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
 
 
 
@@ -122,15 +121,25 @@ function App() {
   const displayButtons = activeTab === 'SARC' || activeTab === 'RSTB' || activeTab === 'YAML';
   const rootStyle = activeTab !== "COMPARER" ? {} : isComparerWorking ? {backgroundColor: "#2E303C"} : {};
   return (
-    <div className="maincontainer" > 
+    <div
+      className="maincontainer"
+      style={{ ...rootStyle, '--buttons-h': displayButtons ? '33px' : '0px' }}
+    > 
       {isFileHovering && (
         <div className="file-drop-overlay" role="status">
           <div className="file-drop-message">Drop file to open</div>
         </div>
       )}
+      {parsingFile && (
+        <div className="parsing-overlay" role="status" aria-live="polite">
+          <div className="parsing-content">
+            <div className="loading-swirl" aria-hidden="true"></div>
+            <div>Parsing {parsingFile}</div>
+          </div>
+        </div>
+      )}
       <MenuBarDisplayWithUpdater />
       <DocumentTabs />
-      <ActiveTabDisplay activeTab={activeTab} setActiveTab={setActiveTab} labelTextDisplay={labelTextDisplay} />
       {/* {activeTab === 'LOADING' ? <div className="modal-overlay">Loading...</div> : null} */}
       <AddOrRenameFilePrompt
         isOpen={isModalOpen}
