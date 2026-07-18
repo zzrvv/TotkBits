@@ -2981,11 +2981,11 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "lexical"
-version = "6.1.1"
+version = "7.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7aefb36fd43fef7003334742cbf77b243fcd36418a1d1bdd480d613a67968f6"
+checksum = "1bc8a009b2ff1f419ccc62706f04fe0ca6e67b37460513964a3dfdb919bb37d6"
 dependencies = [
- "lexical-core",
+ "lexical-core 1.0.6",
 ]
 
 [[package]]
@@ -2994,32 +2994,40 @@ version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2cde5de06e8d4c2faabc400238f9ae1c74d5412d03a7bd067645ccbc47070e46"
 dependencies = [
+ "lexical-util 0.8.5",
+ "lexical-write-integer 0.8.5",
+]
+
+[[package]]
+name = "lexical-core"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d8d125a277f807e55a77304455eb7b1cb52f2b18c143b60e766c120bd64a594"
+dependencies = [
  "lexical-parse-float",
  "lexical-parse-integer",
- "lexical-util",
+ "lexical-util 1.0.7",
  "lexical-write-float",
- "lexical-write-integer",
+ "lexical-write-integer 1.0.6",
 ]
 
 [[package]]
 name = "lexical-parse-float"
-version = "0.8.5"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "683b3a5ebd0130b8fb52ba0bdc718cc56815b6a097e28ae5a6997d0ad17dc05f"
+checksum = "52a9f232fbd6f550bc0137dcb5f99ab674071ac2d690ac69704593cb4abbea56"
 dependencies = [
  "lexical-parse-integer",
- "lexical-util",
- "static_assertions",
+ "lexical-util 1.0.7",
 ]
 
 [[package]]
 name = "lexical-parse-integer"
-version = "0.8.6"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d0994485ed0c312f6d965766754ea177d07f9c00c9b82a5ee62ed5b47945ee9"
+checksum = "9a7a039f8fb9c19c996cd7b2fcce303c1b2874fe1aca544edc85c4a5f8489b34"
 dependencies = [
- "lexical-util",
- "static_assertions",
+ "lexical-util 1.0.7",
 ]
 
 [[package]]
@@ -3032,14 +3040,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "lexical-write-float"
-version = "0.8.5"
+name = "lexical-util"
+version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "accabaa1c4581f05a3923d1b4cfd124c329352288b7b9da09e766b0668116862"
+checksum = "2604dd126bb14f13fb5d1bd6a66155079cb9fa655b37f875b3a742c705dbed17"
+
+[[package]]
+name = "lexical-write-float"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "50c438c87c013188d415fbabbb1dceb44249ab81664efbd31b14ae55dabb6361"
 dependencies = [
- "lexical-util",
- "lexical-write-integer",
- "static_assertions",
+ "lexical-util 1.0.7",
+ "lexical-write-integer 1.0.6",
 ]
 
 [[package]]
@@ -3048,8 +3061,17 @@ version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1b6f3d1f4422866b68192d62f77bc5c700bee84f3069f2469d7bc8c77852446"
 dependencies = [
- "lexical-util",
+ "lexical-util 0.8.5",
  "static_assertions",
+]
+
+[[package]]
+name = "lexical-write-integer"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "409851a618475d2d5796377cad353802345cba92c867d9fbcde9cf4eac4e14df"
+dependencies = [
+ "lexical-util 1.0.7",
 ]
 
 [[package]]
@@ -3108,7 +3130,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4919,7 +4941,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81782a9ac8118f6bc31d1672b9c70563d9c77b069f14b77c79ac71a34ea2b380"
 dependencies = [
  "crc",
- "lexical-core",
+ "lexical-core 0.8.5",
  "memoffset",
  "sa",
  "thiserror-no-std",
@@ -4989,7 +5011,7 @@ dependencies = [
 [[package]]
 name = "roead"
 version = "1.0.0"
-source = "git+https://github.com/SolidLink95/roead#c31d0ea68981a0120e9e5fe5dc495513883f8fc0"
+source = "git+https://github.com/SolidLink95/roead#d1b683bdc9625ff3b4939a710e76c0700c9e2d34"
 dependencies = [
  "almost",
  "base64 0.22.1",
@@ -4999,7 +5021,7 @@ dependencies = [
  "indexmap 2.14.0",
  "join_str",
  "lexical",
- "lexical-core",
+ "lexical-core 1.0.6",
  "num-integer",
  "num-traits",
  "parking_lot",
