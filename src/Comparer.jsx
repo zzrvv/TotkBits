@@ -2,7 +2,7 @@ import { discardActiveComparisonDocument, invoke } from './DocumentState';
 import React, { useEffect, useRef, useState } from 'react';
 import { useEditorContext } from './StateManager';
 
-import { DiffEditor, useMonaco } from '@monaco-editor/react';
+import { DiffEditor } from '@monaco-editor/react';
 
 const bigFileSize = 1 * 1024 * 1024;
 const MAX_COMPARE_SIZE = 9999 * 1024 * 1024;
@@ -223,55 +223,60 @@ const CompareFiles = () => {
     settings,
   } = useEditorContext();
 
-  const monaco = useMonaco();
   const diffEditorRef = useRef(null);
-  const diffNavigatorRef = useRef(null);
-  const [currentDiffIndex, setCurrentDiffIndex] = useState(0);
+  const diffChangesRef = useRef([]);
+  const currentDiffIndexRef = useRef(-1);
+  const [mountedDiffEditor, setMountedDiffEditor] = useState(null);
   const [totalDiffs, setTotalDiffs] = useState(0);
 
   useEffect(() => {
-    if (monaco && diffEditorRef.current) {
-      const navigator = monaco.editor.createDiffNavigator(diffEditorRef.current, {
-        followsCaret: true,
-        ignoreCharChanges: true,
-      });
-      diffNavigatorRef.current = navigator;
-  
-      const subscription = diffEditorRef.current.onDidUpdateDiff(() => {
-        const ranges = navigator._diffNavigator?.ranges || [];
-        setTotalDiffs(ranges.length);
-        setCurrentDiffIndex(0);
-        diffEditorRef.current.getModifiedEditor().revealLine(1);
-        diffEditorRef.current.getOriginalEditor().revealLine(1);
-      });
-  
-      return () => subscription.dispose();
+    if (mountedDiffEditor) {
+      const updateDiffCount = () => {
+        const changes = mountedDiffEditor.getLineChanges() ?? [];
+        diffChangesRef.current = changes;
+        currentDiffIndexRef.current = -1;
+        setTotalDiffs(changes.length);
+      };
+      updateDiffCount();
+      const subscription = mountedDiffEditor.onDidUpdateDiff(updateDiffCount);
+
+      return () => {
+        subscription.dispose();
+        diffChangesRef.current = [];
+        currentDiffIndexRef.current = -1;
+      };
     }
-  }, [monaco]);
+  }, [mountedDiffEditor]);
+
+  const revealDifference = (direction) => {
+    const editor = diffEditorRef.current;
+    if (!editor) return;
+    const changes = editor.getLineChanges() ?? diffChangesRef.current;
+    if (changes.length === 0) return;
+    diffChangesRef.current = changes;
+    const current = currentDiffIndexRef.current;
+    const index = direction > 0
+      ? (current + 1) % changes.length
+      : (current <= 0 ? changes.length - 1 : current - 1);
+    currentDiffIndexRef.current = index;
+    const change = changes[index];
+    const originalLine = change.originalStartLineNumber || change.originalEndLineNumber || 1;
+    const modifiedLine = change.modifiedStartLineNumber || change.modifiedEndLineNumber || 1;
+    const originalEditor = editor.getOriginalEditor();
+    const modifiedEditor = editor.getModifiedEditor();
+    originalEditor.revealLineInCenter(originalLine);
+    modifiedEditor.revealLineInCenter(modifiedLine);
+    originalEditor.setPosition({ lineNumber: originalLine, column: 1 });
+    modifiedEditor.setPosition({ lineNumber: modifiedLine, column: 1 });
+    modifiedEditor.focus();
+  };
 
   const handleNextDiff = () => {
-    console.log(currentDiffIndex, totalDiffs);
-    if (diffNavigatorRef.current) {
-      if (totalDiffs === 0 && diffNavigatorRef.current._editor._diffNavigator.ranges.length > 0) {
-        setTotalDiffs(diffNavigatorRef.current._editor._diffNavigator.ranges.length);
-      }
-      diffNavigatorRef.current.next();
-      if (currentDiffIndex+1 === totalDiffs) {
-        setCurrentDiffIndex(0);
-      } else {
-        setCurrentDiffIndex((prev) => Math.min(prev + 1, totalDiffs-1));//works terribly
-      }
-    }
+    revealDifference(1);
   };
 
   const handlePrevDiff = () => {
-    if (diffNavigatorRef.current) {
-      if (totalDiffs === 0 && diffNavigatorRef.current._editor._diffNavigator.ranges.length > 0) {
-        setTotalDiffs(diffNavigatorRef.current._editor._diffNavigator.ranges.length);
-      }
-      diffNavigatorRef.current.previous();
-      setCurrentDiffIndex((prev) => Math.max(prev - 1, 0));
-    }
+    revealDifference(-1);
   };
   const fontSize = 15;
   const padding = 4;
@@ -316,6 +321,11 @@ const CompareFiles = () => {
           }}
           onMount={(editor, monacoInstance) => {
             diffEditorRef.current = editor; // store the real DiffEditor instance
+            setMountedDiffEditor(editor);
+          }}
+          onUnmount={() => {
+            diffEditorRef.current = null;
+            setMountedDiffEditor(null);
           }}
         />
       </div>
