@@ -24,6 +24,7 @@ mod TotkApp;
 mod TotkConfig;
 mod Zstd;
 mod file_format;
+mod parser;
 use crate::DocumentState::DocumentState as Documents;
 use crate::Settings::{get_startup_data, StartupData};
 use crate::TauriCommands::{

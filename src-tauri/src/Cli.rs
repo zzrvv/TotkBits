@@ -1,5 +1,6 @@
 use crate::{
     file_format::{
+        Ainb::AinbFile,
         Archive::{ArchiveCodec, Rar::RarFile, SevenZip::SevenZipFile, Zip::ZipFile},
         BinTextFile::OpenedFile,
     },
@@ -11,6 +12,7 @@ use roead::{
     sarc::{Sarc, SarcWriter},
     Endian,
 };
+use sha2::{Digest, Sha256};
 use std::{
     env, fs,
     path::{Path, PathBuf},
@@ -39,9 +41,13 @@ impl CliCommand {
             .and_then(|value| value.to_str())
             .unwrap_or_default()
             .to_ascii_lowercase();
-        let expected_arguments = if operation == "decompress" { 5 } else { 6 };
+        let expected_arguments = if matches!(operation.as_str(), "decompress" | "ainb_roundtrip") {
+            5
+        } else {
+            6
+        };
         if arguments.len() != expected_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>\n  Totkbits.exe --cli ainb_roundtrip <input-directory> <report-file>");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -58,7 +64,7 @@ impl CliCommand {
                 cwd.join(path)
             }
         };
-        if operation == "decompress" {
+        if matches!(operation.as_str(), "decompress" | "ainb_roundtrip") {
             Some(Self {
                 operation,
                 file_type: String::new(),
@@ -86,6 +92,7 @@ impl CliCommand {
             "dir_to_archive" => self.dir_to_archive(),
             "decompress" => self.decompress(),
             "compress" => self.compress(),
+            "ainb_roundtrip" => self.ainb_roundtrip(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -98,6 +105,11 @@ impl CliCommand {
     fn bin_to_text(&self) -> Result<(), String> {
         let expected = parse_file_type(&self.file_type)?;
         let bytes = fs::read(&self.input).map_err(|e| format!("failed to read input: {e}"))?;
+        if expected == TotkFileType::AINB {
+            let text = AinbFile::binary_to_text(&bytes)
+                .map_err(|e| format!("input could not be converted to AINB text: {e}"))?;
+            return write_output(&self.output, text.as_bytes());
+        }
         let (parsed, text) = get_string_from_data(&self.input, bytes, self.zstd()?)
             .ok_or_else(|| "input could not be converted to text".to_string())?;
         if parsed.file_type != expected
@@ -170,6 +182,76 @@ impl CliCommand {
             .map_err(|e| format!("failed to compress input: {e}"))?;
         write_output(&self.output, &compressed)
     }
+
+    fn ainb_roundtrip(&self) -> Result<(), String> {
+        if !self.input.is_dir() {
+            return Err("AINB round-trip input must be a directory".into());
+        }
+        let mut files = Vec::new();
+        collect_files(&self.input, &mut files)?;
+        files.sort();
+        let mut report = String::from("file\toriginal_sha256\trebuilt_sha256\tmatch\n");
+        let mut tested = 0usize;
+        for path in files {
+            let bytes =
+                fs::read(&path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+            if !bytes.starts_with(b"AIB ") {
+                continue;
+            }
+            let document = crate::parser::ainb::AinbDocument::from_bytes(&bytes)
+                .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
+            let yaml = document
+                .to_yaml()
+                .map_err(|e| format!("failed to encode {}: {e}", path.display()))?;
+            if yaml.contains("data_base64") || yaml.contains("original_data_base64") {
+                return Err(format!(
+                    "base64 payload leaked into YAML for {}",
+                    path.display()
+                ));
+            }
+            crate::parser::ainb::AinbDocument::from_yaml(&yaml).map_err(|e| {
+                format!("failed to parse generated YAML for {}: {e}", path.display())
+            })?;
+            let rebuilt = document
+                .to_bytes()
+                .map_err(|e| format!("failed to preserve {}: {e}", path.display()))?;
+            let original_hash = hex_sha256(&bytes);
+            let rebuilt_hash = hex_sha256(&rebuilt);
+            let matches = original_hash == rebuilt_hash;
+            report.push_str(&format!(
+                "{}\t{}\t{}\t{}\n",
+                path.strip_prefix(&self.input).unwrap_or(&path).display(),
+                original_hash,
+                rebuilt_hash,
+                matches
+            ));
+            if !matches {
+                return Err(format!("AINB round trip changed {}", path.display()));
+            }
+            tested += 1;
+        }
+        report.push_str(&format!("\n{} AINB files passed\n", tested));
+        write_output(&self.output, report.as_bytes())
+    }
+}
+
+fn collect_files(directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
+    for entry in fs::read_dir(directory).map_err(|e| e.to_string())? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if path.is_dir() {
+            collect_files(&path, files)?;
+        } else {
+            files.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn hex_sha256(data: &[u8]) -> String {
+    Sha256::digest(data)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn parse_dictionary(value: &str) -> Result<ZstdDictionary, String> {

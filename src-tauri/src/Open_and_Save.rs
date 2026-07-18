@@ -1,6 +1,6 @@
 use crate::{
     file_format::{
-        Ainb_py::Ainb_py,
+        Ainb::AinbFile,
         Asb_py::Asb_py,
         BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile},
         Esetb::Esetb,
@@ -115,7 +115,7 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
 
     let ainb_suffix = lower_path.ends_with(".ainb") || lower_path.ends_with(".ainb.zs");
     if ainb_suffix || is_ainb(&data) {
-        if let Ok(text) = Ainb_py::new().binary_to_text(&data) {
+        if let Ok(text) = AinbFile::binary_to_text(&data) {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
             internal_file.file_type = TotkFileType::AINB;
@@ -306,7 +306,7 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::AINB => {
-            if let Ok(some_data) = Ainb_py::new().text_to_binary(text) {
+            if let Ok(some_data) = AinbFile::text_to_binary(text) {
                 rawdata = some_data;
             }
         }
@@ -616,7 +616,7 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     .or_else(|| Esetb::open_esetb(&file_name, zstd.clone()))
     .or_else(|| Restbl::open_restbl(&file_name, zstd.clone()))
     .or_else(|| Asb_py::open_asb(&file_name, zstd.clone()))
-    .or_else(|| Ainb_py::open_ainb(&file_name, zstd.clone()))
+    .or_else(|| AinbFile::open_ainb(&file_name, zstd.clone()))
     .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
     .or_else(|| crate::file_format::Msbt::MsbtFile::open_msbt(&file_name))
     .or_else(|| crate::file_format::SimpleOpeners::AampFile::open_aamp(&file_name))

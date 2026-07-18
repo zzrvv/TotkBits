@@ -7,7 +7,7 @@ pub mod SimpleOpeners;
 pub mod TagProduct;
 // pub mod RstbData;
 // pub mod SarcEntriesData;
-pub mod Ainb_py;
+pub mod Ainb;
 pub mod Archive;
 pub mod Asb_py;
 pub mod Esetb;
