@@ -93,7 +93,7 @@ def repo_init():
         shutil.rmtree(bin_path)
     bin_path_p.mkdir(parents=True, exist_ok=True)
     # dotnet
-    build_dotnet(cwd_path)
+    # build_dotnet(cwd_path)
     if not (CWD / "ext_projects/oead").exists():
         p = subprocess.run(["git", "submodule", "init"])
         p = subprocess.run(["git", "submodule", "update", "--init", "--recursive"])

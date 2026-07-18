@@ -2,6 +2,7 @@ use crate::{
     file_format::{
         asb::AsbFile,
         Ainb::AinbFile,
+        BfevFile::BfevFile,
         BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile},
         Esetb::Esetb,
         Evfl_cs::Evfl,
@@ -133,7 +134,7 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
     }
     let evfl_suffix = lower_path.ends_with(".bfevfl") || lower_path.ends_with(".bfevfl.zs");
     if evfl_suffix || is_evfl(&data) {
-        if let Ok(text) = Evfl::new(zstd.clone()).binary_to_string(&data) {
+        if let Ok(text) = BfevFile::binary_to_text(&data) {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
             internal_file.file_type = TotkFileType::Evfl;
@@ -632,7 +633,7 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
     .or_else(|| crate::file_format::Msbt::MsbtFile::open_msbt(&file_name))
     .or_else(|| crate::file_format::SimpleOpeners::AampFile::open_aamp(&file_name))
-    .or_else(|| Evfl::open_file(&file_name, zstd.clone()))
+    .or_else(|| BfevFile::open_bfev(&file_name, zstd.clone()))
     .or_else(|| SmoSaveFile::open_smo_save_file(&file_name, zstd.clone()))
     .or_else(|| crate::file_format::SimpleOpeners::TextFile::open_text(&file_name))
     .map(|(opened_file, data)| {

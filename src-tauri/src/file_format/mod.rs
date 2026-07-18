@@ -9,6 +9,7 @@ pub mod TagProduct;
 // pub mod SarcEntriesData;
 pub mod Ainb;
 pub mod Archive;
+pub mod BfevFile;
 pub mod Esetb;
 pub mod Evfl_cs;
 pub mod Evfl_py;
