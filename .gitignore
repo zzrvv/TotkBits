@@ -36,6 +36,7 @@ dist-ssr
 /tmp/
 /ext_projects/updater/target
 ext_projects/bphcl/__pycache__
+ext_projects/oead
 /src-tauri/updater.exe
 /src-tauri/DotNetWrapper.exe
 

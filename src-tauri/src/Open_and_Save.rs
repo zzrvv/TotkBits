@@ -5,11 +5,11 @@ use crate::{
         BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile},
         Esetb::Esetb,
         Evfl_cs::Evfl,
+        GameDataList::GameDataList,
         Msbt::str_endian_to_roead,
         Pack::{PackComparer, SarcPaths},
         Rstb::Restbl,
         TagProduct::TagProduct,
-        Wrapper::PythonWrapper,
         Xlink::Xlink_rs,
         SMO::SmoSaveFile::SmoSaveFile,
     },
@@ -86,7 +86,18 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
     }
 
     let byml_suffix = lower_path.ends_with(".byml") || lower_path.ends_with(".byml.zs");
-    if is_gamedatalist(&path) || is_banc_path(&path) || byml_suffix {
+    if is_gamedatalist(&path) {
+        if let Ok(text) = GameDataList::binary_to_text(&data, zstd.clone()) {
+            internal_file.endian = BymlFile::get_endiannes(&data);
+            internal_file.path = Pathlib::new(path.clone());
+            internal_file.file_type = TotkFileType::Byml;
+            return Some((internal_file, text));
+        }
+        println!("Unable to parse GameDataList archive entry {path}");
+        return None;
+    }
+
+    if is_banc_path(&path) || byml_suffix {
         if let Ok(file_data) = BymlFile::byml_data_to_bytes(&data, zstd.clone()) {
             if let Ok(byml_file) = BymlFile::from_binary(file_data, zstd.clone(), path.clone()) {
                 let text = byml_file.to_string();
@@ -315,20 +326,10 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::Byml => {
-            if (is_gamedatalist(file_path)) {
-                println!("is_gamedatalist, attempting to use oead python");
-                let p_wrap = PythonWrapper::new();
-                match p_wrap
-                    .text_to_binary(&text.as_bytes().to_vec(), "byml_text_to_binary".to_string())
-                {
-                    Ok(some_data) => {
-                        rawdata = some_data;
-                        println!("it worked");
-                    }
-                    Err(e) => {
-                        println!("Error: {}", e);
-                    }
-                }
+            if is_gamedatalist(file_path) {
+                rawdata = GameDataList::text_to_binary(text)
+                    .map_err(|e| println!("Unable to encode GameDataList: {e}"))
+                    .ok()?;
             }
             if (rawdata.is_empty()) {
                 let processed_text = if is_banc_path(&file_path) && zstd.totk_config.rotation_deg {
@@ -622,6 +623,7 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     } else {
         None
     }
+    // .or_else(|| GameDataList::open(&file_name, zstd.clone()))
     .or_else(|| TagProduct::open_tag(&file_name, zstd.clone()))
     .or_else(|| Esetb::open_esetb(&file_name, zstd.clone()))
     .or_else(|| Restbl::open_restbl(&file_name, zstd.clone()))

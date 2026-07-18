@@ -12,6 +12,7 @@ pub mod Archive;
 pub mod Esetb;
 pub mod Evfl_cs;
 pub mod Evfl_py;
+pub mod GameDataList;
 pub mod SMO;
 pub mod Wrapper;
 pub mod Xlink;

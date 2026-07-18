@@ -6,3 +6,5 @@ cd src-tauri
 cargo update -p roead
 @REM cargo update -p zstud-sys
 cd ..
+
+git submodule update --remote --recursive
