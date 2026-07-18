@@ -5,7 +5,7 @@ use crate::{
     },
     Open_and_Save::{get_binary_by_filetype, get_string_from_data},
     TotkConfig::TotkConfig,
-    Zstd::{global_totk_zstd, TotkFileType},
+    Zstd::{global_totk_zstd, TotkFileType, ZstdDictionary},
 };
 use roead::{
     sarc::{Sarc, SarcWriter},
@@ -34,8 +34,14 @@ impl CliCommand {
         ) {
             return None;
         }
-        if arguments.len() != 6 {
-            eprintln!("Usage: Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <file_type> <input> <output>");
+        let operation = arguments
+            .get(2)
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let expected_arguments = if operation == "decompress" { 5 } else { 6 };
+        if arguments.len() != expected_arguments {
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -52,12 +58,21 @@ impl CliCommand {
                 cwd.join(path)
             }
         };
-        Some(Self {
-            operation: arguments[2].to_string_lossy().to_ascii_lowercase(),
-            file_type: arguments[3].to_string_lossy().to_ascii_lowercase(),
-            input: absolute(&arguments[4]),
-            output: absolute(&arguments[5]),
-        })
+        if operation == "decompress" {
+            Some(Self {
+                operation,
+                file_type: String::new(),
+                input: absolute(&arguments[3]),
+                output: absolute(&arguments[4]),
+            })
+        } else {
+            Some(Self {
+                operation,
+                file_type: arguments[3].to_string_lossy().to_ascii_lowercase(),
+                input: absolute(&arguments[4]),
+                output: absolute(&arguments[5]),
+            })
+        }
     }
 
     pub fn execute(&self) -> Result<(), String> {
@@ -69,6 +84,8 @@ impl CliCommand {
             "text_to_bin" => self.text_to_bin(),
             "extract_archive" => self.extract_archive(),
             "dir_to_archive" => self.dir_to_archive(),
+            "decompress" => self.decompress(),
+            "compress" => self.compress(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -133,6 +150,37 @@ impl CliCommand {
         collect_directory(&self.input, &self.input, &mut entries)?;
         let bytes = build_archive(&self.file_type, entries)?;
         write_output(&self.output, &bytes)
+    }
+
+    fn decompress(&self) -> Result<(), String> {
+        let bytes = fs::read(&self.input).map_err(|e| format!("failed to read input: {e}"))?;
+        let decompressed = self
+            .zstd()?
+            .try_decompress(&bytes)
+            .map_err(|e| format!("failed to decompress input: {e}"))?;
+        write_output(&self.output, &decompressed)
+    }
+
+    fn compress(&self) -> Result<(), String> {
+        let dictionary = parse_dictionary(&self.file_type)?;
+        let bytes = fs::read(&self.input).map_err(|e| format!("failed to read input: {e}"))?;
+        let compressed = self
+            .zstd()?
+            .compress_with_dictionary(&bytes, dictionary)
+            .map_err(|e| format!("failed to compress input: {e}"))?;
+        write_output(&self.output, &compressed)
+    }
+}
+
+fn parse_dictionary(value: &str) -> Result<ZstdDictionary, String> {
+    match value {
+        "zs" => Ok(ZstdDictionary::Zs),
+        "pack" => Ok(ZstdDictionary::Pack),
+        "empty" => Ok(ZstdDictionary::Empty),
+        "bcett" => Ok(ZstdDictionary::Bcett),
+        _ => Err(format!(
+            "unsupported ZSTD dictionary: {value}; expected zs, pack, empty, or bcett"
+        )),
     }
 }
 

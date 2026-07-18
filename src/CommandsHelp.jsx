@@ -5,6 +5,8 @@ const operations = [
     ['text_to_bin', '<file-type> <input-file> <output-file>', 'Convert YAML, JSON, or text back to its binary format.'],
     ['extract_archive', '<zip|7z|rar|sarc> <input-archive> <output-directory>', 'Extract every archive entry.'],
     ['dir_to_archive', '<zip|7z|rar|sarc> <input-directory> <output-archive>', 'Build an archive from a directory.'],
+    ['decompress', '<input-file> <output-file>', 'Decompress ZSTD data by trying every available dictionary.'],
+    ['compress', '<zs|pack|empty|bcett> <input-file> <output-file>', 'Compress ZSTD data with the specified dictionary.'],
 ];
 
 export default function CommandsHelp({ isOpen, onClose }) {
@@ -15,8 +17,9 @@ export default function CommandsHelp({ isOpen, onClose }) {
                 <h2 id="commands-title">Command-line commands</h2>
                 <button className="settings-close" onClick={onClose} aria-label="Close commands" title="Close">×</button>
             </div>
-            <p>Run TotkBits with <code>-c</code> or <code>--cli</code>. All four arguments are required.</p>
-            <pre>Totkbits.exe --cli &lt;operation&gt; &lt;type&gt; &lt;input&gt; &lt;output&gt;</pre>
+            <p>Run TotkBits with <code>-c</code> or <code>--cli</code>. Conversion and archive commands require a type; ZSTD decompression does not.</p>
+            <pre>{`Totkbits.exe --cli <operation> <type> <input> <output>
+Totkbits.exe --cli decompress <input> <output>`}</pre>
             <div className="commands-help-list">
                 {operations.map(([name, args, description]) => <section key={name}>
                     <code>{name} {args}</code>
@@ -29,7 +32,9 @@ export default function CommandsHelp({ isOpen, onClose }) {
             <pre>{`Totkbits.exe --cli bin_to_text ainb input.ainb output.yml
 Totkbits.exe -c text_to_bin byml input.yml output.byml
 Totkbits.exe --cli extract_archive 7z input.7z output-folder
-Totkbits.exe -c dir_to_archive sarc input-folder output.pack`}</pre>
+Totkbits.exe -c dir_to_archive sarc input-folder output.pack
+Totkbits.exe --cli decompress input.pack.zs output.pack
+Totkbits.exe -c compress pack input.pack output.pack.zs`}</pre>
             <p><code>A successful command exits without opening the GUI. If validation or conversion fails, TotkBits reports the error and opens normally.</code></p>
             <div className="options-modal-footer"><button className="generic_button" onClick={onClose}>Close</button></div>
         </div>
