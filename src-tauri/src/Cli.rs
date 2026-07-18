@@ -41,13 +41,23 @@ impl CliCommand {
             .and_then(|value| value.to_str())
             .unwrap_or_default()
             .to_ascii_lowercase();
-        let expected_arguments = if matches!(operation.as_str(), "decompress" | "ainb_roundtrip") {
+        let expected_arguments = if matches!(
+            operation.as_str(),
+            "decompress"
+                | "ainb_roundtrip"
+                | "asb_native_yaml"
+                | "asb_yaml_roundtrip"
+                | "asb_yaml_to_binary"
+                | "asb_native_events"
+                | "asb_native_connections"
+                | "asb_validate"
+        ) {
             5
         } else {
             6
         };
         if arguments.len() != expected_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>\n  Totkbits.exe --cli ainb_roundtrip <input-directory> <report-file>");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>\n  Totkbits.exe --cli ainb_roundtrip <input-directory> <report-file>\n  Totkbits.exe --cli asb_validate <asb-directory> <report-file>\n  Totkbits.exe --cli asb_yaml_roundtrip <input-yaml> <output-yaml>\n  Totkbits.exe --cli asb_yaml_to_binary <input-yaml> <output-asb>");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -64,7 +74,17 @@ impl CliCommand {
                 cwd.join(path)
             }
         };
-        if matches!(operation.as_str(), "decompress" | "ainb_roundtrip") {
+        if matches!(
+            operation.as_str(),
+            "decompress"
+                | "ainb_roundtrip"
+                | "asb_native_yaml"
+                | "asb_yaml_roundtrip"
+                | "asb_yaml_to_binary"
+                | "asb_native_events"
+                | "asb_native_connections"
+                | "asb_validate"
+        ) {
             Some(Self {
                 operation,
                 file_type: String::new(),
@@ -93,6 +113,12 @@ impl CliCommand {
             "decompress" => self.decompress(),
             "compress" => self.compress(),
             "ainb_roundtrip" => self.ainb_roundtrip(),
+            "asb_validate" => self.asb_validate(),
+            "asb_native_yaml" => self.asb_native_yaml(),
+            "asb_yaml_roundtrip" => self.asb_yaml_roundtrip(),
+            "asb_yaml_to_binary" => self.asb_yaml_to_binary(),
+            "asb_native_events" => self.asb_native_events(),
+            "asb_native_connections" => self.asb_native_connections(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -232,6 +258,86 @@ impl CliCommand {
         }
         report.push_str(&format!("\n{} AINB files passed\n", tested));
         write_output(&self.output, report.as_bytes())
+    }
+
+    fn asb_validate(&self) -> Result<(), String> {
+        if !self.input.is_dir() {
+            return Err("asb_validate requires an ASB directory".into());
+        }
+        let mut files = Vec::new();
+        collect_files(&self.input, &mut files)?;
+        files.retain(|p| p.to_string_lossy().to_ascii_lowercase().contains(".asb"));
+        files.sort();
+        let mut report = String::from("file\toriginal_sha256\trebuilt_sha256\tmatch\n");
+        for path in &files {
+            let packed = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            if !packed.starts_with(b"ASB ") {
+                return Err(format!("{} is not a decompressed ASB file", path.display()));
+            }
+            let bytes = packed;
+            let parsed = crate::parser::asb::Asb::from_bytes(&bytes)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let rebuilt = parsed.to_bytes();
+            let original_hash = hex_sha256(&bytes);
+            let rebuilt_hash = hex_sha256(&rebuilt);
+            report.push_str(&format!(
+                "{}\t{}\t{}\t{}\n",
+                path.file_name().unwrap_or_default().to_string_lossy(),
+                original_hash,
+                rebuilt_hash,
+                original_hash == rebuilt_hash
+            ));
+            if original_hash != rebuilt_hash {
+                return Err(format!("ASB round trip changed {}", path.display()));
+            }
+        }
+        report.push_str(&format!("\n{} ASB files passed\n", files.len()));
+        write_output(&self.output, report.as_bytes())
+    }
+
+    fn asb_native_yaml(&self) -> Result<(), String> {
+        let bytes = fs::read(&self.input)
+            .map_err(|e| format!("failed to read {}: {e}", self.input.display()))?;
+        let yaml = crate::parser::asb::Asb::from_bytes(&bytes)
+            .and_then(|document| document.to_yaml())
+            .map_err(|e| format!("failed to parse {}: {e}", self.input.display()))?;
+        write_output(&self.output, yaml.as_bytes())
+    }
+
+    fn asb_yaml_roundtrip(&self) -> Result<(), String> {
+        let yaml = fs::read_to_string(&self.input)
+            .map_err(|e| format!("failed to read {}: {e}", self.input.display()))?;
+        let output = crate::parser::asb::Asb::from_yaml(&yaml)
+            .and_then(|document| document.to_yaml())
+            .map_err(|e| format!("failed to deserialize {}: {e}", self.input.display()))?;
+        write_output(&self.output, output.as_bytes())
+    }
+
+    fn asb_yaml_to_binary(&self) -> Result<(), String> {
+        let yaml = fs::read_to_string(&self.input)
+            .map_err(|e| format!("failed to read {}: {e}", self.input.display()))?;
+        let output = crate::parser::asb::Asb::from_yaml(&yaml)
+            .and_then(|document| document.to_native_bytes())
+            .map_err(|e| format!("failed to write {}: {e}", self.input.display()))?;
+        write_output(&self.output, &output)
+    }
+
+    fn asb_native_events(&self) -> Result<(), String> {
+        let bytes = fs::read(&self.input)
+            .map_err(|e| format!("failed to read {}: {e}", self.input.display()))?;
+        let yaml = crate::parser::asb::Asb::from_bytes(&bytes)
+            .and_then(|document| document.events_yaml())
+            .map_err(|e| format!("failed to parse {}: {e}", self.input.display()))?;
+        write_output(&self.output, yaml.as_bytes())
+    }
+
+    fn asb_native_connections(&self) -> Result<(), String> {
+        let bytes = fs::read(&self.input)
+            .map_err(|e| format!("failed to read {}: {e}", self.input.display()))?;
+        let yaml = crate::parser::asb::Asb::from_bytes(&bytes)
+            .and_then(|document| document.connections_yaml())
+            .map_err(|e| format!("failed to parse {}: {e}", self.input.display()))?;
+        write_output(&self.output, yaml.as_bytes())
     }
 }
 

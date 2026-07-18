@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::io;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub struct AinbNode {
     pub node_type: String,
     #[serde(rename = "Node Index")]
@@ -32,6 +33,7 @@ pub struct AinbNode {
     pub query_count: u16,
     #[serde(skip)]
     pub state_info_offset: u32,
+    #[serde(rename = "GUID")]
     pub guid: String,
     #[serde(rename = "Flags")]
     pub node_flags: Vec<String>,

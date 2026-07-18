@@ -5,6 +5,7 @@ use std::io;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AinbCommand {
     pub name: String,
+    #[serde(rename = "GUID")]
     pub guid: String,
     pub root_node_index: u16,
     #[serde(skip_serializing_if = "Option::is_none")]

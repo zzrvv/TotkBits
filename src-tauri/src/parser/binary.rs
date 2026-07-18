@@ -131,10 +131,17 @@ impl<'a> BinaryReader<'a> {
     }
 
     pub fn read_c_string_at(&self, offset: usize) -> io::Result<String> {
-        let tail = self
-            .data
-            .get(offset..)
-            .ok_or_else(|| self.error("string offset exceeds input"))?;
+        // An offset at the end of an empty pool represents an empty string in
+        // ASB and several related Nintendo formats.
+        if offset == self.data.len() {
+            return Ok(String::new());
+        }
+        let tail = self.data.get(offset..).ok_or_else(|| {
+            self.error(&format!(
+                "string offset {offset:#x} exceeds input length {:#x}",
+                self.data.len()
+            ))
+        })?;
         let end = tail
             .iter()
             .position(|byte| *byte == 0)
@@ -290,5 +297,11 @@ mod tests {
                 .unwrap(),
             0x0102_0304
         );
+    }
+
+    #[test]
+    fn string_at_end_of_input_is_empty() {
+        let reader = BinaryReader::new(&[]);
+        assert_eq!(reader.read_c_string_at(0).unwrap(), "");
     }
 }

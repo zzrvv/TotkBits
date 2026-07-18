@@ -44,10 +44,7 @@ fn main() -> io::Result<()> {
     let cli = Cli::CliCommand::from_env();
     main_initialization()?;
     if let Some(command) = cli {
-        match command.execute() {
-            Ok(()) => return Ok(()),
-            Err(error) => eprintln!("CLI command failed; launching GUI: {error}"),
-        }
+        return command.execute().map_err(std::io::Error::other);
     }
     // test_case()?;
     // return Ok(());
