@@ -8,7 +8,7 @@ pub struct TriggerEvent {
     #[serde(rename = "Parameters")]
     pub parameters: Vec<BaevParameter>,
     #[serde(rename = "Start Frame")]
-    pub start_frame: f32,
+    pub start_frame: f64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -16,9 +16,9 @@ pub struct HoldEvent {
     #[serde(rename = "Parameters")]
     pub parameters: Vec<BaevParameter>,
     #[serde(rename = "Start Frame")]
-    pub start_frame: f32,
+    pub start_frame: f64,
     #[serde(rename = "End Frame")]
-    pub end_frame: f32,
+    pub end_frame: f64,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -87,7 +87,7 @@ fn read_triggers(reader: &mut BinaryReader<'_>, array: BaevArray) -> io::Result<
     let mut values = Vec::with_capacity(array.count as usize);
     for _ in 0..array.count {
         let parameters = BaevArray::read(reader)?;
-        let start_frame = reader.read_f32()?;
+        let start_frame = f64::from(reader.read_f32()?);
         reader.read_f32()?;
         values.push(TriggerEvent {
             parameters: read_parameters(reader, parameters)?,
@@ -107,8 +107,8 @@ fn read_holds(reader: &mut BinaryReader<'_>, array: BaevArray) -> io::Result<Vec
     let mut values = Vec::with_capacity(array.count as usize);
     for _ in 0..array.count {
         let parameters = BaevArray::read(reader)?;
-        let start_frame = reader.read_f32()?;
-        let end_frame = reader.read_f32()?;
+        let start_frame = f64::from(reader.read_f32()?);
+        let end_frame = f64::from(reader.read_f32()?);
         values.push(HoldEvent {
             parameters: read_parameters(reader, parameters)?,
             start_frame,

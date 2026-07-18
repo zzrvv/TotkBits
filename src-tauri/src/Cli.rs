@@ -46,6 +46,7 @@ impl CliCommand {
             "decompress"
                 | "ainb_roundtrip"
                 | "asb_native_yaml"
+                | "baev_native_yaml"
                 | "asb_yaml_roundtrip"
                 | "asb_yaml_to_binary"
                 | "asb_native_events"
@@ -79,6 +80,7 @@ impl CliCommand {
             "decompress"
                 | "ainb_roundtrip"
                 | "asb_native_yaml"
+                | "baev_native_yaml"
                 | "asb_yaml_roundtrip"
                 | "asb_yaml_to_binary"
                 | "asb_native_events"
@@ -115,6 +117,7 @@ impl CliCommand {
             "ainb_roundtrip" => self.ainb_roundtrip(),
             "asb_validate" => self.asb_validate(),
             "asb_native_yaml" => self.asb_native_yaml(),
+            "baev_native_yaml" => self.baev_native_yaml(),
             "asb_yaml_roundtrip" => self.asb_yaml_roundtrip(),
             "asb_yaml_to_binary" => self.asb_yaml_to_binary(),
             "asb_native_events" => self.asb_native_events(),
@@ -299,6 +302,15 @@ impl CliCommand {
         let bytes = fs::read(&self.input)
             .map_err(|e| format!("failed to read {}: {e}", self.input.display()))?;
         let yaml = crate::parser::asb::Asb::from_bytes(&bytes)
+            .and_then(|document| document.to_yaml())
+            .map_err(|e| format!("failed to parse {}: {e}", self.input.display()))?;
+        write_output(&self.output, yaml.as_bytes())
+    }
+
+    fn baev_native_yaml(&self) -> Result<(), String> {
+        let bytes = fs::read(&self.input)
+            .map_err(|e| format!("failed to read {}: {e}", self.input.display()))?;
+        let yaml = crate::parser::asb::Baev::from_bytes(&bytes)
             .and_then(|document| document.to_yaml())
             .map_err(|e| format!("failed to parse {}: {e}", self.input.display()))?;
         write_output(&self.output, yaml.as_bytes())

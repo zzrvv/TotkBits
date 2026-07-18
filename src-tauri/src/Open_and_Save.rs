@@ -1,7 +1,7 @@
 use crate::{
     file_format::{
+        asb::AsbFile,
         Ainb::AinbFile,
-        Asb_py::Asb_py,
         BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile},
         Esetb::Esetb,
         Evfl_cs::Evfl,
@@ -102,14 +102,12 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
     }
 
     let asb_suffix = lower_path.ends_with(".asb") || lower_path.ends_with(".asb.zs");
-    if (asb_suffix || is_asb(&data)) {
-        if let Ok(asb) = Asb_py::from_binary(&data, zstd.clone()) {
-            if let Ok(text) = asb.binary_to_text() {
-                internal_file.endian = Some(roead::Endian::Little);
-                internal_file.path = Pathlib::new(path.clone());
-                internal_file.file_type = TotkFileType::ASB;
-                return Some((internal_file, text));
-            }
+    if asb_suffix || is_asb(&data) {
+        if let Ok(text) = AsbFile::binary_to_text(&data) {
+            internal_file.endian = Some(roead::Endian::Little);
+            internal_file.path = Pathlib::new(path.clone());
+            internal_file.file_type = TotkFileType::ASB;
+            return Some((internal_file, text));
         }
     }
 
@@ -297,8 +295,7 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::ASB => {
-            let asb = Asb_py::new(zstd.clone());
-            if let Ok(some_data) = asb.text_to_binary(text) {
+            if let Ok(some_data) = AsbFile::text_to_binary(text) {
                 rawdata = some_data;
                 if is_zs {
                     rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
@@ -615,7 +612,7 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     .or_else(|| TagProduct::open_tag(&file_name, zstd.clone()))
     .or_else(|| Esetb::open_esetb(&file_name, zstd.clone()))
     .or_else(|| Restbl::open_restbl(&file_name, zstd.clone()))
-    .or_else(|| Asb_py::open_asb(&file_name, zstd.clone()))
+    .or_else(|| AsbFile::open_asb(&file_name, zstd.clone()))
     .or_else(|| AinbFile::open_ainb(&file_name, zstd.clone()))
     .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
     .or_else(|| crate::file_format::Msbt::MsbtFile::open_msbt(&file_name))

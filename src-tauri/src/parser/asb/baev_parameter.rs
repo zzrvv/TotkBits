@@ -6,8 +6,8 @@ use std::io;
 #[serde(untagged)]
 pub enum BaevParameter {
     Integer(u32),
-    Float(f32),
-    Vec3f([f32; 3]),
+    Float(f64),
+    Vec3f([f64; 3]),
     String(String),
 }
 
@@ -19,8 +19,12 @@ impl BaevParameter {
         reader.read_u32()?;
         let parameter = match parameter_type {
             0 => Self::Integer(reader.read_u32()?),
-            1 => Self::Float(reader.read_f32()?),
-            3 => Self::Vec3f([reader.read_f32()?, reader.read_f32()?, reader.read_f32()?]),
+            1 => Self::Float(f64::from(reader.read_f32()?)),
+            3 => Self::Vec3f([
+                f64::from(reader.read_f32()?),
+                f64::from(reader.read_f32()?),
+                f64::from(reader.read_f32()?),
+            ]),
             5 => {
                 let string_offset = usize::try_from(reader.read_u64()?).map_err(|_| {
                     io::Error::new(
