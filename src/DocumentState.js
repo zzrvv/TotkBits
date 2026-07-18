@@ -74,13 +74,27 @@ const allocateOpenDocument = (command, args) => {
     return id;
 };
 
+const allocateChildDocument = (args) => {
+    const rawPath = args?.innerPath || args?.path || 'Archive entry';
+    const title = rawPath.replace(/\\/g, '/').split('/').pop();
+    const id = addCleanDocument();
+    updateTitle(id, title);
+    return id;
+};
+
 export const invoke = async (command, args = {}) => {
     if (!documentCommands.has(command)) return tauriInvoke(command, args);
     const isOpen = command === 'open_file_struct' || command === 'open_file_from_path' || command === 'open_folder_struct';
-    const documentId = isOpen ? allocateOpenDocument(command, args) : activeDocumentId;
+    const isChildOpen = command === 'edit_internal_file' || command === 'edit_nested_sarc_file';
+    const parentDocumentId = isChildOpen ? activeDocumentId : null;
+    const documentId = isOpen ? allocateOpenDocument(command, args)
+        : isChildOpen ? allocateChildDocument(args) : activeDocumentId;
     try {
-        const result = await tauriInvoke(command, { ...args, documentId });
-        if (isOpen) {
+        const result = await tauriInvoke(command, {
+            ...args, documentId,
+            ...(isChildOpen ? { parentDocumentId } : {}),
+        });
+        if (isOpen || isChildOpen) {
             const failed = !result || result.tab === 'ERROR';
             if (failed) {
                 await closeDocument(documentId);
@@ -88,7 +102,7 @@ export const invoke = async (command, args = {}) => {
             }
             else {
                 updateTitle(documentId, result.path?.name || result.file_label?.split(' [')[0] || 'Document', true);
-                updateFullPath(documentId, result.path?.full_path || args?.path || '');
+                updateFullPath(documentId, result.path?.full_path || args?.innerPath || args?.path || '');
                 // Existing open handlers update the visible pane after invoke resolves.
                 // Re-select the originating document so those updates cannot overwrite
                 // a different document if the user switched while opening.
@@ -104,7 +118,7 @@ export const invoke = async (command, args = {}) => {
         }
         return result;
     } catch (error) {
-        if (isOpen) await closeDocument(documentId);
+        if (isOpen || isChildOpen) await closeDocument(documentId);
         throw error;
     }
 };

@@ -27,6 +27,13 @@ pub struct SaveData {
     pub text: String,
 }
 
+#[derive(Clone, Debug)]
+pub struct InternalParentLink {
+    pub document_id: String,
+    pub outer_path: Option<String>,
+    pub inner_path: String,
+}
+
 pub struct TotkBitsApp<'a> {
     pub opened_file: OpenedFile<'a>, //path to opened file in string
     pub text: String,
@@ -38,6 +45,7 @@ pub struct TotkBitsApp<'a> {
     pub internal_file: Option<InternalFile<'a>>,
     pub nested_archives: NestedArchives,
     pub nested_edit: Option<(String, String)>,
+    pub internal_parent: Option<InternalParentLink>,
 }
 
 unsafe impl<'a> Send for TotkBitsApp<'a> {}
@@ -59,6 +67,7 @@ impl Default for TotkBitsApp<'_> {
                             internal_file: None,
                             nested_archives: NestedArchives::default(),
                             nested_edit: None,
+                            internal_parent: None,
                         };
                     }
                     Err(_) => {
@@ -78,6 +87,76 @@ impl Default for TotkBitsApp<'_> {
 }
 
 impl<'a> TotkBitsApp<'a> {
+    pub fn internal_entry_bytes(&mut self, outer: Option<&str>, path: &str) -> Option<Vec<u8>> {
+        match outer {
+            Some(outer) => self
+                .nested_archives
+                .get_mut(outer)?
+                .get(path)
+                .map(<[u8]>::to_vec),
+            None => self.root_entry(path),
+        }
+    }
+
+    pub fn open_internal_child(
+        &mut self,
+        parent_document_id: String,
+        outer_path: Option<String>,
+        path: String,
+        bytes: Vec<u8>,
+    ) -> Option<SendData> {
+        let (internal, text) = get_string_from_data(path.clone(), bytes, self.zstd.clone())?;
+        let mut data = SendData::default();
+        data.text = text;
+        data.path = internal.path.clone();
+        data.tab = "YAML".into();
+        data.status_text = match &outer_path {
+            Some(outer) => format!("Opened {path} inside {outer}"),
+            None => format!("Opened {path} from archive"),
+        };
+        data.get_file_label(internal.file_type, internal.endian);
+        self.opened_file = OpenedFile::default();
+        self.internal_file = Some(internal);
+        self.internal_parent = Some(InternalParentLink {
+            document_id: parent_document_id,
+            outer_path,
+            inner_path: path,
+        });
+        Some(data)
+    }
+
+    pub fn internal_binary(&mut self, text: &str) -> Option<Vec<u8>> {
+        let internal = self.internal_file.as_ref()?;
+        get_binary_by_filetype(
+            internal.file_type,
+            text,
+            internal.endian.unwrap_or(roead::Endian::Little),
+            self.zstd.clone(),
+            &internal.path.full_path,
+            &mut self.opened_file,
+            internal.zstd_dictionary,
+        )
+    }
+
+    pub fn update_child_entry(
+        &mut self,
+        outer: Option<&str>,
+        path: &str,
+        bytes: Vec<u8>,
+    ) -> Result<SendData, String> {
+        if let Some(outer) = outer {
+            self.nested_archives
+                .get_mut(outer)
+                .ok_or_else(|| format!("nested archive cache missing: {outer}"))?
+                .set(path, bytes);
+            self.flush_nested_chain(outer)?;
+        } else {
+            self.set_root_entry(path, bytes)?;
+        }
+        let mut data = self.archive_send_data(format!("Updated {path} in archive"));
+        data.tab = "YAML".into();
+        Ok(data)
+    }
     fn root_entry(&mut self, path: &str) -> Option<Vec<u8>> {
         if let Some(archive) = &self.archive {
             return archive.get(path).map(<[u8]>::to_vec);
@@ -724,11 +803,15 @@ impl<'a> TotkBitsApp<'a> {
                         data.path = Pathlib::new(dest_file.clone());
                         self.opened_file.path = Pathlib::new(dest_file);
                     } else {
-                        let rawdata = self.get_binary_for_opened_file(
-                            &save_data.text,
-                            self.zstd.clone(),
-                            &dest_file,
-                        );
+                        let rawdata = if self.internal_file.is_some() {
+                            self.internal_binary(&save_data.text)
+                        } else {
+                            self.get_binary_for_opened_file(
+                                &save_data.text,
+                                self.zstd.clone(),
+                                &dest_file,
+                            )
+                        };
                         if let Some(rawdata) = rawdata {
                             let mut file = fs::File::create(&dest_file).ok()?;
                             file.write_all(&rawdata).ok()?;

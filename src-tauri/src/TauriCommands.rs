@@ -156,9 +156,15 @@ pub fn add_empty_byml_file(
 pub fn edit_internal_file(
     app_handle: tauri::AppHandle,
     documentId: String,
+    parentDocumentId: String,
     path: String,
 ) -> Option<SendData> {
-    with_document_mut!(app_handle, documentId, app, app.edit_internal_file(path))
+    app_handle.state::<DocumentState>().open_internal_child(
+        &parentDocumentId,
+        &documentId,
+        None,
+        path,
+    )
 }
 
 #[tauri::command]
@@ -183,15 +189,19 @@ pub fn expand_nested_sarc(
 pub fn edit_nested_sarc_file(
     app_handle: tauri::AppHandle,
     documentId: String,
+    parentDocumentId: String,
     outerPath: String,
     innerPath: String,
 ) -> SendData {
-    with_document_mut!(
-        app_handle,
-        documentId,
-        app,
-        app.edit_nested_sarc_file(outerPath, innerPath)
-    )
+    app_handle
+        .state::<DocumentState>()
+        .open_internal_child(&parentDocumentId, &documentId, Some(outerPath), innerPath)
+        .unwrap_or_else(|| {
+            let mut data = SendData::default();
+            data.tab = "ERROR".into();
+            data.status_text = "Error: unsupported or missing nested entry".into();
+            data
+        })
 }
 
 #[tauri::command]
@@ -411,7 +421,9 @@ pub fn save_file_struct(
     documentId: String,
     save_data: SaveData,
 ) -> Option<SendData> {
-    with_document_mut!(app_handle, documentId, app, app.save(save_data))
+    app_handle
+        .state::<DocumentState>()
+        .save_document(&documentId, save_data)
 }
 #[tauri::command]
 pub fn rename_internal_sarc_file(
