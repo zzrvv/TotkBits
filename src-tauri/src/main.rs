@@ -132,12 +132,11 @@ fn pipe_worker() {
                 for line in reader.lines() {
                     match line {
                         Ok(msg) => {
-                            let size = msg.len();
-                            if size >= 3 && &msg[0..3] == "END" {
+                            if msg.starts_with("END") {
                                 println!("Received end message, closing pipe...");
                                 break;
                             }
-                            if size >= 4 && &msg[0..4] == "KILL" {
+                            if msg.starts_with("KILL") {
                                 println!("Received kill message, ending program...");
                                 process::exit(0);
                             }

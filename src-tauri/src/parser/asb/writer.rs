@@ -930,7 +930,16 @@ fn as_bool(v: &Value) -> io::Result<bool> {
 }
 fn write_guid(w: &mut BinaryWriter, value: &str) -> io::Result<()> {
     let p: Vec<_> = value.split('-').collect();
-    if p.len() != 5 {
+    if p.len() != 5
+        || p[0].len() != 8
+        || p[1].len() != 4
+        || p[2].len() != 4
+        || p[3].len() != 4
+        || p[4].len() != 12
+        || !p
+            .iter()
+            .all(|part| part.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid GUID"));
     }
     w.write_u32(u32::from_str_radix(p[0], 16).map_err(io::Error::other)?);

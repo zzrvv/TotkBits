@@ -109,7 +109,7 @@ impl<'a> Restbl<'_> {
                 }
                 let local_path_lower = local_path.to_ascii_lowercase();
                 if local_path.to_ascii_lowercase().ends_with(".zs") {
-                    local_path = local_path[..(local_path.len() - 3)].to_string()
+                    local_path.truncate(local_path.len().saturating_sub(3));
                 }
                 // if !res.contains(&local_path) {
                 // println!("Adding custom rstb path: {}", &local_path);

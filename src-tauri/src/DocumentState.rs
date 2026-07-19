@@ -11,6 +11,20 @@ pub struct DocumentState {
 }
 
 impl DocumentState {
+    fn documents(&self) -> std::sync::MutexGuard<'_, HashMap<String, TotkBitsApp<'static>>> {
+        match self.documents.lock() {
+            Ok(documents) => documents,
+            Err(poisoned) => {
+                // A panic may have interrupted a multi-document update. Discard the
+                // potentially partial graph rather than exposing inconsistent state.
+                let mut documents = poisoned.into_inner();
+                documents.clear();
+                self.documents.clear_poison();
+                documents
+            }
+        }
+    }
+
     pub fn open_internal_child(
         &self,
         parent_id: &str,
@@ -18,10 +32,7 @@ impl DocumentState {
         outer_path: Option<String>,
         path: String,
     ) -> Option<SendData> {
-        let mut documents = self
-            .documents
-            .lock()
-            .expect("Failed to lock document state");
+        let mut documents = self.documents();
         let bytes = documents
             .get_mut(parent_id)?
             .internal_entry_bytes(outer_path.as_deref(), &path)?;
@@ -32,10 +43,7 @@ impl DocumentState {
     }
 
     pub fn save_document(&self, id: &str, save_data: SaveData) -> Option<SendData> {
-        let mut documents = self
-            .documents
-            .lock()
-            .expect("Failed to lock document state");
+        let mut documents = self.documents();
         let link = documents.get(id)?.internal_parent.clone();
         let Some(link) = link else {
             return documents.get_mut(id)?.save(save_data);
@@ -64,34 +72,21 @@ impl DocumentState {
         id: &str,
         operation: impl FnOnce(&mut TotkBitsApp<'static>) -> T,
     ) -> T {
-        let mut documents = self
-            .documents
-            .lock()
-            .expect("Failed to lock document state");
+        let mut documents = self.documents();
         operation(documents.entry(id.to_owned()).or_default())
     }
 
     pub fn with<T>(&self, id: &str, operation: impl FnOnce(&TotkBitsApp<'static>) -> T) -> T {
-        let mut documents = self
-            .documents
-            .lock()
-            .expect("Failed to lock document state");
+        let mut documents = self.documents();
         operation(documents.entry(id.to_owned()).or_default())
     }
 
     pub fn close(&self, id: &str) -> bool {
-        self.documents
-            .lock()
-            .expect("Failed to lock document state")
-            .remove(id)
-            .is_some()
+        self.documents().remove(id).is_some()
     }
 
     pub fn close_all(&self) {
-        self.documents
-            .lock()
-            .expect("Failed to lock document state")
-            .clear();
+        self.documents().clear();
     }
 }
 

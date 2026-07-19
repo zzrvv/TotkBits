@@ -46,47 +46,76 @@ pub struct TotkBitsApp<'a> {
     pub nested_archives: NestedArchives,
     pub nested_edit: Option<(String, String)>,
     pub internal_parent: Option<InternalParentLink>,
+    pub initialization_error: Option<String>,
 }
 
 unsafe impl<'a> Send for TotkBitsApp<'a> {}
 
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
-        match TotkConfig::safe_new() {
-            Ok(conf) => {
-                let totk_config: Arc<TotkConfig> = Arc::new(conf);
-                match global_totk_zstd(totk_config, 16) {
-                    Ok(zstd) => {
-                        return Self {
-                            opened_file: OpenedFile::default(),
-                            text: "".to_string(),
-                            status_text: "Ready".to_string(),
-                            zstd: zstd.clone(),
-                            pack: None,
-                            archive: None,
-                            internal_file: None,
-                            nested_archives: NestedArchives::default(),
-                            nested_edit: None,
-                            internal_parent: None,
-                        };
-                    }
-                    Err(_) => {
-                        println!("Error while initializing romfs path");
-                        std::process::exit(1);
-                    }
-                }
+        let (config, config_error) = match TotkConfig::safe_new() {
+            Ok(config) => (config, None),
+            Err(error) => (
+                TotkConfig::default(),
+                Some(format!(
+                    "Unable to initialize TotkBits configuration: {error}"
+                )),
+            ),
+        };
+        let config = Arc::new(config);
+        let (zstd, initialization_error) = match global_totk_zstd(config.clone(), 16) {
+            Ok(zstd) => (zstd, config_error),
+            Err(error) => {
+                let message = config_error.unwrap_or_else(|| {
+                    format!("Unable to load TOTK Zstandard dictionaries: {error}")
+                });
+                (
+                    Arc::new(TotkZstd::dictionaryless(config, 16)),
+                    Some(message),
+                )
             }
-            Err(_) => {
-                println!("Error while initializing romfs path");
-                std::process::exit(2);
-            }
+        };
+        let status_text = initialization_error
+            .as_ref()
+            .map(|error| format!("Error: {error}"))
+            .unwrap_or_else(|| "Ready".to_string());
+        Self {
+            opened_file: OpenedFile::default(),
+            text: String::new(),
+            status_text,
+            zstd,
+            pack: None,
+            archive: None,
+            internal_file: None,
+            nested_archives: NestedArchives::default(),
+            nested_edit: None,
+            internal_parent: None,
+            initialization_error,
         }
-
-        // std::process::exit(3); //should never reach here
     }
 }
 
 impl<'a> TotkBitsApp<'a> {
+    fn initialization_error_data(&self) -> Option<SendData> {
+        self.initialization_error.as_ref().map(|error| {
+            let mut data = SendData::default();
+            data.tab = "ERROR".into();
+            data.status_text =
+                format!("Error: {error}. Configure a valid TOTK romfs path, then close and reopen this document or restart TotkBits.");
+            data
+        })
+    }
+
+    fn add_initialization_context(&self, data: &mut SendData) {
+        if data.tab == "ERROR" {
+            if let Some(error) = &self.initialization_error {
+                data.status_text.push_str(&format!(
+                    ". Startup warning: {error}. Configure a valid TOTK romfs path, then close and reopen this document or restart TotkBits"
+                ));
+            }
+        }
+    }
+
     pub fn internal_entry_bytes(&mut self, outer: Option<&str>, path: &str) -> Option<Vec<u8>> {
         match outer {
             Some(outer) => self
@@ -105,7 +134,10 @@ impl<'a> TotkBitsApp<'a> {
         path: String,
         bytes: Vec<u8>,
     ) -> Option<SendData> {
-        let (internal, text) = get_string_from_data(path.clone(), bytes, self.zstd.clone())?;
+        let Some((internal, text)) = get_string_from_data(path.clone(), bytes, self.zstd.clone())
+        else {
+            return self.initialization_error_data();
+        };
         let mut data = SendData::default();
         data.text = text;
         data.path = internal.path.clone();
@@ -178,9 +210,9 @@ impl<'a> TotkBitsApp<'a> {
         pack.opened
             .as_mut()
             .ok_or("root SARC unavailable")?
-            .writer
-            .add_file(path, bytes);
-        pack.compare_and_reload();
+            .mutate_writer(|writer| writer.add_file(path, bytes))
+            .map_err(|error| error.to_string())?;
+        pack.compare();
         Ok(())
     }
     fn flush_nested_chain(&mut self, chain: &str) -> Result<(), String> {
@@ -278,14 +310,21 @@ impl<'a> TotkBitsApp<'a> {
         let mut data = SendData::default();
         if let Some(rstb) = &mut self.opened_file.restbl {
             data.tab = "RSTB".to_string();
+            let value = match val.parse::<u32>() {
+                Ok(value) => value,
+                Err(_) => {
+                    data.status_text = format!("Error: invalid RSTB value ({val})");
+                    data.tab = "ERROR".to_string();
+                    return Some(data);
+                }
+            };
             if let Some(_) = rstb.table.get(entry.clone()) {
                 //entry exists
                 data.status_text = format!("Modified: {}", &entry);
             } else {
                 data.status_text = format!("Added: {}", &entry);
             }
-            rstb.table
-                .set(entry, val.parse::<u32>().expect("Failed to parse value"));
+            rstb.table.set(entry, value);
         } else {
             data.status_text = "Error: No RSTB opened".to_string();
             data.tab = "ERROR".to_string();
@@ -422,7 +461,13 @@ impl<'a> TotkBitsApp<'a> {
                     {
                         return None;
                     }
-                    opened.writer.remove_file(&internal_path);
+                    if let Err(error) =
+                        opened.mutate_writer(|writer| writer.remove_file(&internal_path))
+                    {
+                        data.tab = "ERROR".into();
+                        data.status_text = format!("Error: failed to remove SARC entry: {error}");
+                        return Some(data);
+                    }
                     data.status_text = format!("Removed {}", &internal_path);
                 } else {
                     //its a directory
@@ -441,16 +486,27 @@ impl<'a> TotkBitsApp<'a> {
                             to_remove.push(file.clone());
                         }
                     }
-                    let mut i: usize = 0;
-                    for file in to_remove {
-                        opened.writer.remove_file(&file);
-                        i += 1;
+                    let i = to_remove.len();
+                    if let Err(error) = opened.mutate_writer(|writer| {
+                        for file in to_remove {
+                            writer.remove_file(&file);
+                        }
+                    }) {
+                        data.tab = "ERROR".into();
+                        data.status_text =
+                            format!("Error: failed to remove SARC directory: {error}");
+                        return Some(data);
                     }
                     data.status_text = format!("Removed {} files from {}", i, &internal_path);
                 }
             }
             if is_reload {
-                pack.compare_and_reload();
+                if let Err(error) = pack.compare_and_reload() {
+                    data.tab = "ERROR".into();
+                    data.status_text =
+                        format!("Error: failed to reload SARC after removal: {error}");
+                    return Some(data);
+                }
                 data.get_sarc_paths(pack);
             }
             return Some(data);
@@ -588,8 +644,14 @@ impl<'a> TotkBitsApp<'a> {
                 if let Some(rawdata) = opened.writer.get_file(&internal_path) {
                     let rawdata_backup = rawdata.clone();
                     let new_path = format!("{}/{}", &p1.parent, &p2.name);
-                    opened.writer.remove_file(&internal_path);
-                    opened.writer.add_file(&new_path, rawdata_backup);
+                    if let Err(error) = opened.mutate_writer(|writer| {
+                        writer.remove_file(&internal_path);
+                        writer.add_file(&new_path, rawdata_backup);
+                    }) {
+                        data.tab = "ERROR".into();
+                        data.status_text = format!("Error: failed to rename SARC entry: {error}");
+                        return Some(data);
+                    }
                     data.status_text = format!("Renamed {} to {}", &p1.name, &p2.name);
                 } else {
                     //assuming the node is a directory
@@ -600,7 +662,7 @@ impl<'a> TotkBitsApp<'a> {
                         }
                     }
                     println!("{:?}", to_remove);
-                    let mut i: usize = 0;
+                    let mut replacements = Vec::new();
                     for file in to_remove {
                         if let Some(rawdata) = opened.writer.get_file(&file) {
                             let input = "asdf.qwre.zxcv";
@@ -621,10 +683,20 @@ impl<'a> TotkBitsApp<'a> {
                             }
                             new_file_path = new_file_path.replace("//", "/");
                             println!("{} -> {}", &file, &new_file_path);
-                            opened.writer.remove_file(&file);
-                            opened.writer.add_file(&new_file_path, rawdata_backup);
-                            i += 1;
+                            replacements.push((file, new_file_path, rawdata_backup));
                         }
+                    }
+                    let i = replacements.len();
+                    if let Err(error) = opened.mutate_writer(|writer| {
+                        for (old_path, new_path, bytes) in replacements {
+                            writer.remove_file(&old_path);
+                            writer.add_file(&new_path, bytes);
+                        }
+                    }) {
+                        data.tab = "ERROR".into();
+                        data.status_text =
+                            format!("Error: failed to rename SARC directory: {error}");
+                        return Some(data);
                     }
                     data.status_text = format!(
                         "Renamed {} to {} ({} files affected)",
@@ -633,7 +705,12 @@ impl<'a> TotkBitsApp<'a> {
                 }
             }
             if is_reload {
-                pack.compare_and_reload();
+                if let Err(error) = pack.compare_and_reload() {
+                    data.tab = "ERROR".into();
+                    data.status_text =
+                        format!("Error: failed to reload SARC after rename: {error}");
+                    return Some(data);
+                }
                 data.get_sarc_paths(pack);
             }
             return Some(data);
@@ -741,13 +818,23 @@ impl<'a> TotkBitsApp<'a> {
                 let mut f_handle = fs::File::open(&path).ok()?;
                 let mut buffer: Vec<u8> = Vec::new();
                 f_handle.read_to_end(&mut buffer).ok()?;
-                opened
-                    .writer
-                    .add_file(&internal_path.replace("\\", "/"), buffer);
+                let normalized_path = internal_path.replace("\\", "/");
+                if let Err(error) =
+                    opened.mutate_writer(|writer| writer.add_file(&normalized_path, buffer))
+                {
+                    data.tab = "ERROR".into();
+                    data.status_text = format!("Error: failed to add SARC entry: {error}");
+                    return Some(data);
+                }
                 data.status_text = format!("Added/replaced: {}", &internal_path);
             }
             if is_reload {
-                pack.compare_and_reload();
+                if let Err(error) = pack.compare_and_reload() {
+                    data.tab = "ERROR".into();
+                    data.status_text =
+                        format!("Error: failed to reload SARC after adding file: {error}");
+                    return Some(data);
+                }
                 data.get_sarc_paths(pack);
             }
             return Some(data);
@@ -844,6 +931,12 @@ impl<'a> TotkBitsApp<'a> {
                     let mut is_reload = false;
                     if let Some(pack) = &mut self.pack {
                         if let Some(opened) = &mut pack.opened {
+                            if let Err(error) = opened.reload() {
+                                data.tab = "ERROR".into();
+                                data.status_text =
+                                    format!("Error: refusing to write invalid SARC: {error}");
+                                return Some(data);
+                            }
                             match opened.save(dest_file.clone()) {
                                 Ok(_) => {
                                     is_reload = true;
@@ -861,7 +954,12 @@ impl<'a> TotkBitsApp<'a> {
                             }
                         }
                         if is_reload {
-                            pack.compare_and_reload();
+                            if let Err(error) = pack.compare_and_reload() {
+                                data.tab = "ERROR".into();
+                                data.status_text =
+                                    format!("Error: failed to reload saved SARC: {error}");
+                                return Some(data);
+                            }
                             data.get_sarc_paths(pack);
                         }
                         return Some(data);
@@ -959,7 +1057,14 @@ impl<'a> TotkBitsApp<'a> {
                         println!("{:?}", &data);
                         return Some(data);
                     } else {
-                        opened.writer.add_file(path, rawdata);
+                        if let Err(error) =
+                            opened.mutate_writer(|writer| writer.add_file(path, rawdata))
+                        {
+                            data.tab = "ERROR".into();
+                            data.status_text =
+                                format!("Error: failed to update internal SARC entry: {error}");
+                            return Some(data);
+                        }
                         is_reload = true;
                         data.tab = "YAML".to_string();
                         data.status_text = format!(
@@ -969,7 +1074,11 @@ impl<'a> TotkBitsApp<'a> {
                     }
                 }
                 if is_reload {
-                    pack.compare_and_reload();
+                    if let Err(error) = pack.compare_and_reload() {
+                        data.tab = "ERROR".into();
+                        data.status_text = format!("Error: failed to reload edited SARC: {error}");
+                        return Some(data);
+                    }
                     data.get_sarc_paths(pack);
                 }
             }
@@ -1034,7 +1143,12 @@ impl<'a> TotkBitsApp<'a> {
                 if let Some(pack) = &mut self.pack {
                     if let Some(opened) = &mut pack.opened {
                         if !check_if_save_in_romfs(&opened.path.full_path, self.zstd.clone()) {
-                            opened.reload();
+                            if let Err(error) = opened.reload() {
+                                data.tab = "ERROR".into();
+                                data.status_text =
+                                    format!("Error: failed to reload SARC before saving: {error}");
+                                return Some(data);
+                            }
                             match opened.save_default() {
                                 Ok(_) => {
                                     // is_reload = true;
@@ -1096,7 +1210,14 @@ impl<'a> TotkBitsApp<'a> {
                     new_path.push(format!("new_{}.byml", i));
                     let dest_file = new_path.to_string_lossy().to_string().replace("\\", "/");
                     if !opened.writer.files.contains_key(&dest_file) {
-                        opened.writer.add_file(&dest_file, raw_data.clone());
+                        if let Err(error) = opened
+                            .mutate_writer(|writer| writer.add_file(&dest_file, raw_data.clone()))
+                        {
+                            data.tab = "ERROR".into();
+                            data.status_text =
+                                format!("Error: failed to add empty BYML to SARC: {error}");
+                            return Some(data);
+                        }
                         data.status_text = format!("Added {}", &dest_file);
                         is_reload = true;
                         break;
@@ -1105,7 +1226,12 @@ impl<'a> TotkBitsApp<'a> {
                 }
             }
             if is_reload {
-                pack.compare_and_reload();
+                if let Err(error) = pack.compare_and_reload() {
+                    data.tab = "ERROR".into();
+                    data.status_text =
+                        format!("Error: failed to reload SARC after adding BYML: {error}");
+                    return Some(data);
+                }
                 data.get_sarc_paths(pack);
             }
         }
@@ -1551,6 +1677,7 @@ impl<'a> TotkBitsApp<'a> {
         }
         data.tab = "ERROR".to_string();
         data.status_text = format!("Error: Failed to open {}", &file_name);
+        self.add_initialization_context(&mut data);
         return Some(data);
     }
 

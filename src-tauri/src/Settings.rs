@@ -278,8 +278,10 @@ pub fn spawn_updater(latest_ver: &str) -> io::Result<()> {
     .to_string();
     let upd_path = fs::canonicalize(&upd_exe)?;
     if !upd_path.exists() {
-        println!("[-] Updater executable not found: {}", &upd_exe);
-        process::exit(1);
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            format!("Updater executable not found: {upd_exe}"),
+        ));
     }
     upd_exe = upd_path
         .to_string_lossy()

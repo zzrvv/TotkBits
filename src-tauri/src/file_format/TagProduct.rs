@@ -172,8 +172,7 @@ impl<'a> TagProduct<'a> {
                 .zstd
                 // .compressor
                 .cpp_compressor
-                .compress_zs(&data)
-                .expect("Failed to compress with zs");
+                .compress_zs(&data)?;
         }
         //f_handle.write_all(&data);
         bytes_to_file(data, &path)?;
@@ -275,6 +274,11 @@ impl<'a> TagProduct<'a> {
                     }),
             );
             let path_list_count = self.path_list.len();
+            if path_list_count % 3 != 0 {
+                return Err(roead::Error::Any(
+                    "TagProduct PathList length is not divisible by three".into(),
+                ));
+            }
             // Get Tag list
             println!("Parsing tag_list");
             self.tag_list.extend(
@@ -292,6 +296,9 @@ impl<'a> TagProduct<'a> {
                 .as_array()
                 .unwrap_or(&[roead::byml::Byml::default()])
                 .len();
+            let required_bits = (path_list_count / 3)
+                .checked_mul(tag_list_count)
+                .ok_or_else(|| roead::Error::Any("TagProduct dimensions overflow".into()))?;
 
             // Get Bit Table
             let mut bit_table_bytes: Vec<u8> = Vec::new();
@@ -305,6 +312,11 @@ impl<'a> TagProduct<'a> {
             let bit_table_bits = bit_table_bytes.view_bits::<Lsb0>().to_bitvec();
             //bit_table_bits.reverse();
             let bit_array_count = bit_table_bits.len();
+            if bit_array_count < required_bits {
+                return Err(roead::Error::Any(
+                    "TagProduct BitTable is shorter than PathList x TagList".into(),
+                ));
+            }
             // Debug
             println!("INFO: Parsed Bits Count: {}", bit_array_count);
             let mut actor_tag_data_map: BTreeMap<String, Vec<String>> =

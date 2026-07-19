@@ -240,6 +240,35 @@ impl<'a> TotkZstd<'_> {
             cpp_compressor: ZstdCppCompressor::from_zsdic(zsdic.clone(), comp_level),
         })
     }
+
+    /// Builds a usable, dictionary-free codec state for degraded application startup.
+    /// Plain files and empty-dictionary Zstandard data remain supported; operations
+    /// requiring a game dictionary return `NotFound` through their existing APIs.
+    pub fn dictionaryless(totk_config: Arc<TotkConfig>, comp_level: i32) -> TotkZstd<'a> {
+        let zsdic = Arc::new(ZsDic::empty());
+        let decompressor = ZstdDecompressor {
+            totk_config: totk_config.clone(),
+            packzs: None,
+            zs: None,
+            bcett: None,
+            empty: Arc::new(DecoderDictionary::copy(&[])),
+        };
+        let compressor = ZstdCompressor {
+            totk_config: totk_config.clone(),
+            packzs: None,
+            zs: None,
+            bcett: None,
+            empty: Arc::new(EncoderDictionary::copy(&[], comp_level)),
+            comp_level,
+        };
+        TotkZstd {
+            totk_config,
+            decompressor,
+            compressor,
+            zsdic: zsdic.clone(),
+            cpp_compressor: ZstdCppCompressor::from_zsdic(zsdic, comp_level),
+        }
+    }
     pub fn try_decompress(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
         self.try_decompress_with_dictionary(data)
             .map(|(data, _)| data)
@@ -367,6 +396,15 @@ pub struct ZsDic {
 }
 
 impl ZsDic {
+    pub fn empty() -> ZsDic {
+        ZsDic {
+            zs_data: None,
+            bcett_data: None,
+            packzs_data: None,
+            empty_data: Vec::new(),
+        }
+    }
+
     pub fn new(totk_config: Arc<TotkConfig>) -> io::Result<ZsDic> {
         let sarc = ZsDic::get_zsdic_sarc(&totk_config)?;
         let empty_data: Vec<u8> = Vec::new();

@@ -93,7 +93,10 @@ impl<'a> PackComparer<'a> {
             global_sarc_data: HashMap::default(),
         };
         println!("Comparing and reloading");
-        pack.compare_and_reload();
+        if let Err(error) = pack.compare_and_reload() {
+            eprintln!("Failed to initialize SARC comparison: {error}");
+            return None;
+        }
         Some(pack)
     }
 
@@ -210,14 +213,15 @@ impl<'a> PackComparer<'a> {
         paths
     }
 
-    pub fn compare_and_reload(&mut self) {
+    pub fn compare_and_reload(&mut self) -> io::Result<()> {
         if let Some(opened) = &mut self.opened {
-            opened.reload();
+            opened.reload()?;
             opened.self_populate_hashes();
             // println!("hasehs {:?}\nNow to compare", opened.hashes);
         }
         // println!("Comparing, ready...");
         self.compare();
+        Ok(())
     }
 
     pub fn compare(&mut self) {
@@ -387,14 +391,13 @@ impl<'a> PackFile<'_> {
     }
 
     pub fn rename(&mut self, old_name: &str, new_name: &str) -> io::Result<()> {
-        let some_data = self.writer.get_file(old_name);
+        let some_data = self.writer.get_file(old_name).cloned();
         match some_data {
             Some(data) => {
-                let d = data.clone();
-                self.writer.add_file(new_name, d.to_vec());
-                self.writer.remove_file(old_name);
-                self.reload();
-                self.self_populate_hashes();
+                self.mutate_writer(|writer| {
+                    writer.add_file(new_name, data);
+                    writer.remove_file(old_name);
+                })?;
             }
             None => {
                 let e = format!("File {} absent in sarc {}", &old_name, &self.path.full_path);
@@ -404,9 +407,23 @@ impl<'a> PackFile<'_> {
         Ok(())
     }
 
-    pub fn reload(&mut self) {
+    pub fn mutate_writer(&mut self, operation: impl FnOnce(&mut SarcWriter)) -> io::Result<()> {
+        let mut candidate_writer = self.writer.clone();
+        operation(&mut candidate_writer);
+        let candidate_sarc = Sarc::new(candidate_writer.to_binary())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        let candidate_hashes = PackFile::populate_hashes(&candidate_sarc);
+        self.writer = candidate_writer;
+        self.sarc = candidate_sarc;
+        self.hashes = candidate_hashes;
+        Ok(())
+    }
+
+    pub fn reload(&mut self) -> io::Result<()> {
         let data: Vec<u8> = self.writer.to_binary();
-        self.sarc = Sarc::new(data).expect("Failed");
+        self.sarc =
+            Sarc::new(data).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        Ok(())
     }
 
     pub fn self_populate_hashes(&mut self) {

@@ -103,24 +103,21 @@ impl<'a> BymlFile<'_> {
                         .zstd
                         .cpp_compressor
                         // .compressor
-                        .compress_zs(&data)
-                        .expect("Failed to compress with zs");
+                        .compress_zs(&data)?;
                 }
                 TotkFileType::Bcett => {
                     data = self
                         .zstd
                         .cpp_compressor
                         // .compressor
-                        .compress_bcett(&data)
-                        .expect("Failed to compress with bcett");
+                        .compress_bcett(&data)?;
                 }
                 _ => {
                     data = self
                         .zstd
                         // .compressor
                         .cpp_compressor
-                        .compress_zs(&data)
-                        .expect("Failed to compress with zs");
+                        .compress_zs(&data)?;
                 }
             }
         }
