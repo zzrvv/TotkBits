@@ -42,10 +42,10 @@ use updater::TotkbitsVersion::TotkbitsVersion;
 
 fn main() -> io::Result<()> {
     let cli = Cli::CliCommand::from_env();
-    main_initialization()?;
     if let Some(command) = cli {
         return command.execute().map_err(std::io::Error::other);
     }
+    main_initialization()?;
     // test_case()?;
     // return Ok(());
     let startup_data = StartupData::new()?.to_json()?;

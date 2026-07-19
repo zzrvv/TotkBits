@@ -6,6 +6,7 @@ use crate::Settings::Pathlib;
 use crate::Zstd::{is_tagproduct, TotkFileType, TotkZstd};
 //use byteordered::Endianness;
 //use indexmap::IndexMap;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use bitvec::prelude::*;
 
 use roead::byml::{self, Byml};
@@ -14,15 +15,16 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_json;
 use std::collections::{BTreeMap, HashMap};
 
-use std::panic::AssertUnwindSafe;
+use std::io;
 use std::path::Path;
 use std::sync::Arc;
-use std::{io, panic};
 
 #[derive(Serialize, Deserialize)]
 struct TagJsonData {
     PathList: BTreeMap<String, Vec<String>>,
     TagList: Vec<String>,
+    #[serde(default)]
+    RankTable: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -39,9 +41,9 @@ impl Serialize for AlphabeticalPathList<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let mut entries: Vec<_> = self.0.iter().collect();
         entries.sort_by(|(left, _), (right, _)| {
-            left.to_ascii_lowercase()
-                .cmp(&right.to_ascii_lowercase())
-                .then_with(|| left.cmp(right))
+            left.split('|')
+                .collect::<String>()
+                .cmp(&right.split('|').collect::<String>())
         });
         let mut map = serializer.serialize_map(Some(entries.len()))?;
         for (path, tags) in entries {
@@ -56,6 +58,7 @@ impl Serialize for AlphabeticalPathList<'_> {
 struct TagJsonOutput<'a> {
     PathList: AlphabeticalPathList<'a>,
     TagList: &'a [String],
+    RankTable: String,
 }
 #[allow(dead_code)]
 pub struct TagProduct<'a> {
@@ -186,27 +189,52 @@ impl<'a> TagProduct<'a> {
         let mut path_list: Vec<Byml> = Default::default();
         let mut tag_list: Vec<Byml> = Default::default();
         let json_data: TagJsonData = serde_json::from_str(text)?;
-        let cached_tag_list = &json_data.TagList;
+        let mut cached_tag_list = json_data.TagList;
+        cached_tag_list.sort();
+        if cached_tag_list.windows(2).any(|pair| pair[0] == pair[1]) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "TagList contains duplicate tags",
+            ));
+        }
+        let rank_table = BASE64.decode(&json_data.RankTable).map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("RankTable is not valid base64: {error}"),
+            )
+        })?;
         //PathList
         let mut sorted_paths: Vec<_> = json_data.PathList.iter().collect();
         sorted_paths.sort_by(|(left, _), (right, _)| {
-            left.to_ascii_lowercase()
-                .cmp(&right.to_ascii_lowercase())
-                .then_with(|| left.cmp(right))
+            let left_parts: String = left.split('|').collect();
+            let right_parts: String = right.split('|').collect();
+            left_parts.cmp(&right_parts)
         });
         for (path, _plist) in &sorted_paths {
-            if path.contains("|") {
-                for slice in path.split("|") {
-                    let entry = roead::byml::Byml::String(slice.into());
-                    path_list.push(entry);
-                }
+            let parts: Vec<_> = path.split('|').collect();
+            if parts.len() != 3 {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("TagProduct path must have exactly three pipe-delimited parts: {path}"),
+                ));
+            }
+            for slice in parts {
+                path_list.push(roead::byml::Byml::String(slice.into()));
             }
         }
         //Bittable
         let mut bit_table_bits = Vec::new();
 
         for (_actor_tag, tag_entries) in &sorted_paths {
-            for tag in cached_tag_list {
+            for tag in *tag_entries {
+                if !cached_tag_list.contains(tag) {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Entry references tag that is absent from TagList: {tag}"),
+                    ));
+                }
+            }
+            for tag in &cached_tag_list {
                 let bit = tag_entries.contains(tag);
                 bit_table_bits.push(bit);
             }
@@ -234,13 +262,15 @@ impl<'a> TagProduct<'a> {
                     "BitTable".to_string().into(),
                     Byml::BinaryData(bit_table_bytes),
                 );
-                x.insert(
-                    "RankTable".to_string().into(),
-                    Byml::String("".to_string().into()),
-                );
+                x.insert("RankTable".to_string().into(), Byml::BinaryData(rank_table));
                 x.insert("TagList".to_string().into(), Byml::Array(tag_list));
             }
-            return Ok(res.to_binary(roead::Endian::Little));
+            // TotK Tag.Product files use BYML version 7. Roead's writer supports
+            // the required node layout but currently restricts its public version
+            // argument to 2-4, so write version 4 and update the header version.
+            let mut binary = res.to_binary_with_version(roead::Endian::Little, 4);
+            binary[2..4].copy_from_slice(&7u16.to_le_bytes());
+            return Ok(binary);
         }
 
         Err(io::Error::new(
@@ -253,116 +283,105 @@ impl<'a> TagProduct<'a> {
         let json_data = TagJsonOutput {
             PathList: AlphabeticalPathList(&self.actor_tag_data),
             TagList: &self.tag_list,
+            RankTable: BASE64.encode(self.rank_table.as_binary_data().unwrap_or_default()),
         };
         serde_json::to_string_pretty(&json_data).unwrap_or(String::from("{}"))
     }
 
     pub fn parse(&mut self) -> Result<(), roead::Error> {
-        let p = self.byml.pio.as_map();
-        if let Ok(pio) = p {
-            //Get path list
-            println!("Parsing PathList");
-            self.path_list.extend(
-                pio["PathList"]
-                    .as_array()
-                    .unwrap_or(&[roead::byml::Byml::default()])
-                    .iter()
-                    //.map(|t| t.as_string().unwrap().to_string())
-                    .map(|t| match t.as_string() {
-                        Ok(p) => p.to_string(),
-                        _ => "".to_string(),
-                    }),
-            );
-            let path_list_count = self.path_list.len();
-            if path_list_count % 3 != 0 {
-                return Err(roead::Error::Any(
-                    "TagProduct PathList length is not divisible by three".into(),
-                ));
-            }
-            // Get Tag list
-            println!("Parsing tag_list");
-            self.tag_list.extend(
-                pio["TagList"]
-                    .as_array()
-                    .unwrap_or(&[roead::byml::Byml::default()])
-                    .iter()
-                    .map(|t| match t.as_string() {
-                        Ok(p) => p.to_string(),
-                        _ => "".to_string(),
-                    }),
-            );
-
-            let tag_list_count = pio["TagList"]
-                .as_array()
-                .unwrap_or(&[roead::byml::Byml::default()])
-                .len();
-            let required_bits = (path_list_count / 3)
-                .checked_mul(tag_list_count)
-                .ok_or_else(|| roead::Error::Any("TagProduct dimensions overflow".into()))?;
-
-            // Get Bit Table
-            let mut bit_table_bytes: Vec<u8> = Vec::new();
-            for byte in pio["BitTable"].as_binary_data()? {
-                bit_table_bytes.push(*byte);
-            }
-
-            // Get Rank Table
-            println!("Parsing RankTable");
-            self.rank_table = pio["RankTable"].clone();
-            let bit_table_bits = bit_table_bytes.view_bits::<Lsb0>().to_bitvec();
-            //bit_table_bits.reverse();
-            let bit_array_count = bit_table_bits.len();
-            if bit_array_count < required_bits {
-                return Err(roead::Error::Any(
-                    "TagProduct BitTable is shorter than PathList x TagList".into(),
-                ));
-            }
-            // Debug
-            println!("INFO: Parsed Bits Count: {}", bit_array_count);
-            let mut actor_tag_data_map: BTreeMap<String, Vec<String>> =
-                std::collections::BTreeMap::new();
-
-            // Get Actors and Tags
-            for i in 0..(path_list_count / 3) {
-                let actor_path = format!(
-                    "{}|{}|{}",
-                    self.path_list[i * 3],
-                    self.path_list[(i * 3) + 1],
-                    self.path_list[(i * 3) + 2]
-                );
-                let mut actor_tag_list: Vec<String> = Vec::new();
-                for k in 0..tag_list_count {
-                    if bit_table_bits[i * tag_list_count + k] == true {
-                        actor_tag_list.push(self.tag_list[k].clone());
-                    }
-                }
-                actor_tag_data_map.insert(actor_path, actor_tag_list.clone());
-            }
-            self.actor_tag_data = actor_tag_data_map;
-            //self.actor_tag_data = sort_hashmap(&self.actor_tag_data);
-
-            self.cached_tag_list.extend(
-                pio["TagList"]
-                    .as_array()
-                    .unwrap_or(&[roead::byml::Byml::default()])
-                    .iter()
-                    .filter_map(|t| t.as_string().ok().map(|value| value.to_string())),
-            );
-
-            let rank_table_result =
-                panic::catch_unwind(AssertUnwindSafe(|| self.rank_table.as_binary_data()));
-            if let Ok(unwrapped_rank_table) = &rank_table_result {
-                if let Ok(rank_table) = &unwrapped_rank_table {
-                    for b in rank_table.to_vec() {
-                        self.cached_rank_table.push_str(&format!("{:02X}", b));
-                    }
-                }
-            }
-            /*for b in self.rank_table.as_binary_data().unwrap() {
-                self.cached_rank_table.push_str(&format!("{:02X}", b));
-            }*/
-            //self.to_text();
+        self.path_list.clear();
+        self.tag_list.clear();
+        self.actor_tag_data.clear();
+        self.cached_tag_list.clear();
+        self.cached_rank_table.clear();
+        let pio = self.byml.pio.as_map()?;
+        //Get path list
+        println!("Parsing PathList");
+        self.path_list.extend(
+            pio["PathList"]
+                .as_array()?
+                .iter()
+                //.map(|t| t.as_string().unwrap().to_string())
+                .map(|t| t.as_string().map(ToString::to_string))
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+        let path_list_count = self.path_list.len();
+        if path_list_count % 3 != 0 {
+            return Err(roead::Error::Any(
+                "TagProduct PathList length is not divisible by three".into(),
+            ));
         }
+        // Get Tag list
+        println!("Parsing tag_list");
+        self.tag_list.extend(
+            pio["TagList"]
+                .as_array()?
+                .iter()
+                .map(|t| t.as_string().map(ToString::to_string))
+                .collect::<Result<Vec<_>, _>>()?,
+        );
+
+        let tag_list_count = pio["TagList"].as_array()?.len();
+        let required_bits = (path_list_count / 3)
+            .checked_mul(tag_list_count)
+            .ok_or_else(|| roead::Error::Any("TagProduct dimensions overflow".into()))?;
+
+        // Get Bit Table
+        let mut bit_table_bytes: Vec<u8> = Vec::new();
+        for byte in pio["BitTable"].as_binary_data()? {
+            bit_table_bytes.push(*byte);
+        }
+
+        // Get Rank Table
+        println!("Parsing RankTable");
+        self.rank_table = pio["RankTable"].clone();
+        let rank_table = self.rank_table.as_binary_data()?;
+        let bit_table_bits = bit_table_bytes.view_bits::<Lsb0>().to_bitvec();
+        //bit_table_bits.reverse();
+        let bit_array_count = bit_table_bits.len();
+        if bit_array_count < required_bits {
+            return Err(roead::Error::Any(
+                "TagProduct BitTable is shorter than PathList x TagList".into(),
+            ));
+        }
+        // Debug
+        println!("INFO: Parsed Bits Count: {}", bit_array_count);
+        let mut actor_tag_data_map: BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+
+        // Get Actors and Tags
+        for i in 0..(path_list_count / 3) {
+            let actor_path = format!(
+                "{}|{}|{}",
+                self.path_list[i * 3],
+                self.path_list[(i * 3) + 1],
+                self.path_list[(i * 3) + 2]
+            );
+            let mut actor_tag_list: Vec<String> = Vec::new();
+            for k in 0..tag_list_count {
+                if bit_table_bits[i * tag_list_count + k] == true {
+                    actor_tag_list.push(self.tag_list[k].clone());
+                }
+            }
+            actor_tag_data_map.insert(actor_path, actor_tag_list.clone());
+        }
+        self.actor_tag_data = actor_tag_data_map;
+        //self.actor_tag_data = sort_hashmap(&self.actor_tag_data);
+
+        self.cached_tag_list.extend(
+            pio["TagList"]
+                .as_array()?
+                .iter()
+                .filter_map(|t| t.as_string().ok().map(|value| value.to_string())),
+        );
+
+        for b in rank_table {
+            self.cached_rank_table.push_str(&format!("{:02X}", b));
+        }
+        /*for b in self.rank_table.as_binary_data().unwrap() {
+            self.cached_rank_table.push_str(&format!("{:02X}", b));
+        }*/
+        //self.to_text();
         Ok(())
     }
 }
@@ -384,4 +403,49 @@ pub fn sort_hashmap(h: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<Str
         }
     }
     map
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_writer_preserves_rank_table_and_tag_matrix() {
+        let text = r#"{
+            "PathList": {
+                "Work/Actor/Enemy|Enemy_Bokoblin|.engine__actor__ActorParam.gyml": ["ZTag"],
+                "Work/Actor/Enemy|Enemy_Bokoblin_Junior|.engine__actor__ActorParam.gyml": ["ATag", "ZTag"]
+            },
+            "TagList": ["ZTag", "ATag"],
+            "RankTable": "AAEC/w=="
+        }"#;
+
+        let binary = TagProduct::to_binary(text).expect("TagProduct should serialize");
+        assert_eq!(&binary[..4], &[b'Y', b'B', 7, 0]);
+
+        let root = Byml::from_binary(&binary).expect("written BYML should parse");
+        let map = root.as_map().expect("root should be a map");
+        assert_eq!(map["RankTable"].as_binary_data().unwrap(), &[0, 1, 2, 255]);
+        assert_eq!(
+            map["TagList"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|node| node.as_string().unwrap().as_str())
+                .collect::<Vec<_>>(),
+            ["ATag", "ZTag"]
+        );
+        // Two entries by two tags, packed continuously and LSB-first:
+        // first row 10, second row 11 => 0b1110.
+        assert_eq!(map["BitTable"].as_binary_data().unwrap(), &[0b1110]);
+    }
+
+    #[test]
+    fn text_writer_rejects_invalid_paths_and_unknown_tags() {
+        let invalid_path = r#"{"PathList":{"only|two":[]},"TagList":[],"RankTable":""}"#;
+        assert!(TagProduct::to_binary(invalid_path).is_err());
+
+        let unknown_tag = r#"{"PathList":{"a|b|c":["missing"]},"TagList":[],"RankTable":""}"#;
+        assert!(TagProduct::to_binary(unknown_tag).is_err());
+    }
 }

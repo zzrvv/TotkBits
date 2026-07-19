@@ -33,14 +33,26 @@ impl AsbFile {
             .and_then(|name| name.to_str())
             .map(|name| format!("{}.root.baev", name.split('.').next().unwrap_or(name)))
             .unwrap_or_else(|| "*.baev".to_string());
+        let display_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("ASB");
+        let short_name = if display_name.chars().count() > 48 {
+            format!("{}…", display_name.chars().take(47).collect::<String>())
+        } else {
+            display_name.to_string()
+        };
         let mut dialog = rfd::FileDialog::new()
-            .set_title("Select optional BAEV file (Cancel to open without one)")
+            .set_title(format!("Select optional BAEV for {short_name}"))
             .add_filter("Binary Animation Event", &["baev", "zs"])
             .set_file_name(&suggested_name);
         if let Some(parent) = path.parent() {
             dialog = dialog.set_directory(parent);
         }
         let baev_path = dialog.pick_file();
+        let baev_original_data = baev_path
+            .as_deref()
+            .and_then(|path| std::fs::read(path).ok());
         let baev_data = baev_path
             .as_deref()
             .map(|path| read_maybe_compressed(path, &zstd, b"BFFH"))
@@ -53,6 +65,8 @@ impl AsbFile {
         let mut opened_file = OpenedFile::default();
         opened_file.path = Pathlib::new(path);
         opened_file.file_type = TotkFileType::ASB;
+        opened_file.asb_baev_path = baev_path;
+        opened_file.asb_baev_data = baev_original_data;
         let mut data = SendData {
             status_text: format!("Opened: {}", opened_file.path.full_path),
             path: Pathlib::new(path),
@@ -91,9 +105,14 @@ impl AsbFile {
         Asb::from_bytes(data)?.to_yaml()
     }
 
-    pub fn text_to_binary(text: &str) -> io::Result<Vec<u8>> {
+    pub fn text_to_binary(text: &str, opened_file: Option<&OpenedFile<'_>>) -> io::Result<Vec<u8>> {
         match serde_yaml::from_str::<Self>(text) {
-            Ok(file) => file.document.to_native_bytes(),
+            Ok(file) => {
+                if file.baev.is_some() {
+                    Self::offer_baev_save(opened_file);
+                }
+                file.document.to_native_bytes()
+            }
             Err(wrapper_error) => Asb::from_yaml(text)
                 .and_then(|document| document.to_native_bytes())
                 .map_err(|document_error| {
@@ -104,6 +123,31 @@ impl AsbFile {
                         ),
                     )
                 }),
+        }
+    }
+
+    fn offer_baev_save(opened_file: Option<&OpenedFile<'_>>) {
+        let Some(opened_file) = opened_file else {
+            return;
+        };
+        let Some(bytes) = opened_file.asb_baev_data.as_ref() else {
+            return;
+        };
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Save accompanying BAEV file")
+            .add_filter("Binary Animation Event", &["baev", "zs"]);
+        if let Some(source) = opened_file.asb_baev_path.as_deref() {
+            if let Some(parent) = source.parent() {
+                dialog = dialog.set_directory(parent);
+            }
+            if let Some(name) = source.file_name().and_then(|name| name.to_str()) {
+                dialog = dialog.set_file_name(name);
+            }
+        }
+        if let Some(destination) = dialog.save_file() {
+            if let Err(error) = std::fs::write(&destination, bytes) {
+                eprintln!("Unable to save BAEV {}: {error}", destination.display());
+            }
         }
     }
 
@@ -139,7 +183,7 @@ mod tests {
                 let Ok(yaml) = AsbFile::binary_to_text(&bytes) else {
                     continue;
                 };
-                let rebuilt = AsbFile::text_to_binary(&yaml)
+                let rebuilt = AsbFile::text_to_binary(&yaml, None)
                     .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
                 assert!(rebuilt.starts_with(b"ASB "), "{}", path.display());
                 AsbFile::binary_to_text(&rebuilt).expect("parse rebuilt ASB");

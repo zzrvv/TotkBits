@@ -277,7 +277,7 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::ASB => {
-            if let Ok(some_data) = AsbFile::text_to_binary(text) {
+            if let Ok(some_data) = AsbFile::text_to_binary(text, Some(opened_file)) {
                 rawdata = some_data;
                 if is_zs {
                     rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;

@@ -484,6 +484,8 @@ pub struct OpenedFile<'a> {
     pub tag: Option<TagProduct<'a>>,
     pub restbl: Option<Restbl<'a>>,
     pub esetb: Option<Esetb<'a>>,
+    pub asb_baev_path: Option<std::path::PathBuf>,
+    pub asb_baev_data: Option<Vec<u8>>,
 }
 
 impl Default for OpenedFile<'_> {
@@ -498,6 +500,8 @@ impl Default for OpenedFile<'_> {
             tag: None,
             restbl: None,
             esetb: None,
+            asb_baev_path: None,
+            asb_baev_data: None,
         }
     }
 }
@@ -520,6 +524,8 @@ impl<'a> OpenedFile<'_> {
             tag: None,
             restbl: None,
             esetb: None,
+            asb_baev_path: None,
+            asb_baev_data: None,
         }
     }
 
@@ -534,6 +540,8 @@ impl<'a> OpenedFile<'_> {
             tag: None,
             restbl: None,
             esetb: None,
+            asb_baev_path: None,
+            asb_baev_data: None,
         }
     }
 
@@ -545,6 +553,8 @@ impl<'a> OpenedFile<'_> {
         self.msyt = None;
         self.aamp = None;
         self.tag = None;
+        self.asb_baev_path = None;
+        self.asb_baev_data = None;
     }
 
     pub fn get_endian_label(&self) -> String {
