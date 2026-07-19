@@ -4,6 +4,9 @@ import "./App.css";
 import "./Comparer.css";
 import { debounce } from "lodash"; // or any other method/utility to debounce
 import React, { useEffect } from "react";
+import * as monaco from "monaco-editor";
+import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
+import { useSyncExternalStore } from 'react';
 // import ReactDiffViewer from 'react-diff-viewer-continued';
 import AddOrRenameFilePrompt from './AddOrRenameFilePrompt'; // Import the modal component
 import ButtonsDisplay from "./Buttons";
@@ -23,6 +26,7 @@ import DocumentTabs from './DocumentTabs';
 let triggered = false
 
 function App() {
+  const { documents } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
   const [comparingFile, setComparingFile] = React.useState('');
 
 
@@ -37,11 +41,62 @@ function App() {
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
-    documentModels,
+    documentModels, documentViewStates,
+    rightEditorContainerRef, rightEditorRef, rightDocumentId, setRightDocumentId,
+    splitRatio, setSplitRatio,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, compareData,
     savingFile, documentSnapshots
   } = useEditorContext();
+
+  const rightDocument = documents.find((document) => document.id === rightDocumentId);
+  const rightSnapshot = rightDocumentId ? documentSnapshots.current.get(rightDocumentId) : null;
+
+  useEffect(() => {
+    if (!rightDocumentId || !rightEditorContainerRef.current) return undefined;
+    const snapshot = documentSnapshots.current.get(rightDocumentId);
+    if (!snapshot || snapshot.activeTab !== 'YAML') return undefined;
+    let model = documentModels.current.get(rightDocumentId);
+    if (!model || model.isDisposed()) {
+      const uri = monaco.Uri.parse(`inmemory://totkbits/${rightDocumentId}`);
+      model = monaco.editor.getModel(uri) || monaco.editor.createModel(
+        snapshot.editorText || '', snapshot.editorLanguage || 'yaml', uri,
+      );
+      documentModels.current.set(rightDocumentId, model);
+    }
+    const editor = monaco.editor.create(rightEditorContainerRef.current, {
+      model,
+      theme: settings.theme,
+      minimap: { enabled: settings.minimap },
+      wordWrap: 'on',
+      fontSize: settings.fontSize,
+      readOnly: snapshot.readOnly || false,
+      domReadOnly: snapshot.readOnly || false,
+    });
+    rightEditorRef.current = editor;
+    const viewState = documentViewStates.current.get(rightDocumentId);
+    if (viewState) editor.restoreViewState(viewState);
+    const observer = new ResizeObserver(() => editor.layout());
+    observer.observe(rightEditorContainerRef.current);
+    return () => {
+      const state = editor.saveViewState();
+      if (state) documentViewStates.current.set(rightDocumentId, state);
+      observer.disconnect();
+      editor.dispose();
+      if (rightEditorRef.current === editor) rightEditorRef.current = null;
+    };
+  }, [rightDocumentId, rightSnapshot?.activeTab, settings.theme, settings.minimap, settings.fontSize]);
+
+  const startSplitDrag = (event) => {
+    event.preventDefault();
+    const move = (moveEvent) => setSplitRatio(Math.min(0.8, Math.max(0.2, moveEvent.clientX / window.innerWidth)));
+    const stop = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', stop);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', stop);
+  };
   
   const { isFileHovering, parsingFile } = useFileDropHandler(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
 
@@ -130,8 +185,8 @@ function App() {
   const rootStyle = activeTab !== "COMPARER" ? {} : isComparerWorking ? {backgroundColor: "#2E303C"} : {};
   return (
     <div
-      className="maincontainer"
-      style={{ ...rootStyle, '--buttons-h': displayButtons ? '33px' : '0px' }}
+      className={`maincontainer ${rightDocumentId ? 'has-split-view' : ''}`}
+      style={{ ...rootStyle, '--buttons-h': displayButtons ? '33px' : '0px', '--split-position': `${splitRatio * 100}%` }}
     > 
       {isFileHovering && (
         <div className="file-drop-overlay" role="status">
@@ -218,6 +273,21 @@ function App() {
       
 
       <div ref={editorContainerRef} className="code_editor" style={{ display: activeTab === 'YAML' ? "block" : "none" }}></div>
+      {rightDocumentId && <>
+        <div className="split-view-divider" onMouseDown={startSplitDrag} role="separator" aria-orientation="vertical" />
+        <section className="right-document-view">
+          <header>
+            <span>{rightDocument?.title || 'Right view'}</span>
+            <button type="button" title="Close right view" onClick={() => setRightDocumentId(null)}>×</button>
+          </header>
+          {rightSnapshot?.activeTab === 'YAML'
+            ? <div ref={rightEditorContainerRef} className="right-code-editor" />
+            : <div className="right-document-summary">
+                <strong>{rightSnapshot?.activeTab || 'Document'}</strong>
+                {(rightSnapshot?.paths?.paths || []).map((path) => <div key={path}>{path}</div>)}
+              </div>}
+        </section>
+      </>}
       {/* <div className="statusbar" style={statusStyle}>Current path: "{selectedPath.path} {selectedPath.endian}"</div> */}
       <div className="statusbar" style={statusStyle}>{statusText}</div>
     </div>

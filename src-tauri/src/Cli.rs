@@ -152,6 +152,10 @@ impl CliCommand {
                 crate::file_format::bphcl::BphclFile::from_binary(&bytes, Some(entry.path()))
                     .map_err(|e| format!("{}: {e}", entry.path().display()))?;
             file.document.validate().map_err(|e| e.to_string())?;
+            file.document
+                .type_table
+                .validate_rebuild()
+                .map_err(|e| format!("{} TYPE: {e}", entry.path().display()))?;
             for leaf in file.leaves().map_err(|e| e.to_string())? {
                 if leaf.yaml.to_ascii_lowercase().contains("base64") {
                     return Err(format!(

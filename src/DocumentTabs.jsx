@@ -43,6 +43,12 @@ export default function DocumentTabs() {
     contextRef.current = context;
 
     useEffect(() => {
+        if (context.rightDocumentId && !documents.some((document) => document.id === context.rightDocumentId)) {
+            context.setRightDocumentId(null);
+        }
+    }, [documents, context.rightDocumentId]);
+
+    useEffect(() => {
         if (!contextMenu) return undefined;
         const dismiss = () => setContextMenu(null);
         const dismissOnEscape = (event) => {
@@ -163,7 +169,7 @@ export default function DocumentTabs() {
     useEffect(() => {
         const handleCloseActiveDocument = () => {
             if (activeDocumentId) {
-                void handleClose({ stopPropagation: () => {} }, activeDocumentId);
+                void handleClose({ stopPropagation: () => { } }, activeDocumentId);
             }
         };
         window.addEventListener('totkbits:close-active-document', handleCloseActiveDocument);
@@ -178,6 +184,36 @@ export default function DocumentTabs() {
         setContextMenu(null);
         if (parentIsOpen) activateDocument(child.parentDocumentId);
         else contextRef.current.setStatusText('ERROR: parent file was closed');
+    };
+
+    const captureActiveDocument = () => {
+        const latest = contextRef.current;
+        const model = latest.editorRef.current?.getModel();
+        latest.documentSnapshots.current.set(activeDocumentId, snapshotFor(latest, model));
+        if (isOwnedModel(model, activeDocumentId)) latest.documentModels.current.set(activeDocumentId, model);
+    };
+
+    const moveToRightView = (event) => {
+        event.stopPropagation();
+        const id = contextMenu?.documentId;
+        if (!id) return;
+        captureActiveDocument();
+        contextRef.current.setRightDocumentId(id);
+        if (id === activeDocumentId) {
+            const replacement = documents.find((document) => document.id !== id);
+            if (replacement) activateDocument(replacement.id);
+            else addCleanDocument();
+        }
+        setContextMenu(null);
+    };
+
+    const moveToLeftView = (event) => {
+        event.stopPropagation();
+        const id = contextMenu?.documentId;
+        if (!id) return;
+        if (contextRef.current.rightDocumentId === id) contextRef.current.setRightDocumentId(null);
+        activateDocument(id);
+        setContextMenu(null);
     };
 
     // if (documents.length == 1 && documents[0].title == "Untitled") {
@@ -195,14 +231,15 @@ export default function DocumentTabs() {
             type="button" role="tab" aria-selected={document.id === activeDocumentId}
             title={document.fullPath || document.title}
             className={`document-tab ${document.id === activeDocumentId ? 'active' : ''}`}
-            key={document.id} onClick={() => activateDocument(document.id)}
+            key={document.id} onClick={() => {
+                if (contextRef.current.rightDocumentId === document.id) {
+                    contextRef.current.setRightDocumentId(null);
+                }
+                activateDocument(document.id);
+            }}
             onContextMenu={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (!document.parentDocumentId) {
-                    setContextMenu(null);
-                    return;
-                }
                 activateDocument(document.id);
                 setContextMenu({ documentId: document.id, x: event.clientX, y: event.clientY });
             }}
@@ -223,7 +260,10 @@ export default function DocumentTabs() {
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onMouseDown={(event) => event.stopPropagation()}
         >
-            <button type="button" onClick={handleSwitchToParent}>Switch to parent</button>
+            {/* <button type="button" onClick={moveToLeftView}>Move to left view</button>
+            <button type="button" onClick={moveToRightView}>Move to right view</button> */}
+            {documents.find((document) => document.id === contextMenu.documentId)?.parentDocumentId
+                && <button type="button" onClick={handleSwitchToParent}>Switch to parent</button>}
         </div>, document.body)}
     </>;
 }

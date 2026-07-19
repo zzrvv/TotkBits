@@ -1,6 +1,6 @@
 use super::{
     AampSection, BphclHeader, Cloth, Collidable, CollidableShape, Item, NamedVariant, Particle,
-    Patch, Section, SimCloth, Vector4,
+    Patch, Section, SimCloth, TypeTable, Vector4,
 };
 use crate::parser::binary::BinaryReader;
 use std::{
@@ -16,6 +16,7 @@ pub struct BphclDocument {
     pub items: Vec<Item>,
     pub patches: Vec<Patch>,
     pub type_names: Vec<String>,
+    pub type_table: TypeTable,
     pub variants: Vec<NamedVariant>,
     pub cloth: Vec<Cloth>,
     pub collidables: Vec<Collidable>,
@@ -28,6 +29,7 @@ impl BphclDocument {
         let items = Self::items(data, &tag)?;
         let patches = Self::patches(data, &tag)?;
         let type_names = Self::type_names(data, &tag)?;
+        let type_table = TypeTable::parse(&tag, data)?;
         let aamp = AampSection::read(data, header.parameter_offset, header.parameter_size)?;
         let mut d = Self {
             raw: data.to_vec(),
@@ -36,6 +38,7 @@ impl BphclDocument {
             items,
             patches,
             type_names,
+            type_table,
             variants: vec![],
             cloth: vec![],
             collidables: vec![],
@@ -378,6 +381,31 @@ impl BphclDocument {
                     return Err(invalid("duplicate PTCH offset"));
                 }
             }
+        }
+        self.validate_item_graph()?;
+        for cloth in &self.cloth {
+            let closure = self.collect_item_closure([cloth.item_index])?;
+            let patches = self.patches_for_items(closure.iter().copied())?;
+            let copied = self.copy_item_closure(closure, Vec::new())?;
+            let item_map: std::collections::HashMap<usize, usize> = copied
+                .ranges_by_old_start
+                .keys()
+                .flat_map(|start| {
+                    self.items
+                        .iter()
+                        .enumerate()
+                        .filter(move |(_, item)| item.data_offset == *start)
+                        .map(|(index, _)| (index, index))
+                })
+                .collect();
+            let mut relocated = copied.data;
+            self.relocate_copied_pointers(
+                &mut relocated,
+                &patches,
+                &copied.ranges_by_old_start,
+                &item_map,
+                &std::collections::HashMap::new(),
+            )?;
         }
         Ok(())
     }

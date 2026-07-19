@@ -12,6 +12,10 @@ export const EditorProvider = ({ children }) => {
   const documentModels = useRef(new Map());
   const documentViewStates = useRef(new Map());
   const documentSnapshots = useRef(new Map());
+  const rightEditorContainerRef = useRef(null);
+  const rightEditorRef = useRef(null);
+  const [rightDocumentId, setRightDocumentId] = useState(null);
+  const [splitRatio, setSplitRatio] = useState(0.5);
   const [editorValue, setEditorValue] = useState(''); //monaco editor content
   const [readOnly, setReadOnly] = useState(false);
   useEffect(() => {
@@ -74,6 +78,8 @@ export const EditorProvider = ({ children }) => {
     updateState, setUpdateState,
     compareData, setCompareData,
     documentModels, documentViewStates, documentSnapshots,
+    rightEditorContainerRef, rightEditorRef, rightDocumentId, setRightDocumentId,
+    splitRatio, setSplitRatio,
     settings, setSettings,
     searchInSarcQuery, setSearchInSarcQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
