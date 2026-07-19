@@ -5,7 +5,7 @@ use crate::file_format::TagProduct::TagProduct;
 use crate::parser::msbt::Msbt;
 use crate::Open_and_Save::SendData;
 use crate::Settings::Pathlib;
-use crate::Zstd::{is_byml, is_gamedatalist, TotkFileType, TotkZstd};
+use crate::Zstd::{is_byml, is_gamedatalist, TotkFileType, TotkZstd, ZstdDictionary};
 use regex::Regex;
 use roead::byml::Byml;
 use std::any::type_name;
@@ -22,6 +22,7 @@ use std::{fs, io, panic};
 pub struct FileData {
     pub file_type: TotkFileType,
     pub data: Vec<u8>,
+    pub compression: Option<ZstdDictionary>,
 }
 
 impl FileData {
@@ -29,6 +30,7 @@ impl FileData {
         Self {
             file_type: TotkFileType::None,
             data: Vec::new(),
+            compression: None,
         }
     }
 }
@@ -96,7 +98,9 @@ impl<'a> BymlFile<'_> {
             Ok(rawdata) => data = rawdata,
             Err(_) => return Err(io::Error::new(io::ErrorKind::InvalidData, "")),
         }
-        if path.to_ascii_lowercase().ends_with(".zs") {
+        if self.file_data.compression == Some(ZstdDictionary::Yaz0) {
+            data = TotkZstd::compress_yaz0(&data)?;
+        } else if path.to_ascii_lowercase().ends_with(".zs") {
             match self.file_data.file_type {
                 TotkFileType::Byml => {
                     data = self
@@ -200,8 +204,9 @@ impl<'a> BymlFile<'_> {
         let mut buffer = rawdata.clone();
         let mut data = FileData::new();
         if buffer.starts_with(b"Yaz0") {
-            if let Ok(dec_data) = roead::yaz0::decompress(&buffer) {
+            if let Ok(dec_data) = TotkZstd::decompress_yaz0(&buffer) {
                 buffer = dec_data;
+                data.compression = Some(ZstdDictionary::Yaz0);
             }
         }
         if is_byml(&buffer) {

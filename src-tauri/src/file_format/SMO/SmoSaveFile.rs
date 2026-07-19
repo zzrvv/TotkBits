@@ -75,6 +75,7 @@ impl<'a> SmoSaveFile<'a> {
         let file_data = FileData {
             file_type: TotkFileType::SmoSaveFile,
             data: data[SMO_HEADER_SIZE..].to_vec(),
+            compression: None,
         };
         let byml_file = BymlFile::from_binary(file_data, zstd.clone(), path.as_ref())?;
         if let Some(endian) = byml_file.endian {

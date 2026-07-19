@@ -39,12 +39,13 @@ pub fn get_string_from_data<P: AsRef<Path>>(
     zstd: Arc<TotkZstd>,
 ) -> Option<(InternalFile, String)> {
     let path = filepath.as_ref().to_string_lossy().into_owned();
-    let (data, dictionary) = if path.to_ascii_lowercase().ends_with(".zs") {
-        let (decoded, dictionary) = zstd.try_decompress_with_dictionary(&data).ok()?;
-        (decoded, Some(dictionary))
-    } else {
-        (data, None)
-    };
+    let (data, dictionary) =
+        if data.starts_with(b"Yaz0") || path.to_ascii_lowercase().ends_with(".zs") {
+            let (decoded, dictionary) = zstd.try_decompress_with_dictionary(&data).ok()?;
+            (decoded, Some(dictionary))
+        } else {
+            (data, None)
+        };
     let (mut internal_file, text) = get_string_from_decoded_data(&path, data, zstd)?;
     internal_file.zstd_dictionary = dictionary;
     Some((internal_file, text))
@@ -545,6 +546,7 @@ impl SendData {
         dictionary: Option<ZstdDictionary>,
     ) {
         self.file_metadata = match dictionary {
+            Some(ZstdDictionary::Yaz0) => format!("[{filetype:?}] [Yaz0]"),
             Some(dictionary) => format!("[{filetype:?}] [ZSTD: {dictionary:?}]"),
             None => format!("[{filetype:?}]"),
         };

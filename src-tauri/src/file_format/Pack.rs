@@ -473,7 +473,7 @@ impl<'a> PackFile<'_> {
         if dest_file.to_lowercase().ends_with(".zs") {
             data = self.compress(&data)?;
         } else if self.is_yaz0 {
-            data = roead::yaz0::compress(&data);
+            data = TotkZstd::compress_yaz0(&data)?;
         }
         let mut file_handle: fs::File = fs::File::create(dest_file)?;
         file_handle.write_all(&data)?;
@@ -484,7 +484,7 @@ impl<'a> PackFile<'_> {
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;
         if buffer.starts_with(b"Yaz0") {
-            if let Ok(dec_data) = roead::yaz0::decompress(&buffer) {
+            if let Ok(dec_data) = TotkZstd::decompress_yaz0(&buffer) {
                 buffer = dec_data;
                 self.is_yaz0 = true;
             }

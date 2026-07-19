@@ -222,6 +222,7 @@ pub enum ZstdDictionary {
     Pack,
     Empty,
     Bcett,
+    Yaz0,
 }
 
 impl<'a> TotkZstd<'_> {
@@ -278,6 +279,9 @@ impl<'a> TotkZstd<'_> {
         &self,
         data: &[u8],
     ) -> Result<(Vec<u8>, ZstdDictionary), io::Error> {
+        if data.starts_with(b"Yaz0") {
+            return Self::decompress_yaz0(data).map(|data| (data, ZstdDictionary::Yaz0));
+        }
         let dicts = [
             (ZstdDictionary::Zs, self.decompressor.zs.as_deref()),
             (ZstdDictionary::Pack, self.decompressor.packzs.as_deref()),
@@ -310,7 +314,17 @@ impl<'a> TotkZstd<'_> {
             ZstdDictionary::Pack => self.cpp_compressor.compress_pack(data),
             ZstdDictionary::Empty => self.cpp_compressor.compress_empty(data),
             ZstdDictionary::Bcett => self.cpp_compressor.compress_bcett(data),
+            ZstdDictionary::Yaz0 => Self::compress_yaz0(data),
         }
+    }
+
+    pub fn decompress_yaz0(data: &[u8]) -> io::Result<Vec<u8>> {
+        roead::yaz0::decompress(data)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
+    }
+
+    pub fn compress_yaz0(data: &[u8]) -> io::Result<Vec<u8>> {
+        Ok(roead::yaz0::compress(data))
     }
     pub fn find_vanila_internal_file_path_in_romfs<P: AsRef<Path>>(
         &self,
@@ -726,4 +740,19 @@ pub fn get_executable_dir() -> String {
         }
     }
     return String::new();
+}
+
+#[cfg(test)]
+mod yaz0_tests {
+    use super::TotkZstd;
+
+    #[test]
+    fn yaz0_roundtrip_varied_binary_data() {
+        let data: Vec<u8> = (0..131_071)
+            .map(|index| ((index * 73 + index / 251) & 0xff) as u8)
+            .collect();
+        let compressed = TotkZstd::compress_yaz0(&data).unwrap();
+        assert!(compressed.starts_with(b"Yaz0"));
+        assert_eq!(TotkZstd::decompress_yaz0(&compressed).unwrap(), data);
+    }
 }

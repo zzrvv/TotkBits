@@ -49,10 +49,9 @@ impl CliCommand {
                 | "extract_archive"
                 | "dir_to_archive"
                 | "decompress"
-                | "compress"
-                // | "msbt_dump"
-                // | "msbt_verify"
-                // | "rstb_validate"
+                | "compress" // | "msbt_dump"
+                             // | "msbt_verify"
+                             // | "rstb_validate"
         );
         let expected_arguments = if matches!(
             operation.as_str(),
@@ -63,7 +62,7 @@ impl CliCommand {
             6
         };
         if !is_public_operation || arguments.len() != expected_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -203,20 +202,24 @@ impl CliCommand {
 
     fn decompress(&self) -> Result<(), String> {
         let bytes = fs::read(&self.input).map_err(|e| format!("failed to read input: {e}"))?;
-        let decompressed = self
-            .zstd()?
-            .try_decompress(&bytes)
-            .map_err(|e| format!("failed to decompress input: {e}"))?;
+        let decompressed = if bytes.starts_with(b"Yaz0") {
+            crate::Zstd::TotkZstd::decompress_yaz0(&bytes)
+        } else {
+            self.zstd()?.try_decompress(&bytes)
+        }
+        .map_err(|e| format!("failed to decompress input: {e}"))?;
         write_output(&self.output, &decompressed)
     }
 
     fn compress(&self) -> Result<(), String> {
         let dictionary = parse_dictionary(&self.file_type)?;
         let bytes = fs::read(&self.input).map_err(|e| format!("failed to read input: {e}"))?;
-        let compressed = self
-            .zstd()?
-            .compress_with_dictionary(&bytes, dictionary)
-            .map_err(|e| format!("failed to compress input: {e}"))?;
+        let compressed = if dictionary == ZstdDictionary::Yaz0 {
+            crate::Zstd::TotkZstd::compress_yaz0(&bytes)
+        } else {
+            self.zstd()?.compress_with_dictionary(&bytes, dictionary)
+        }
+        .map_err(|e| format!("failed to compress input: {e}"))?;
         write_output(&self.output, &compressed)
     }
 
@@ -466,8 +469,9 @@ fn parse_dictionary(value: &str) -> Result<ZstdDictionary, String> {
         "pack" => Ok(ZstdDictionary::Pack),
         "empty" => Ok(ZstdDictionary::Empty),
         "bcett" => Ok(ZstdDictionary::Bcett),
+        "yaz0" => Ok(ZstdDictionary::Yaz0),
         _ => Err(format!(
-            "unsupported ZSTD dictionary: {value}; expected zs, pack, empty, or bcett"
+            "unsupported compression: {value}; expected zs, pack, empty, bcett, or yaz0"
         )),
     }
 }
