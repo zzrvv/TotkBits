@@ -92,7 +92,7 @@ export async function compareInternalFileWithOVanila(internalPath, setStatusText
   }
 
 }
-export async function compareInternalFileWithOVanilaMonaco(setStatusText, setActiveTab, setCompareData, editorRef) {
+export async function compareInternalFileWithOVanilaMonaco(setStatusText, setActiveTab, setCompareData, editorRef, setLabelTextDisplay) {
   try {
     const isFromSarc = false;
     const isFromMonaco = !isFromSarc;

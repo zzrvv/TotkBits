@@ -550,11 +550,10 @@ pub fn compare_internal_file_with_vanila(
     internal_path: String,
     is_from_sarc: bool,
 ) -> Option<SendData> {
-    with_document_mut!(
-        app_handle,
-        documentId,
-        app,
-        app.compare_internal_file_with_original(internal_path, is_from_sarc)
+    app_handle.state::<DocumentState>().compare_internal_file(
+        &documentId,
+        internal_path,
+        is_from_sarc,
     )
 }
 

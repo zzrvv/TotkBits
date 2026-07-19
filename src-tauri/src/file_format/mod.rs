@@ -1,10 +1,10 @@
 #![allow(non_snake_case, non_camel_case_types)]
 pub mod BinTextFile;
-pub mod Msbt;
 pub mod Pack;
 pub mod Rstb;
 pub mod SimpleOpeners;
 pub mod TagProduct;
+pub mod msbt;
 // pub mod RstbData;
 // pub mod SarcEntriesData;
 pub mod Ainb;

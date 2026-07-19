@@ -2,10 +2,10 @@
 use super::Esetb::Esetb;
 use super::Rstb::Restbl;
 use crate::file_format::TagProduct::TagProduct;
+use crate::parser::msbt::Msbt;
 use crate::Open_and_Save::SendData;
 use crate::Settings::Pathlib;
 use crate::Zstd::{is_byml, is_gamedatalist, TotkFileType, TotkZstd};
-use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use regex::Regex;
 use roead::byml::Byml;
 use std::any::type_name;
@@ -479,7 +479,7 @@ pub struct OpenedFile<'a> {
     pub byml: Option<BymlFile<'a>>,
     pub endian: Option<roead::Endian>,
     // pub msyt: Option<MsbtFile>,
-    pub msyt: Option<MsbtCpp>,
+    pub msyt: Option<Msbt>,
     pub aamp: Option<()>,
     pub tag: Option<TagProduct<'a>>,
     pub restbl: Option<Restbl<'a>>,
@@ -508,7 +508,7 @@ impl<'a> OpenedFile<'_> {
         path: String,
         file_type: TotkFileType,
         endian: Option<roead::Endian>,
-        msyt: Option<MsbtCpp>,
+        msyt: Option<Msbt>,
     ) -> Self {
         Self {
             file_type: file_type,

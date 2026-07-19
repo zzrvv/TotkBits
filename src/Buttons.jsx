@@ -47,7 +47,8 @@ const ButtonsDisplay = () => {
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, pathsFilters, setPathsFilters, isModalOpen, setIsModalOpen, updateEditorContent, changeModal
+    paths, setpaths, pathsFilters, setPathsFilters, isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
+    setSavingFile, documentSnapshots
   } = useEditorContext();
 
   const displayButtons = activeTab === "SARC" || activeTab === "YAML" || activeTab === "RSTB";
@@ -79,10 +80,10 @@ const ButtonsDisplay = () => {
 
   const handleSaveClick = () => {
     console.log(activeTabRef.current, activeTab);
-    saveFileClick(setStatusText, activeTabRef.current, setpaths, editorRef);
+    saveFileClick(setStatusText, activeTabRef.current, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
   const handleSaveAsClick = () => {
-    saveAsFileClick(setStatusText, activeTabRef.current, setpaths, editorRef);
+    saveAsFileClick(setStatusText, activeTabRef.current, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
   const handleClearSarcSearch = () => {
     clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery);

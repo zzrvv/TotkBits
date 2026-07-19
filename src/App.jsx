@@ -38,7 +38,8 @@ function App() {
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     documentModels,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, compareData
+    paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, compareData,
+    savingFile
   } = useEditorContext();
   
   const { isFileHovering, parsingFile } = useFileDropHandler(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
@@ -135,6 +136,14 @@ function App() {
           <div className="parsing-content">
             <div className="loading-swirl" aria-hidden="true"></div>
             <div>Parsing {parsingFile}</div>
+          </div>
+        </div>
+      )}
+      {savingFile && (
+        <div className="parsing-overlay" role="status" aria-live="polite">
+          <div className="parsing-content">
+            <div className="loading-swirl" aria-hidden="true"></div>
+            <div>Saving {savingFile}</div>
           </div>
         </div>
       )}

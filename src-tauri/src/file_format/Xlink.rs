@@ -12,7 +12,8 @@ use crate::{
     file_format::BinTextFile::OpenedFile,
     Open_and_Save::SendData,
     Settings::Pathlib,
-    Zstd::{is_xlink, TotkFileType, TotkZstd},
+    TotkApp::InternalFile,
+    Zstd::{is_xlink, is_xlink_path, TotkFileType, TotkZstd, ZstdDictionary},
 };
 
 type XlinkBinaryToYaml = unsafe extern "C" fn(data: *const i8, size: usize) -> *const i8;
@@ -152,9 +153,47 @@ impl<'a> Xlink_rs<'a> {
         }
     }
 
-    pub fn binary_file_to_yaml(zstd: Arc<TotkZstd<'a>>, path: &Path) -> io::Result<String> {
-        let data = std::fs::read(path)?;
-        Self::new(zstd)?.binary_to_yaml(&data)
+    pub fn open_internal<P: AsRef<Path>>(
+        path: P,
+        data: &[u8],
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(InternalFile<'static>, String)> {
+        let path = path.as_ref();
+        if !is_xlink_path(path) && !is_xlink(data) {
+            return None;
+        }
+        let text = match Self::new(zstd).and_then(|xlink| xlink.binary_to_yaml(data)) {
+            Ok(text) => text,
+            Err(error) => {
+                println!("Unable to parse XLink entry {}: {error}", path.display());
+                return None;
+            }
+        };
+        let mut internal = InternalFile::default();
+        internal.endian = Some(Endian::Little);
+        internal.path = Pathlib::new(path);
+        internal.file_type = TotkFileType::Xlink;
+        Some((internal, text))
+    }
+
+    pub fn text_to_binary(
+        text: &str,
+        file_path: &str,
+        zstd: Arc<TotkZstd<'a>>,
+        dictionary: Option<ZstdDictionary>,
+    ) -> Option<Vec<u8>> {
+        let data = match Self::new(zstd.clone()).and_then(|xlink| xlink.yaml_to_binary(text)) {
+            Ok(data) => data,
+            Err(error) => {
+                println!("Unable to save XLink YAML for {file_path}: {error}");
+                return None;
+            }
+        };
+        if file_path.to_ascii_lowercase().ends_with(".zs") && dictionary.is_none() {
+            zstd.cpp_compressor.compress_zs(&data).ok()
+        } else {
+            Some(data)
+        }
     }
 
     pub fn open_xlink<P: AsRef<Path>>(
@@ -164,6 +203,9 @@ impl<'a> Xlink_rs<'a> {
         let path = path.as_ref();
         let pathlib = Pathlib::new(path);
         let rawdata = std::fs::read(path).ok()?;
+        if !is_xlink_path(path) && !is_xlink(&rawdata) {
+            return None;
+        }
         print!("Is {} an XLink file? ", path.display());
         let text = match Self::new(zstd).and_then(|xlink| xlink.binary_to_yaml(&rawdata)) {
             Ok(text) => text,

@@ -1,4 +1,4 @@
-import { invoke } from './DocumentState';
+import { getDocumentsSnapshot, invoke } from './DocumentState';
 import { set } from 'lodash';
 import { act } from 'react';
 import { flushSync } from 'react-dom';
@@ -407,8 +407,27 @@ export async function addFilesFromDirRecursively(internalPath, setStatusText, se
 
 }
 
-export async function saveFileClick(setStatusText, activeTab, setpaths, editorRef) {
+const refreshSavedArchivePaths = (sarcPaths, setpaths, documentSnapshots) => {
+  if (!sarcPaths || sarcPaths.paths.length === 0) return;
+  setpaths(sarcPaths);
+  const { documents, activeDocumentId } = getDocumentsSnapshot();
+  const parentId = documents.find((document) => document.id === activeDocumentId)?.parentDocumentId;
+  if (!parentId || !documentSnapshots?.current) return;
+  const parentSnapshot = documentSnapshots.current.get(parentId);
+  if (parentSnapshot) {
+    documentSnapshots.current.set(parentId, { ...parentSnapshot, paths: sarcPaths });
+  }
+};
+
+const activeFileName = () => {
+  const { documents, activeDocumentId } = getDocumentsSnapshot();
+  return documents.find((document) => document.id === activeDocumentId)?.title || 'file';
+};
+
+export async function saveFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots) {
+  setSavingFile?.(activeFileName());
   try {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     // const editorText = editorRef.current ? editorRef.current.getValue() : "";
     setStatusText("Saving...");
     if (!editorRef.current) {
@@ -429,7 +448,7 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
-      setpaths(content.sarc_paths);
+      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots);
       console.log(content.sarc_paths.added_paths);
       console.log(content.sarc_paths.modded_paths);
     }
@@ -441,11 +460,15 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
   } catch (error) {
     console.error('Failed save data:', error);
     setStatusText(`Failed to save data`);
+  } finally {
+    setSavingFile?.('');
   }
 }
 
-export async function saveAsFileClick(setStatusText, activeTab, setpaths, editorRef) {
+export async function saveAsFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots) {
+  setSavingFile?.(activeFileName());
   try {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     // const editorText = editorRef.current ? editorRef.current.getValue() : "";
     if (!editorRef.current) {
       console.log("Editor reference not found");
@@ -461,7 +484,7 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
-      setpaths(content.sarc_paths);
+      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots);
       console.log(content.sarc_paths.added_paths);
       console.log(content.sarc_paths.modded_paths);
     }
@@ -472,6 +495,8 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
     }
   } catch (error) {
     console.error('Failed save as data: ', error);
+  } finally {
+    setSavingFile?.('');
   }
 }
 

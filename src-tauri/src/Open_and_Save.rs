@@ -1,13 +1,13 @@
 use crate::{
     file_format::{
         asb::AsbFile,
+        msbt::MsbtFile,
         Ainb::AinbFile,
         BfevFile::BfevFile,
         BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile},
         Esetb::Esetb,
         Evfl_cs::Evfl,
         GameDataList::GameDataList,
-        Msbt::str_endian_to_roead,
         Pack::{PackComparer, SarcPaths},
         Rstb::Restbl,
         TagProduct::TagProduct,
@@ -18,11 +18,10 @@ use crate::{
     Settings::Pathlib,
     TotkApp::InternalFile,
     Zstd::{
-        is_aamp, is_ainb, is_asb, is_byml, is_esetb, is_evfl, is_gamedatalist, is_msyt,
-        is_tagproduct, is_xlink, is_xlink_path, TotkFileType, TotkZstd, ZstdDictionary,
+        is_aamp, is_ainb, is_asb, is_byml, is_esetb, is_evfl, is_gamedatalist, is_tagproduct,
+        TotkFileType, TotkZstd, ZstdDictionary,
     },
 };
-use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use rfd::{FileDialog, MessageDialog};
 use roead::{aamp::ParameterIO, byml::Byml};
 use serde::{Deserialize, Serialize};
@@ -33,6 +32,7 @@ use std::{
     path::Path,
     sync::Arc,
 };
+
 pub fn get_string_from_data<P: AsRef<Path>>(
     filepath: P,
     data: Vec<u8>,
@@ -87,16 +87,16 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
     }
 
     let byml_suffix = lower_path.ends_with(".byml") || lower_path.ends_with(".byml.zs");
-    if is_gamedatalist(&path) {
-        if let Ok(text) = GameDataList::binary_to_text(&data, zstd.clone()) {
-            internal_file.endian = BymlFile::get_endiannes(&data);
-            internal_file.path = Pathlib::new(path.clone());
-            internal_file.file_type = TotkFileType::Byml;
-            return Some((internal_file, text));
-        }
-        println!("Unable to parse GameDataList archive entry {path}");
-        return None;
-    }
+    // if is_gamedatalist(&path) {
+    //     if let Ok(text) = GameDataList::binary_to_text(&data, zstd.clone()) {
+    //         internal_file.endian = BymlFile::get_endiannes(&data);
+    //         internal_file.path = Pathlib::new(path.clone());
+    //         internal_file.file_type = TotkFileType::Byml;
+    //         return Some((internal_file, text));
+    //     }
+    //     println!("Unable to parse GameDataList archive entry {path}");
+    //     return None;
+    // }
 
     if is_banc_path(&path) || byml_suffix {
         if let Ok(file_data) = BymlFile::byml_data_to_bytes(&data, zstd.clone()) {
@@ -141,16 +141,8 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
             return Some((internal_file, text));
         }
     }
-    if is_xlink(&data) || is_xlink_path(&path) {
-        match Xlink_rs::new(zstd.clone()).and_then(|xlink| xlink.binary_to_yaml(&data)) {
-            Ok(text) => {
-                internal_file.endian = Some(roead::Endian::Little);
-                internal_file.path = Pathlib::new(path.clone());
-                internal_file.file_type = TotkFileType::Xlink;
-                return Some((internal_file, text));
-            }
-            Err(error) => println!("Unable to parse XLink entry {path}: {error}"),
-        }
+    if let Some(xlink) = Xlink_rs::open_internal(&path, &data, zstd.clone()) {
+        return Some(xlink);
     }
     if is_byml(&data) {
         if let Ok(file_data) = BymlFile::byml_data_to_bytes(&data, zstd.clone()) {
@@ -173,19 +165,8 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
         internal_file.file_type = TotkFileType::Aamp;
         return Some((internal_file, text));
     }
-    if is_msyt(&data) {
-        // let msbt = MsbtFile::from_binary(data, Some(path.clone()))?;
-        // internal_file.endian = Some(msbt.endian.clone());
-        // internal_file.path = Pathlib::new(path.clone());
-        // internal_file.file_type = TotkFileType::Msbt;
-        let msbt = MsbtCpp::from_binary(&data).ok()?;
-
-        internal_file.endian = Some(str_endian_to_roead(
-            &msbt.endian.unwrap_or("LE".to_string()),
-        ));
-        internal_file.path = Pathlib::new(path.clone());
-        internal_file.file_type = TotkFileType::Msbt;
-        return Some((internal_file, msbt.text));
+    if let Some(msbt) = MsbtFile::open_internal(&path, &data) {
+        return Some(msbt);
     }
     if let Ok(text) = String::from_utf8(data) {
         internal_file.endian = None;
@@ -260,6 +241,8 @@ pub fn get_binary_by_filetype(
     file_path: &str,
     opened_file: &mut OpenedFile<'_>,
     zstd_dictionary: Option<ZstdDictionary>,
+    internal_msbt: Option<&crate::parser::msbt::Msbt>,
+    is_internal: bool,
 ) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
     let endian_str = match endian {
@@ -270,19 +253,7 @@ pub fn get_binary_by_filetype(
     let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs");
     match file_type {
         TotkFileType::Xlink => {
-            match Xlink_rs::new(zstd.clone()).and_then(|xlink| xlink.yaml_to_binary(text)) {
-                Ok(data) => {
-                    rawdata = if is_zs {
-                        zstd.cpp_compressor.compress_zs(&data).ok()?
-                    } else {
-                        data
-                    };
-                }
-                Err(error) => {
-                    println!("Unable to save XLink YAML for {file_path}: {error}");
-                    return None;
-                }
-            }
+            rawdata = Xlink_rs::text_to_binary(text, file_path, zstd.clone(), zstd_dictionary)?;
         }
         TotkFileType::Evfl => {
             let evfl = Evfl::new(zstd.clone());
@@ -327,11 +298,11 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::Byml => {
-            if is_gamedatalist(file_path) {
-                rawdata = GameDataList::text_to_binary(text)
-                    .map_err(|e| println!("Unable to encode GameDataList: {e}"))
-                    .ok()?;
-            }
+            // if is_gamedatalist(file_path) {
+            //     rawdata = GameDataList::text_to_binary(text)
+            //         .map_err(|e| println!("Unable to encode GameDataList: {e}"))
+            //         .ok()?;
+            // }
             if (rawdata.is_empty()) {
                 let processed_text = if is_banc_path(&file_path) && zstd.totk_config.rotation_deg {
                     &replace_rotate_deg_to_rad(&text)
@@ -363,10 +334,12 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::Msbt => {
-            let result = MsbtCpp::from_text(text, endian_str.to_string());
-            if let Ok(msbt) = result {
-                rawdata = msbt.binary;
-            }
+            rawdata = MsbtFile::text_to_binary(
+                text,
+                file_path,
+                internal_msbt.or(opened_file.msyt.as_ref()),
+                is_internal,
+            )?;
         }
         TotkFileType::Aamp => {
             let pio = ParameterIO::from_text(text).ok()?;
@@ -615,31 +588,22 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     zstd: Arc<TotkZstd>,
 ) -> Option<(OpenedFile, SendData)> {
     let file_name = path.as_ref(); //.to_string_lossy().to_string().replace("\\", "/");
-    let is_xlink_file = is_xlink_path(file_name)
-        || fs::read(file_name)
-            .map(|contents| is_xlink(&contents))
-            .unwrap_or(false);
-    let res = if is_xlink_file {
-        Xlink_rs::open_xlink(file_name, zstd.clone())
-    } else {
-        None
-    }
-    // .or_else(|| GameDataList::open(&file_name, zstd.clone()))
-    .or_else(|| TagProduct::open_tag(&file_name, zstd.clone()))
-    .or_else(|| Esetb::open_esetb(&file_name, zstd.clone()))
-    .or_else(|| Restbl::open_restbl(&file_name, zstd.clone()))
-    .or_else(|| AsbFile::open_asb(&file_name, zstd.clone()))
-    .or_else(|| AinbFile::open_ainb(&file_name, zstd.clone()))
-    .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
-    .or_else(|| crate::file_format::Msbt::MsbtFile::open_msbt(&file_name))
-    .or_else(|| crate::file_format::SimpleOpeners::AampFile::open_aamp(&file_name))
-    .or_else(|| BfevFile::open_bfev(&file_name, zstd.clone()))
-    .or_else(|| SmoSaveFile::open_smo_save_file(&file_name, zstd.clone()))
-    .or_else(|| crate::file_format::SimpleOpeners::TextFile::open_text(&file_name))
-    .map(|(opened_file, data)| {
-        // self.opened_file = opened_file;
-        // self.internal_file = None;
-        (opened_file, data)
-    });
-    res
+    Xlink_rs::open_xlink(file_name, zstd.clone())
+        // .or_else(|| GameDataList::open(&file_name, zstd.clone()))
+        .or_else(|| TagProduct::open_tag(&file_name, zstd.clone()))
+        .or_else(|| Esetb::open_esetb(&file_name, zstd.clone()))
+        .or_else(|| Restbl::open_restbl(&file_name, zstd.clone()))
+        .or_else(|| AsbFile::open_asb(&file_name, zstd.clone()))
+        .or_else(|| AinbFile::open_ainb(&file_name, zstd.clone()))
+        .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
+        .or_else(|| MsbtFile::open_mstb(file_name))
+        .or_else(|| crate::file_format::SimpleOpeners::AampFile::open_aamp(&file_name))
+        .or_else(|| BfevFile::open_bfev(&file_name, zstd.clone()))
+        .or_else(|| SmoSaveFile::open_smo_save_file(&file_name, zstd.clone()))
+        .or_else(|| crate::file_format::SimpleOpeners::TextFile::open_text(&file_name))
+        .map(|(opened_file, data)| {
+            // self.opened_file = opened_file;
+            // self.internal_file = None;
+            (opened_file, data)
+        })
 }

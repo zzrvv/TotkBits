@@ -2,6 +2,7 @@ use crate::file_format::Archive::{ArchiveDocument, RootArchive};
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Esetb::Esetb;
 use crate::file_format::Pack::{PackComparer, SarcPaths};
+use crate::parser::msbt::Msbt;
 use crate::Comparer::DiffComparer;
 use crate::NestedSarc::{NestedArchive, NestedArchives};
 use crate::Open_and_Save::{
@@ -168,6 +169,8 @@ impl<'a> TotkBitsApp<'a> {
             &internal.path.full_path,
             &mut self.opened_file,
             internal.zstd_dictionary,
+            internal.msyt.as_ref(),
+            true,
         )
     }
 
@@ -212,7 +215,8 @@ impl<'a> TotkBitsApp<'a> {
             .ok_or("root SARC unavailable")?
             .mutate_writer(|writer| writer.add_file(path, bytes))
             .map_err(|error| error.to_string())?;
-        pack.compare();
+        pack.compare_and_reload()
+            .map_err(|error| error.to_string())?;
         Ok(())
     }
     fn flush_nested_chain(&mut self, chain: &str) -> Result<(), String> {
@@ -554,6 +558,8 @@ impl<'a> TotkBitsApp<'a> {
             dest_file,
             &mut self.opened_file,
             None,
+            None,
+            false,
         )
     }
 
@@ -1007,6 +1013,8 @@ impl<'a> TotkBitsApp<'a> {
                 &inner_path,
                 &mut self.opened_file,
                 internal_file.zstd_dictionary,
+                internal_file.msyt.as_ref(),
+                true,
             )?;
             let archive = self.nested_archives.get_mut(&outer_path)?;
             archive.set(&inner_path, rawdata);
@@ -1032,6 +1040,8 @@ impl<'a> TotkBitsApp<'a> {
                     &path,
                     &mut self.opened_file,
                     internal_file.zstd_dictionary,
+                    internal_file.msyt.as_ref(),
+                    true,
                 )?;
                 self.archive.as_mut()?.set(&path, rawdata).ok()?;
                 data.tab = "YAML".into();
@@ -1049,6 +1059,8 @@ impl<'a> TotkBitsApp<'a> {
                         &path,
                         &mut self.opened_file,
                         internal_file.zstd_dictionary,
+                        internal_file.msyt.as_ref(),
+                        true,
                     )?;
                     if rawdata.is_empty() {
                         data.status_text =
@@ -1092,6 +1104,8 @@ impl<'a> TotkBitsApp<'a> {
                 &fullpath,
                 &mut self.opened_file,
                 None,
+                None,
+                false,
             )?;
             if rawdata.is_empty() {
                 data.status_text =
@@ -1858,7 +1872,7 @@ pub struct InternalFile<'a> {
     pub file_type: TotkFileType,
     pub endian: Option<roead::Endian>,
     pub byml: Option<BymlFile<'a>>,
-    pub msyt: Option<String>,
+    pub msyt: Option<Msbt>,
     pub text: Option<String>,
     pub aamp: Option<String>,
     pub esetb: Option<Esetb<'a>>,

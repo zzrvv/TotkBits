@@ -24,6 +24,7 @@ export const EditorProvider = ({ children }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isAddPrompt, setIsAddPrompt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [savingFile, setSavingFile] = useState('');
   // const [isUpdateNeeded, setIsUpdateNeeded] = useState(false);
   const [updateState, setUpdateState] = useState({wasChecked: false, isUpdateNeeded: false, latestVersion: ''});
 
@@ -79,7 +80,8 @@ export const EditorProvider = ({ children }) => {
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, pathsFilters, setPathsFilters, treeExpandedNodes, setTreeExpandedNodes,
     isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
-    isLoading, setIsLoading
+    isLoading, setIsLoading,
+    savingFile, setSavingFile
   };
 
   return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;

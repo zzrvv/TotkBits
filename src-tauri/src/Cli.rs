@@ -49,10 +49,19 @@ impl CliCommand {
                 | "dir_to_archive"
                 | "decompress"
                 | "compress"
+                | "msbt_dump"
+                | "msbt_verify"
         );
-        let expected_arguments = if operation == "decompress" { 5 } else { 6 };
+        let expected_arguments = if matches!(
+            operation.as_str(),
+            "decompress" | "msbt_dump" | "msbt_verify"
+        ) {
+            5
+        } else {
+            6
+        };
         if !is_public_operation || arguments.len() != expected_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>\n  Totkbits.exe --cli msbt_dump <input-directory> <output-directory>\n  Totkbits.exe --cli msbt_verify <input-directory> <report.tsv>");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -69,7 +78,10 @@ impl CliCommand {
                 cwd.join(path)
             }
         };
-        if operation == "decompress" {
+        if matches!(
+            operation.as_str(),
+            "decompress" | "msbt_dump" | "msbt_verify"
+        ) {
             Some(Self {
                 operation,
                 file_type: String::new(),
@@ -97,6 +109,8 @@ impl CliCommand {
             "dir_to_archive" => self.dir_to_archive(),
             "decompress" => self.decompress(),
             "compress" => self.compress(),
+            "msbt_dump" => self.msbt_dump(),
+            "msbt_verify" => self.msbt_verify(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -141,6 +155,8 @@ impl CliCommand {
             &output_name,
             &mut opened,
             None,
+            None,
+            false,
         )
         .filter(|bytes| !bytes.is_empty())
         .ok_or_else(|| format!("conversion to {} produced no data", self.file_type))?;
@@ -185,6 +201,86 @@ impl CliCommand {
             .compress_with_dictionary(&bytes, dictionary)
             .map_err(|e| format!("failed to compress input: {e}"))?;
         write_output(&self.output, &compressed)
+    }
+
+    fn msbt_files(&self) -> Result<Vec<PathBuf>, String> {
+        if !self.input.is_dir() {
+            return Err("MSBT corpus input must be a directory".into());
+        }
+        let mut files = Vec::new();
+        collect_files(&self.input, &mut files)?;
+        files.retain(|p| {
+            p.extension()
+                .and_then(|x| x.to_str())
+                .is_some_and(|x| x.eq_ignore_ascii_case("msbt"))
+        });
+        files.sort();
+        Ok(files)
+    }
+
+    fn msbt_dump(&self) -> Result<(), String> {
+        for path in self.msbt_files()? {
+            let data = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let parsed = crate::parser::msbt::Msbt::from_bytes(&data)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let mut relative = path
+                .strip_prefix(&self.input)
+                .map_err(|e| e.to_string())?
+                .to_path_buf();
+            relative.set_extension("txt");
+            write_output(
+                &self.output.join(relative),
+                crate::parser::msbt::editable::serialize(&parsed).as_bytes(),
+            )?;
+        }
+        Ok(())
+    }
+
+    fn msbt_verify(&self) -> Result<(), String> {
+        let files = self.msbt_files()?;
+        let mut report = String::from("file\toriginal_sha256\trebuilt_sha256\tmatch\n");
+        let mut changed = 0;
+        for path in &files {
+            let data = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let parsed = crate::parser::msbt::Msbt::from_bytes(&data)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let text = crate::parser::msbt::editable::serialize(&parsed);
+            if text.to_ascii_lowercase().contains("base64") {
+                return Err(format!("base64 node in {}", path.display()));
+            }
+            let reparsed = crate::parser::msbt::editable::deserialize(&parsed, &text)
+                .map_err(|e| format!("{} text: {e}", path.display()))?;
+            let rebuilt = reparsed
+                .to_bytes()
+                .map_err(|e| format!("{} rebuild: {e}", path.display()))?;
+            let original_hash = hex_sha256(&data);
+            let rebuilt_hash = hex_sha256(&rebuilt);
+            let matches = original_hash == rebuilt_hash;
+            if !matches {
+                changed += 1;
+            }
+            report.push_str(&format!(
+                "{}\t{}\t{}\t{}\n",
+                path.strip_prefix(&self.input).unwrap_or(path).display(),
+                original_hash,
+                rebuilt_hash,
+                matches
+            ));
+        }
+        report.push_str(&format!(
+            "\n{} MSBT files checked; {} byte-identical, {} changed\n",
+            files.len(),
+            files.len() - changed,
+            changed
+        ));
+        write_output(&self.output, report.as_bytes())?;
+        if changed > 0 {
+            return Err(format!(
+                "{changed} MSBT round trips changed; see {}",
+                self.output.display()
+            ));
+        }
+        Ok(())
     }
 
     fn ainb_roundtrip(&self) -> Result<(), String> {

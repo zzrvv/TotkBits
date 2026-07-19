@@ -24,6 +24,7 @@ function MenuBarDisplay({ updateButton = null }) {
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
     compareData, setCompareData,
+    setSavingFile, documentSnapshots,
   } = useEditorContext();
 
   const [showDropdown, setShowDropdown] = useState({ file: false, view: false, tools: false, compare: false, about: false });
@@ -58,12 +59,12 @@ function MenuBarDisplay({ updateButton = null }) {
   const handleSaveClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
-    saveFileClick(setStatusText, activeTab, setpaths, editorRef);
+    saveFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
   const handleSaveAsClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
-    saveAsFileClick(setStatusText, activeTab, setpaths, editorRef);
+    saveAsFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
 
   const handleSearchClick = (event) => {
@@ -115,7 +116,7 @@ function MenuBarDisplay({ updateButton = null }) {
         await compareInternalFileWithOVanila(selectedPath.path, setStatusText, setActiveTab, setCompareData);
       } else if (activeTab === 'YAML') {
         //empty internal path, irrelevant
-        await compareInternalFileWithOVanilaMonaco(setStatusText, setActiveTab, setCompareData, editorRef);
+        await compareInternalFileWithOVanilaMonaco(setStatusText, setActiveTab, setCompareData, editorRef, setLabelTextDisplay);
       } else {
         setStatusText("Switch to SARC or YAML tab to compare files!"); //should be unreachable
         return;

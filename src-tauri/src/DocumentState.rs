@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Mutex};
 use crate::{
     Open_and_Save::SendData,
     TotkApp::{SaveData, TotkBitsApp},
+    Zstd::TotkFileType,
 };
 
 #[derive(Default)]
@@ -66,6 +67,29 @@ impl DocumentState {
             .get_mut(&link.document_id)?
             .update_child_entry(link.outer_path.as_deref(), &link.inner_path, bytes)
             .ok()
+    }
+
+    pub fn compare_internal_file(
+        &self,
+        id: &str,
+        internal_path: String,
+        is_from_sarc: bool,
+    ) -> Option<SendData> {
+        let mut documents = self.documents();
+        let msbt_parent = documents.get(id).and_then(|child| {
+            let link = child.internal_parent.as_ref()?;
+            let internal = child.internal_file.as_ref()?;
+            (!is_from_sarc && link.outer_path.is_none() && internal.file_type == TotkFileType::Msbt)
+                .then(|| (link.document_id.clone(), link.inner_path.clone()))
+        });
+        if let Some((parent_id, path)) = msbt_parent {
+            if let Some(parent) = documents.get_mut(&parent_id) {
+                return parent.compare_internal_file_with_original(path, true);
+            }
+        }
+        documents
+            .get_mut(id)?
+            .compare_internal_file_with_original(internal_path, is_from_sarc)
     }
     pub fn with_mut<T>(
         &self,
