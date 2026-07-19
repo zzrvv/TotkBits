@@ -9,7 +9,11 @@ use libloading::{Library, Symbol};
 use roead::Endian;
 
 use crate::{
-    Open_and_Save::SendData, Settings::{Pathlib, running_exe_dir}, TotkApp::InternalFile, Zstd::{TotkFileType, TotkZstd, ZstdDictionary, get_executable_dir, is_xlink, is_xlink_path}, file_format::BinTextFile::OpenedFile,
+    file_format::BinTextFile::OpenedFile,
+    Open_and_Save::SendData,
+    Settings::{running_exe_dir, Pathlib},
+    TotkApp::InternalFile,
+    Zstd::{get_executable_dir, is_xlink, is_xlink_path, TotkFileType, TotkZstd, ZstdDictionary},
 };
 
 type XlinkBinaryToYaml = unsafe extern "C" fn(data: *const i8, size: usize) -> *const i8;
@@ -49,7 +53,10 @@ impl<'a> Xlink_rs<'a> {
     }
 
     fn find_library() -> io::Result<PathBuf> {
-        let relative =  running_exe_dir()?.join("bin").join("dlls").join("xlink_tool.dll");
+        let relative = running_exe_dir()?
+            .join("bin")
+            .join("dlls")
+            .join("xlink_tool.dll");
         let mut candidates = Vec::new();
         if let Ok(current_dir) = std::env::current_dir() {
             candidates.push(current_dir.join(&relative));

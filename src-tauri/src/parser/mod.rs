@@ -4,3 +4,4 @@ pub mod binary;
 pub mod evfl;
 pub mod msbt;
 pub mod ptcl;
+pub mod rstb;

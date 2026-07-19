@@ -278,27 +278,22 @@ impl<'a> TotkBitsApp<'a> {
     //RSTB
     pub fn get_rstb_entries_by_query(&mut self, entry: String) -> Option<SendData> {
         let mut data = SendData::default();
-        let mut isDefaultAdded = false;
         if let Some(rstb) = &mut self.opened_file.restbl {
             data.tab = "RSTB".to_string();
 
-            let entry_low = entry.to_lowercase();
-            for elem in rstb.hash_table.iter() {
-                if elem.to_lowercase().contains(&entry_low) {
-                    if let Some(val) = rstb.table.get(elem.clone()) {
-                        if elem == &entry {
-                            isDefaultAdded = true;
+            let query = entry.trim().to_ascii_lowercase();
+            if !query.is_empty() {
+                let mut returned_paths = std::collections::HashSet::new();
+                for canonical_path in &rstb.hash_table {
+                    let normalized_path = canonical_path.to_ascii_lowercase();
+                    if normalized_path.contains(&query) && returned_paths.insert(normalized_path) {
+                        if let Some(val) = rstb.table.get(canonical_path.clone()) {
+                            data.rstb_paths.push(json!({
+                                "path": canonical_path,
+                                "val": val.to_string()
+                            }));
                         }
-                        data.rstb_paths
-                            .push(json!({ "path": elem.clone(), "val": val.to_string() }));
                     }
-                }
-            }
-            if !isDefaultAdded {
-                if let Some(val) = rstb.table.get(entry.clone()) {
-                    //entry exists
-                    data.rstb_paths
-                        .push(json!({ "path": entry.clone(), "val": val.to_string() }));
                 }
             }
             data.status_text = format!("Found entries: {}", data.rstb_paths.len());
@@ -322,13 +317,18 @@ impl<'a> TotkBitsApp<'a> {
                     return Some(data);
                 }
             };
-            if let Some(_) = rstb.table.get(entry.clone()) {
+            let cached_path = rstb.cached_path(&entry).map(str::to_owned);
+            let canonical_path = cached_path.clone().unwrap_or(entry);
+            if rstb.table.get(canonical_path.clone()).is_some() {
                 //entry exists
-                data.status_text = format!("Modified: {}", &entry);
+                data.status_text = format!("Modified: {}", &canonical_path);
             } else {
-                data.status_text = format!("Added: {}", &entry);
+                data.status_text = format!("Added: {}", &canonical_path);
             }
-            rstb.table.set(entry, value);
+            rstb.table.set(canonical_path.clone(), value);
+            if cached_path.is_none() {
+                rstb.hash_table.push(canonical_path);
+            }
         } else {
             data.status_text = "Error: No RSTB opened".to_string();
             data.tab = "ERROR".to_string();
@@ -340,10 +340,11 @@ impl<'a> TotkBitsApp<'a> {
         let mut data = SendData::default();
         if let Some(rstb) = &mut self.opened_file.restbl {
             data.tab = "RSTB".to_string();
-            if let Some(_) = rstb.table.get(entry.clone()) {
+            let canonical_path = rstb.cached_path(&entry).unwrap_or(&entry).to_string();
+            if rstb.table.get(canonical_path.clone()).is_some() {
                 //entry exists
-                data.status_text = format!("Removed: {}", &entry);
-                rstb.table.remove(entry.clone());
+                data.status_text = format!("Removed: {}", &canonical_path);
+                rstb.table.remove(canonical_path);
             } else {
                 data.status_text = format!("Error: entry absent in RSTB ({})", &entry);
             }
@@ -1627,6 +1628,7 @@ impl<'a> TotkBitsApp<'a> {
     }
 
     pub fn open_from_path(&mut self, file_name: String) -> Option<SendData> {
+        println!("[OPEN] requested path: {file_name}");
         let mut data = SendData::default();
         let dictionary = if file_name.to_ascii_lowercase().ends_with(".zs") {
             fs::read(&file_name)
@@ -1638,6 +1640,9 @@ impl<'a> TotkBitsApp<'a> {
         };
         //let file_name = file.to_string_lossy().to_string().replace("\\", "/");
         if check_if_filepath_valid(&file_name) {
+            println!(
+                "[OPEN] path validation succeeded; trying archive routes before disk opener chain"
+            );
             if let Some((pack, mut data)) = PackComparer::open_sarc(&file_name, self.zstd.clone()) {
                 self.pack = Some(pack);
                 self.internal_file = None;
@@ -1663,6 +1668,10 @@ impl<'a> TotkBitsApp<'a> {
             }
             let res = file_from_disk_to_senddata(&file_name, self.zstd.clone());
             if let Some((opened, mut data)) = res {
+                println!(
+                    "[OPEN] disk opener chain succeeded with {:?}",
+                    opened.file_type
+                );
                 self.archive = None;
                 data.set_file_metadata(opened.file_type, dictionary);
                 self.opened_file = opened;
@@ -1687,8 +1696,10 @@ impl<'a> TotkBitsApp<'a> {
             //     return res;
             // }
         } else {
+            println!("[OPEN] path validation failed for {file_name}");
             return None;
         }
+        println!("[OPEN] all routes failed for {file_name}");
         data.tab = "ERROR".to_string();
         data.status_text = format!("Error: Failed to open {}", &file_name);
         self.add_initialization_context(&mut data);

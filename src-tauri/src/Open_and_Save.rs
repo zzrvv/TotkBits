@@ -588,6 +588,10 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     zstd: Arc<TotkZstd>,
 ) -> Option<(OpenedFile, SendData)> {
     let file_name = path.as_ref(); //.to_string_lossy().to_string().replace("\\", "/");
+    println!(
+        "[OPEN ROUTER] beginning disk opener chain for {} (RSTB follows Xlink, TagProduct, and Esetb)",
+        file_name.display()
+    );
     Xlink_rs::open_xlink(file_name, zstd.clone())
         // .or_else(|| GameDataList::open(&file_name, zstd.clone()))
         .or_else(|| TagProduct::open_tag(&file_name, zstd.clone()))
@@ -602,6 +606,11 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
         .or_else(|| SmoSaveFile::open_smo_save_file(&file_name, zstd.clone()))
         .or_else(|| crate::file_format::SimpleOpeners::TextFile::open_text(&file_name))
         .map(|(opened_file, data)| {
+            println!(
+                "[OPEN ROUTER] opener chain accepted {} as {:?}",
+                file_name.display(),
+                opened_file.file_type
+            );
             // self.opened_file = opened_file;
             // self.internal_file = None;
             (opened_file, data)

@@ -6,12 +6,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::file_format::BinTextFile::OpenedFile;
+use crate::parser::rstb::ResourceSizeTable;
 use crate::Open_and_Save::SendData;
-use crate::Settings::{exe_relative_path, list_files_recursively, Pathlib};
+use crate::Settings::{list_files_recursively, Pathlib};
 use crate::Zstd::{is_restbl, TotkFileType, TotkZstd};
 use flate2::read::ZlibDecoder;
-use restbl::bin::ResTblReader;
-use restbl::ResourceSizeTable;
 // use serde_json::to_string_pretty;
 
 use super::Pack::PackFile;
@@ -20,7 +19,7 @@ use super::Pack::PackFile;
 
 #[allow(dead_code)]
 fn get_rstb_data() -> io::Result<Vec<String>> {
-    let json_zlibdata = fs::read(exe_relative_path("bin/totk_rstb_paths.bin"))?;
+    let json_zlibdata = fs::read("bin/totk_rstb_paths.bin")?;
     let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
     let mut json_str = String::new();
     decoder.read_to_string(&mut json_str)?;
@@ -33,12 +32,18 @@ pub struct Restbl<'a> {
     pub path: Pathlib,
     pub zstd: Arc<TotkZstd<'a>>,
     // buffer: Arc<Vec<u8>>, // Use Arc to share ownership
-    pub reader: ResTblReader<'a>,
     pub table: ResourceSizeTable,
     pub hash_table: Vec<String>,
 }
 
 impl<'a> Restbl<'_> {
+    pub fn cached_path(&self, path: &str) -> Option<&str> {
+        self.hash_table
+            .iter()
+            .find(|candidate| candidate.eq_ignore_ascii_case(path))
+            .map(String::as_str)
+    }
+
     pub fn open_restbl<P: AsRef<Path>>(
         path: P,
         zstd: Arc<TotkZstd<'a>>,
@@ -49,16 +54,21 @@ impl<'a> Restbl<'_> {
         let mut opened_file = OpenedFile::default();
         let path_ref = path.as_ref();
         let mut data = SendData::default();
-        print!("Is {} a restbl? ", &path_ref.display());
+        println!("[RSTB] route: considering {}", path_ref.display());
         let pathlib_var = Pathlib::new(path_ref);
-        if pathlib_var
+        let recognized_name = pathlib_var
             .name
             .to_lowercase()
-            .starts_with("resourcesizetable.product")
-        {
-            println!(" yes!");
+            .starts_with("resourcesizetable.product");
+        println!(
+            "[RSTB] route: file name {:?}, ResourceSizeTable.Product prefix match={}",
+            pathlib_var.name, recognized_name
+        );
+        if recognized_name {
+            println!("[RSTB] route: dispatching to Restbl::from_path");
             opened_file.restbl = Restbl::from_path(path_ref, zstd.clone());
             if let Some(_restbl) = &mut opened_file.restbl {
+                println!("[RSTB] route: RSTB opened successfully");
                 data.tab = "RSTB".to_string();
                 opened_file.path = pathlib_var.clone();
                 opened_file.endian = Some(roead::Endian::Little);
@@ -69,13 +79,15 @@ impl<'a> Restbl<'_> {
                 data.get_file_label(TotkFileType::Restbl, Some(roead::Endian::Little));
                 return Some((opened_file, data));
             }
+            println!("[RSTB] route: Restbl::from_path rejected the file");
         }
-        println!(" no");
+        println!("[RSTB] route: not handled as RSTB");
         None
     }
+
     pub fn get_restb_entries<P: AsRef<Path>>(&mut self, path: P) -> io::Result<Vec<String>> {
         //read from zlib json
-        let json_zlibdata = fs::read(exe_relative_path("bin/totk_rstb_paths.bin"))?;
+        let json_zlibdata = fs::read("bin/totk_rstb_paths.bin")?;
         let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
         let mut json_str = String::new();
         decoder.read_to_string(&mut json_str)?;
@@ -109,7 +121,7 @@ impl<'a> Restbl<'_> {
                 }
                 let local_path_lower = local_path.to_ascii_lowercase();
                 if local_path.to_ascii_lowercase().ends_with(".zs") {
-                    local_path.truncate(local_path.len().saturating_sub(3));
+                    local_path = local_path[..(local_path.len() - 3)].to_string()
                 }
                 // if !res.contains(&local_path) {
                 // println!("Adding custom rstb path: {}", &local_path);
@@ -147,15 +159,15 @@ impl<'a> Restbl<'_> {
             return None; //invalid rstb
         }
 
-        match ResTblReader::new(buffer) {
-            Ok(r) => {
-                let t: ResourceSizeTable = ResourceSizeTable::from_parser(&r);
+        println!("[RSTB] native parser: parsing {} bytes", buffer.len());
+        match ResourceSizeTable::from_bytes(&buffer) {
+            Ok(t) => {
+                println!("[RSTB] native parser: parse succeeded");
                 // let hash_table = get_rstb_data().unwrap_or_default();
 
                 let mut new_restbl = Restbl {
                     path: Pathlib::new(&path),
                     zstd: zstd.clone(),
-                    reader: r,
                     table: t,
                     hash_table: Default::default(),
                 };
@@ -164,6 +176,7 @@ impl<'a> Restbl<'_> {
                 return Some(new_restbl);
             }
             Err(err) => {
+                println!("[RSTB] native parser: parse failed: {err}");
                 eprintln!("{:?}", err);
             }
         }
@@ -176,7 +189,10 @@ impl<'a> Restbl<'_> {
     }
 
     pub fn save(&mut self, path: &str) -> io::Result<()> {
-        let mut buffer = self.table.to_binary();
+        let mut buffer = self
+            .table
+            .to_bytes()
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         let mut f = File::create(&path)?;
         if path.to_lowercase().ends_with(".zs") {
             // buffer = self.zstd.compressor.compress_empty(&buffer)?;

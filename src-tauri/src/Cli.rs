@@ -4,6 +4,7 @@ use crate::{
         Archive::{ArchiveCodec, Rar::RarFile, SevenZip::SevenZipFile, Zip::ZipFile},
         BinTextFile::OpenedFile,
     },
+    parser::rstb::ResourceSizeTable,
     Open_and_Save::{get_binary_by_filetype, get_string_from_data},
     TotkConfig::TotkConfig,
     Zstd::{global_totk_zstd, TotkFileType, ZstdDictionary},
@@ -49,19 +50,20 @@ impl CliCommand {
                 | "dir_to_archive"
                 | "decompress"
                 | "compress"
-                | "msbt_dump"
-                | "msbt_verify"
+                // | "msbt_dump"
+                // | "msbt_verify"
+                // | "rstb_validate"
         );
         let expected_arguments = if matches!(
             operation.as_str(),
-            "decompress" | "msbt_dump" | "msbt_verify"
+            "decompress" | "msbt_dump" | "msbt_verify" | "rstb_validate"
         ) {
             5
         } else {
             6
         };
         if !is_public_operation || arguments.len() != expected_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>\n  Totkbits.exe --cli msbt_dump <input-directory> <output-directory>\n  Totkbits.exe --cli msbt_verify <input-directory> <report.tsv>");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett> <input> <output>\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -80,7 +82,7 @@ impl CliCommand {
         };
         if matches!(
             operation.as_str(),
-            "decompress" | "msbt_dump" | "msbt_verify"
+            "decompress" | "msbt_dump" | "msbt_verify" | "rstb_validate"
         ) {
             Some(Self {
                 operation,
@@ -109,8 +111,9 @@ impl CliCommand {
             "dir_to_archive" => self.dir_to_archive(),
             "decompress" => self.decompress(),
             "compress" => self.compress(),
-            "msbt_dump" => self.msbt_dump(),
-            "msbt_verify" => self.msbt_verify(),
+            // "msbt_dump" => self.msbt_dump(),
+            // "msbt_verify" => self.msbt_verify(),
+            // "rstb_validate" => self.rstb_validate(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -118,6 +121,20 @@ impl CliCommand {
     fn zstd(&self) -> Result<Arc<crate::Zstd::TotkZstd<'static>>, String> {
         let config = TotkConfig::safe_new().map_err(|e| e.to_string())?;
         global_totk_zstd(Arc::new(config), 16).map_err(|e| e.to_string())
+    }
+
+    fn rstb_validate(&self) -> Result<(), String> {
+        let source = fs::read(&self.input).map_err(|e| format!("failed to read RSTB: {e}"))?;
+        let bytes = if crate::Zstd::is_restbl(&source) {
+            source
+        } else {
+            zstd::decode_all(source.as_slice())
+                .map_err(|e| format!("failed to decompress RSTB: {e}"))?
+        };
+        let table = ResourceSizeTable::from_bytes(&bytes).map_err(|e| e.to_string())?;
+        let rebuilt = table.to_bytes().map_err(|e| e.to_string())?;
+        println!("RSTB valid: version={:?}, endian={:?}, hashes={}, overflow={}, bytes={}, byte_exact={}", table.version, table.endian, table.hash_table.len(), table.overflow_table.len(), bytes.len(), bytes == rebuilt);
+        write_output(&self.output, &rebuilt)
     }
 
     fn bin_to_text(&self) -> Result<(), String> {
