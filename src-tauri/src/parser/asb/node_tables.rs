@@ -49,7 +49,7 @@ pub struct Bone {
 }
 pub fn guid(r: &mut BinaryReader<'_>) -> io::Result<String> {
     Ok(format!(
-        "{:x}-{:x}-{:x}-{:x}-{}",
+        "{:08x}-{:04x}-{:04x}-{:04x}-{}",
         r.read_u32()?,
         r.read_u16()?,
         r.read_u16()?,

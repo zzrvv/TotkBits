@@ -4,11 +4,57 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
 use std::error::Error;
+use std::path::PathBuf;
+
+/// Returns the directory containing the running executable.
+///
+/// Resolution tries Rust's native API, Win32's module API, argv[0], and the
+/// process `_` environment entry, in that order.
+pub fn running_exe_dir() -> std::io::Result<PathBuf> {
+    let parent = |path: PathBuf| path.parent().map(PathBuf::from);
+    if let Ok(path) = std::env::current_exe() {
+        if let Some(dir) = parent(path) {
+            return Ok(dir);
+        }
+    }
+    #[cfg(windows)]
+    {
+        use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
+        let mut buffer = vec![0u16; 32768];
+        let length = unsafe { GetModuleFileNameW(None, &mut buffer) } as usize;
+        if length > 0 && length < buffer.len() {
+            if let Some(dir) = parent(PathBuf::from(String::from_utf16_lossy(&buffer[..length]))) {
+                return Ok(dir);
+            }
+        }
+    }
+    if let Some(path) = std::env::args_os().next().map(PathBuf::from) {
+        let path = path.canonicalize().unwrap_or(path);
+        if let Some(dir) = parent(path) {
+            return Ok(dir);
+        }
+    }
+    if let Some(path) = std::env::var_os("_").map(PathBuf::from) {
+        let path = path.canonicalize().unwrap_or(path);
+        if let Some(dir) = parent(path) {
+            return Ok(dir);
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "unable to locate the running executable directory",
+    ))
+}
+
+pub fn exe_relative_path(path: impl AsRef<std::path::Path>) -> PathBuf {
+    running_exe_dir()
+        .map(|dir| dir.join(path.as_ref()))
+        .unwrap_or_else(|_| path.as_ref().to_path_buf())
+}
 use std::fs;
 use std::io;
 use std::io::{BufWriter, Read, Write};
 use std::path::Path;
-use std::path::PathBuf;
 use std::process;
 use std::process::Command;
 use updater::TotkbitsVersion::TotkbitsVersion;

@@ -2,7 +2,7 @@
 use super::BinTextFile::write_string_to_file;
 use crate::file_format::BinTextFile::OpenedFile;
 use crate::Open_and_Save::SendData;
-use crate::Settings::{Pathlib, NO_WINDOW_FLAG};
+use crate::Settings::{exe_relative_path, Pathlib, NO_WINDOW_FLAG};
 use crate::Zstd::{is_asb, TotkFileType, TotkZstd};
 use std::path::Path;
 use std::sync::Arc;
@@ -68,7 +68,7 @@ impl<'a> Asb_py<'a> {
     pub fn new(zstd: Arc<TotkZstd<'a>>) -> Asb_py<'a> {
         Self {
             zstd: zstd.clone(),
-            python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
+            python_exe: exe_relative_path("bin/winpython/python-3.11.8.amd64/python.exe").to_string_lossy().into_owned(),
             python_script: "totkbits.py".to_string(),
             create_no_window: NO_WINDOW_FLAG,
             data: Vec::new(),
@@ -97,7 +97,7 @@ impl<'a> Asb_py<'a> {
         }
         Ok(Self {
             zstd: zstd.clone(),
-            python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
+            python_exe: exe_relative_path("bin/winpython/python-3.11.8.amd64/python.exe").to_string_lossy().into_owned(),
             python_script: "totkbits.py".to_string(),
             create_no_window: 0x08000000,
             data: new_data,

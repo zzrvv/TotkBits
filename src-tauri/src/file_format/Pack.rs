@@ -12,7 +12,7 @@ use std::sync::Arc;
 //mod Zstd;
 
 use crate::Open_and_Save::SendData;
-use crate::Settings::{makedirs, Pathlib};
+use crate::Settings::{exe_relative_path, makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
 
@@ -21,7 +21,7 @@ use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
 pub fn get_sarc_entries_data() -> io::Result<HashMap<String, String>> {
     //parse json
     println!("Getting global sarc data ");
-    let json_zlibdata = fs::read("bin/totk_sarc_sha256.bin")?;
+    let json_zlibdata = fs::read(exe_relative_path("bin/totk_sarc_sha256.bin"))?;
     let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
     let mut json_str = String::new();
     decoder.read_to_string(&mut json_str)?;

@@ -53,7 +53,7 @@ impl AsbCommand {
         let unknown_2 = read_parameter(reader, pool, ParameterType::Int)?;
         let unknown_3 = reader.read_u32()?;
         let guid = format!(
-            "{:x}-{:x}-{:x}-{:x}-{}",
+            "{:08x}-{:04x}-{:04x}-{:04x}-{}",
             reader.read_u32()?,
             reader.read_u16()?,
             reader.read_u16()?,

@@ -23,6 +23,7 @@ import DocumentTabs from './DocumentTabs';
 let triggered = false
 
 function App() {
+  const [comparingFile, setComparingFile] = React.useState('');
 
 
 
@@ -52,6 +53,12 @@ function App() {
     // Here you can use selectedPath for any other logic in App.jsx
   };
 
+
+  useEffect(() => {
+    const handleComparing = (event) => setComparingFile(event.detail || '');
+    window.addEventListener('totkbits:comparing', handleComparing);
+    return () => window.removeEventListener('totkbits:comparing', handleComparing);
+  }, []);
 
   useEffect(() => {
     // Initialize the Monaco editor only once
@@ -144,6 +151,14 @@ function App() {
           <div className="parsing-content">
             <div className="loading-swirl" aria-hidden="true"></div>
             <div>Saving {savingFile}</div>
+          </div>
+        </div>
+      )}
+      {comparingFile && (
+        <div className="parsing-overlay" role="status" aria-live="polite">
+          <div className="parsing-content">
+            <div className="loading-swirl" aria-hidden="true"></div>
+            <div>Comparing {comparingFile}</div>
           </div>
         </div>
       )}

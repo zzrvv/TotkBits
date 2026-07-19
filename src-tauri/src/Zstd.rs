@@ -317,7 +317,9 @@ impl<'a> TotkZstd<'_> {
         internal_path: P,
     ) -> io::Result<String> {
         //parse json
-        let json_zlibdata = fs::read("bin/totk_internal_filepaths.bin")?;
+        let json_zlibdata = fs::read(crate::Settings::exe_relative_path(
+            "bin/totk_internal_filepaths.bin",
+        ))?;
         let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
         let mut json_str = String::new();
         decoder.read_to_string(&mut json_str)?;
@@ -590,7 +592,9 @@ impl<'a> ZstdCompressor<'_> {
     }
 
     pub fn find_vanila_file_in_romfs<P: AsRef<Path>>(&self, path: P) -> io::Result<String> {
-        let json_zlibdata = fs::read("bin/totk_filename_to_localpath.bin")?;
+        let json_zlibdata = fs::read(crate::Settings::exe_relative_path(
+            "bin/totk_filename_to_localpath.bin",
+        ))?;
         let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
         let mut json_str = String::new();
         decoder.read_to_string(&mut json_str)?;

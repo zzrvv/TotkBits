@@ -129,6 +129,11 @@ export const invoke = async (command, args = {}) => {
     if (isOpen || isChildOpen || isComparison) {
         await new Promise((resolve) => requestAnimationFrame(resolve));
     }
+    if (isComparison) {
+        const sourceName = documents.find((document) => document.id === sourceDocumentId)?.title || 'file';
+        window.dispatchEvent(new CustomEvent('totkbits:comparing', { detail: sourceName }));
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
     try {
         const result = await tauriInvoke(command, {
             ...args, documentId,
@@ -178,5 +183,9 @@ export const invoke = async (command, args = {}) => {
             activateDocument(sourceDocumentId);
         }
         throw error;
+    } finally {
+        if (isComparison) {
+            window.dispatchEvent(new CustomEvent('totkbits:comparing', { detail: '' }));
+        }
     }
 };

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::file_format::BinTextFile::OpenedFile;
 use crate::Open_and_Save::SendData;
-use crate::Settings::{list_files_recursively, Pathlib};
+use crate::Settings::{exe_relative_path, list_files_recursively, Pathlib};
 use crate::Zstd::{is_restbl, TotkFileType, TotkZstd};
 use flate2::read::ZlibDecoder;
 use restbl::bin::ResTblReader;
@@ -20,7 +20,7 @@ use super::Pack::PackFile;
 
 #[allow(dead_code)]
 fn get_rstb_data() -> io::Result<Vec<String>> {
-    let json_zlibdata = fs::read("bin/totk_rstb_paths.bin")?;
+    let json_zlibdata = fs::read(exe_relative_path("bin/totk_rstb_paths.bin"))?;
     let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
     let mut json_str = String::new();
     decoder.read_to_string(&mut json_str)?;
@@ -75,7 +75,7 @@ impl<'a> Restbl<'_> {
     }
     pub fn get_restb_entries<P: AsRef<Path>>(&mut self, path: P) -> io::Result<Vec<String>> {
         //read from zlib json
-        let json_zlibdata = fs::read("bin/totk_rstb_paths.bin")?;
+        let json_zlibdata = fs::read(exe_relative_path("bin/totk_rstb_paths.bin"))?;
         let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
         let mut json_str = String::new();
         decoder.read_to_string(&mut json_str)?;

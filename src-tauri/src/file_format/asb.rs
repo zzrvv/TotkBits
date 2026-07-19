@@ -92,10 +92,19 @@ impl AsbFile {
     }
 
     pub fn text_to_binary(text: &str) -> io::Result<Vec<u8>> {
-        serde_yaml::from_str::<Self>(text)
-            .map_err(io::Error::other)?
-            .document
-            .to_native_bytes()
+        match serde_yaml::from_str::<Self>(text) {
+            Ok(file) => file.document.to_native_bytes(),
+            Err(wrapper_error) => Asb::from_yaml(text)
+                .and_then(|document| document.to_native_bytes())
+                .map_err(|document_error| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "invalid ASB YAML wrapper ({wrapper_error}); invalid ASB document ({document_error})"
+                        ),
+                    )
+                }),
+        }
     }
 
     pub fn to_yaml(&self) -> io::Result<String> {
@@ -109,5 +118,45 @@ fn read_maybe_compressed(path: &Path, zstd: &TotkZstd<'_>, magic: &[u8]) -> io::
         Ok(data)
     } else {
         zstd.try_decompress(&data)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AsbFile;
+    use std::{fs, path::Path};
+
+    fn visit_asb_files(dir: &Path, tested: &mut usize) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit_asb_files(&path, tested);
+            } else if path.extension().and_then(|value| value.to_str()) == Some("asb") {
+                let bytes = fs::read(&path).expect("read ASB corpus file");
+                let Ok(yaml) = AsbFile::binary_to_text(&bytes) else {
+                    continue;
+                };
+                let rebuilt = AsbFile::text_to_binary(&yaml)
+                    .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+                assert!(rebuilt.starts_with(b"ASB "), "{}", path.display());
+                AsbFile::binary_to_text(&rebuilt).expect("parse rebuilt ASB");
+                *tested += 1;
+            }
+        }
+    }
+
+    #[test]
+    fn corpus_bare_yaml_saves_to_binary() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/AS");
+        let mut tested = 0;
+        visit_asb_files(&root, &mut tested);
+        assert!(
+            tested > 0,
+            "no ASB corpus files found at {}",
+            root.display()
+        );
     }
 }

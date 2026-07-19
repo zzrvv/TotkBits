@@ -1,12 +1,10 @@
 use std::io::{self, Write};
 // use std::io::Read;
 use std::os::windows::process::CommandExt;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
-use updater::Updater::get_cwd_dir;
-
-use crate::Settings::NO_WINDOW_FLAG;
+use crate::Settings::{exe_relative_path, NO_WINDOW_FLAG};
 
 pub struct ExeWrapper {
     pub exe: String,
@@ -15,13 +13,20 @@ pub struct ExeWrapper {
 
 impl ExeWrapper {
     pub fn new(exe: String, args: Vec<String>) -> Self {
+        let exe = if Path::new(&exe).is_relative() {
+            exe_relative_path(exe).to_string_lossy().into_owned()
+        } else {
+            exe
+        };
         Self { exe, args }
     }
     pub fn dotnet_new() -> Self {
         // let exe = PathBuf::from(get_cwd_dir().unwrap_or_default()).join("bin/DotNetWrapper.exe").to_string_lossy().to_string();
 
         Self {
-            exe: "bin/cs/DotNetWrapper.exe".to_string(),
+            exe: exe_relative_path("bin/cs/DotNetWrapper.exe")
+                .to_string_lossy()
+                .into_owned(),
             args: vec![],
         }
     }
@@ -116,7 +121,9 @@ pub struct PythonWrapper {
 impl Default for PythonWrapper {
     fn default() -> Self {
         Self {
-            python_exe: "bin/winpython/python-3.11.8.amd64/python.exe".to_string(),
+            python_exe: exe_relative_path("bin/winpython/python-3.11.8.amd64/python.exe")
+                .to_string_lossy()
+                .into_owned(),
             python_script: "totkbits.py".to_string(),
             create_no_window: NO_WINDOW_FLAG,
         }
