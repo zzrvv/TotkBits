@@ -254,7 +254,7 @@ function MenuBarDisplay({ updateButton = null }) {
   const blankIcon = 'menu/blank.png';
 
   const fileMenuItems = [
-    { label: 'Open file', onClick: handleOpenFileClick, icon: 'menu/open.png', shortcut: 'Ctrl+O' },
+    { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.png', shortcut: 'Ctrl+O' },
     { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
     { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S' },
     { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S' },

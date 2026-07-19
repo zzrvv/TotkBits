@@ -19,12 +19,20 @@ const buildNestedTree = (paths) => {
 };
 
 const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onSelect }) => {
-  const { settings, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, paths, setpaths, setPathsFilters, setCompareData, setRenamePromptMessage, setIsAddPrompt, setIsModalOpen } = useEditorContext();
-  const [isCollapsed, setIsCollapsed] = useState(true);
+  const { settings, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, paths, setpaths, setPathsFilters, treeExpandedNodes, setTreeExpandedNodes, setCompareData, setRenamePromptMessage, setIsAddPrompt, setIsModalOpen } = useEditorContext();
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
   const isFile = node === null;
   const innerPath = innerParent ? `${innerParent}/${name}` : name;
   const childChain = `${outerPath}::${innerPath}`;
+  const expansionKey = `nested:${childChain}`;
+  const isCollapsed = !treeExpandedNodes.has(expansionKey);
+  const setExpanded = (expanded) => setTreeExpandedNodes((current) => {
+    const next = new Set(current);
+    if (expanded) next.add(expansionKey);
+    else next.delete(expansionKey);
+    return next;
+  });
+  const toggleExpanded = () => setExpanded(isCollapsed);
   const expandedArchive = paths.nested_paths?.[childChain];
   const identity = `nested:${outerPath}:${innerPath}`;
   const selectedStyle = selected === identity ? '#303030' : 'transparent';
@@ -32,12 +40,12 @@ const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onS
   const open = async (event) => {
     event.stopPropagation();
     if (isFile) {
-      if (expandedArchive) { setIsCollapsed((value) => !value); return; }
+      if (expandedArchive) { toggleExpanded(); return; }
       const expanded = await expandNestedSarc(childChain, setStatusText, setpaths, setPathsFilters);
-      if (expanded) setIsCollapsed(false);
+      if (expanded) setExpanded(true);
       else editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
     }
-    else setIsCollapsed((value) => !value);
+    else toggleExpanded();
   };
   const mutate = async (action, options = {}) => { setContextMenu({ visible: false, x: 0, y: 0 }); await mutateNestedArchive(outerPath, options.path ?? innerPath, action, setStatusText, setpaths, options); };
   const chooseFile = async () => await invoke('open_file_dialog');
@@ -86,7 +94,7 @@ const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onS
       }
     }, icon: 'context_menu/compare.png', shortcut: '' },
     { label: 'Copy path', method: () => { navigator.clipboard.writeText(innerPath); setStatusText('Copied to clipboard'); setContextMenu({ visible: false, x: 0, y: 0 }); }, icon: 'context_menu/copy.png', shortcut: '' },
-    { label: 'Expand archive', method: async () => { setContextMenu({ visible: false, x: 0, y: 0 }); if (await expandNestedSarc(childChain, setStatusText, setpaths, setPathsFilters)) setIsCollapsed(false); }, icon: 'dir_opened.png', shortcut: '' },
+    { label: 'Expand archive', method: async () => { setContextMenu({ visible: false, x: 0, y: 0 }); if (await expandNestedSarc(childChain, setStatusText, setpaths, setPathsFilters)) setExpanded(true); }, icon: 'dir_opened.png', shortcut: '' },
     { label: 'Close', method: () => setContextMenu({ visible: false, x: 0, y: 0 }), icon: 'context_menu/close.png', shortcut: '' },
   ] : [
     { label: 'Add file', method: async () => { const sourcePath = await chooseFile(); if (sourcePath) { const fileName = sourcePath.replace(/\\/g, '/').split('/').pop(); await mutate('add', { sourcePath, newPath: null, path: `${innerPath}/${fileName}` }); } }, icon: 'context_menu/add_file.png', shortcut: '' },
@@ -107,7 +115,7 @@ const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onS
       }}>
       <img src={isFile ? fileIcon : isCollapsed ? dirClosed : dirOpened} alt={name}
         style={{ marginRight: '5px', width: iconSize, height: iconSize }}
-        onClick={(event) => { event.stopPropagation(); if (!isFile) setIsCollapsed((value) => !value); }} />
+        onClick={(event) => { event.stopPropagation(); if (!isFile) toggleExpanded(); }} />
       <span>{name}</span>
     </div>
     {isFile && !isCollapsed && expandedArchive?.length > 0 && <ul style={{ marginLeft: '40px', listStyleType: 'none', padding: 0 }}>
@@ -181,13 +189,22 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     activeTab, setActiveTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
-    paths, setpaths, setPathsFilters, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, setCompareData, setInternalSarcPath
+    paths, setpaths, setPathsFilters, treeExpandedNodes, setTreeExpandedNodes,
+    isModalOpen, setIsModalOpen, updateEditorContent, changeModal, setCompareData, setInternalSarcPath
   } = useEditorContext();
 
-  const [isCollapsed, setIsCollapsed] = useState(true);
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
   const isFile = node === null;
   const fullPath = path ? `${path}/${name}` : name;
+  const expansionKey = `root:${fullPath}`;
+  const isCollapsed = !treeExpandedNodes.has(expansionKey);
+  const setExpanded = (expanded) => setTreeExpandedNodes((current) => {
+    const next = new Set(current);
+    if (expanded) next.add(expansionKey);
+    else next.delete(expansionKey);
+    return next;
+  });
+  const toggleExpanded = () => setExpanded(isCollapsed);
   // const endian = "LE";
   const isSelected = selected === fullPath;
 
@@ -196,11 +213,11 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     console.log(`Double-clicked on directory: ${fullPath}`);
     if (isFile) {
       if (sarcPaths.nested_paths?.[fullPath]) {
-        setIsCollapsed((value) => !value);
+        toggleExpanded();
         return;
       }
       const expanded = await expandNestedSarc(fullPath, setStatusText, setpaths, setPathsFilters);
-      if (expanded) setIsCollapsed(false);
+      if (expanded) setExpanded(true);
       else handleOpenInternalSarcFile();
     } else {
       toggleCollapse();
@@ -310,7 +327,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   };
 
   const toggleCollapse = () => {
-    setIsCollapsed(!isCollapsed);
+    toggleExpanded();
     closeContextMenu();
   };
 
@@ -338,14 +355,13 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
 
   const contextMenuActions = isFile ? [
     { label: 'Edit', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: 'F3' },
-    
     { label: 'Compare', method: handleCompareInternalSarcFile, icon: 'context_menu/compare.png', shortcut: '' },
     { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },
     { label: 'Replace', method: handleReplaceInternalSarcFile, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R' },
     { label: 'Delete', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: '' },
     { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: '' },
     { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: '' },
-    { label: 'Expand archive', method: async () => { closeContextMenu(); if (await expandNestedSarc(fullPath, setStatusText, setpaths, setPathsFilters)) setIsCollapsed(false); }, icon: 'dir_opened.png', shortcut: '' },
+    { label: 'Expand archive', method: async () => { closeContextMenu(); if (await expandNestedSarc(fullPath, setStatusText, setpaths, setPathsFilters)) setExpanded(true); }, icon: 'dir_opened.png', shortcut: '' },
     { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },
   ] : [
     { label: 'Add file', method: handleAddInternalSarcFileToDir, icon: 'context_menu/add_file.png', shortcut: '' },
