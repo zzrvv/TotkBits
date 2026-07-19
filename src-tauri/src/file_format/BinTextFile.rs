@@ -486,6 +486,7 @@ pub struct OpenedFile<'a> {
     // pub msyt: Option<MsbtFile>,
     pub msyt: Option<Msbt>,
     pub aamp: Option<()>,
+    pub bphcl: Option<crate::file_format::bphcl::BphclFile>,
     pub tag: Option<TagProduct<'a>>,
     pub restbl: Option<Restbl<'a>>,
     pub esetb: Option<Esetb<'a>>,
@@ -502,6 +503,7 @@ impl Default for OpenedFile<'_> {
             endian: None,
             msyt: None,
             aamp: None,
+            bphcl: None,
             tag: None,
             restbl: None,
             esetb: None,
@@ -526,6 +528,7 @@ impl<'a> OpenedFile<'_> {
             endian: endian,
             msyt: msyt,
             aamp: None,
+            bphcl: None,
             tag: None,
             restbl: None,
             esetb: None,
@@ -542,6 +545,7 @@ impl<'a> OpenedFile<'_> {
             endian: None,
             msyt: None,
             aamp: None,
+            bphcl: None,
             tag: None,
             restbl: None,
             esetb: None,
@@ -557,6 +561,7 @@ impl<'a> OpenedFile<'_> {
         self.endian = None;
         self.msyt = None;
         self.aamp = None;
+        self.bphcl = None;
         self.tag = None;
         self.asb_baev_path = None;
         self.asb_baev_data = None;

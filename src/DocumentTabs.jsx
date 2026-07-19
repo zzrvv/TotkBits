@@ -15,7 +15,7 @@ const emptySnapshot = () => ({
     pathsFilters: { showAll: true, showAdded: false, showModded: false },
     treeExpandedNodes: new Set(),
     compareData: { decision: 'FilesFromDisk', content1: '', content2: '', filepath1: '', filepath2: '', isSmall: true, isFromDisk: false, isInternal: false, label1: '', label2: '', isTiedToMonaco: false, lang: 'yaml' },
-    editorText: '', editorLanguage: 'yaml',
+    editorText: '', editorLanguage: 'yaml', readOnly: false,
 });
 
 const modelUri = (id) => `inmemory://totkbits/${id}`;
@@ -29,7 +29,7 @@ const snapshotFor = (context, model) => ({
     searchInSarcQuery: context.searchInSarcQuery,
     treeExpandedNodes: new Set(context.treeExpandedNodes), compareData: context.compareData,
     editorText: isUsableModel(model) ? model.getValue() : '',
-    editorLanguage: isUsableModel(model) ? model.getLanguageId() : 'yaml',
+    editorLanguage: isUsableModel(model) ? model.getLanguageId() : 'yaml', readOnly: context.readOnly || false,
 });
 
 export default function DocumentTabs() {
@@ -116,6 +116,7 @@ export default function DocumentTabs() {
                 latest.documentModels.current.set(activeDocumentId, model);
             }
             if (isUsableModel(model)) latest.editorRef.current.setModel(model);
+            latest.editorRef.current.updateOptions({ readOnly: snapshot.readOnly || false, domReadOnly: snapshot.readOnly || false });
             const viewState = latest.documentViewStates.current.get(activeDocumentId);
             if (viewState && isUsableModel(model)) latest.editorRef.current.restoreViewState(viewState);
         }
@@ -129,6 +130,7 @@ export default function DocumentTabs() {
         latest.setPathsFilters(snapshot.pathsFilters || { showAll: true, showAdded: false, showModded: false });
         latest.setTreeExpandedNodes(new Set(snapshot.treeExpandedNodes || []));
         latest.setCompareData(snapshot.compareData);
+        latest.setReadOnly(snapshot.readOnly || false);
         previousDocumentIdRef.current = activeDocumentId;
     }, [activeDocumentId]);
 

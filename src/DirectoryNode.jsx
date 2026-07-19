@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { invoke } from './DocumentState';
-import { extractRootFolderClick, extractFolderClick, editInternalSarcFile, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick, addEmptyByml,addFilesFromDirRecursively, expandNestedSarc, editNestedSarcFile, extractNestedSarcFile, mutateNestedArchive } from './ButtonClicks';
+import { extractRootFolderClick, extractFolderClick, editInternalSarcFile, openBphclLeaf, replaceInternalFileClick, removeInternalFileClick, addInternalFileToDir, extractFileClick, addEmptyByml,addFilesFromDirRecursively, expandNestedSarc, editNestedSarcFile, extractNestedSarcFile, mutateNestedArchive } from './ButtonClicks';
 import { useEditorContext } from './StateManager';
 import {compareInternalFileWithOVanila} from './Comparer';
 
@@ -190,7 +190,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, setPathsFilters, treeExpandedNodes, setTreeExpandedNodes,
-    isModalOpen, setIsModalOpen, updateEditorContent, changeModal, setCompareData, setInternalSarcPath
+    isModalOpen, setIsModalOpen, updateEditorContent, changeModal, setCompareData, setInternalSarcPath, setReadOnly
   } = useEditorContext();
 
   const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
@@ -254,7 +254,8 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   const handleOpenInternalSarcFile = () => {
     closeContextMenu();
     if (isFile) {
-      editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+      if (sarcPaths.read_only) openBphclLeaf(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, setReadOnly);
+      else editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
     }
   };
   const handleCompareInternalSarcFile = () => {

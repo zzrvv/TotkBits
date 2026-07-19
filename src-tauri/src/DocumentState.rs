@@ -12,6 +12,33 @@ pub struct DocumentState {
 }
 
 impl DocumentState {
+    pub fn open_bphcl_leaf(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        path: String,
+    ) -> Option<SendData> {
+        let mut documents = self.documents();
+        let leaf = documents
+            .get(parent_id)?
+            .opened_file
+            .bphcl
+            .as_ref()?
+            .leaf(&path)
+            .ok()?;
+        documents.entry(child_id.to_owned()).or_default();
+        let mut data = SendData::default();
+        data.text = leaf.yaml;
+        data.tab = "YAML".into();
+        data.lang = "yaml".into();
+        let file_name = path.replace('\\', "/").rsplit('/').next()?.to_owned();
+        data.path = crate::Settings::Pathlib::new(&file_name);
+        data.file_label = format!("{file_name} [{}] [ReadOnly]", leaf.viewer_type);
+        data.file_metadata = format!("[{}] [ReadOnly]", leaf.viewer_type);
+        data.status_text = format!("Opened read-only BPHCL leaf: {path}");
+        data.read_only = true;
+        Some(data)
+    }
     fn documents(&self) -> std::sync::MutexGuard<'_, HashMap<String, TotkBitsApp<'static>>> {
         match self.documents.lock() {
             Ok(documents) => documents,

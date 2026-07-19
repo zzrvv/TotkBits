@@ -49,13 +49,14 @@ impl CliCommand {
                 | "extract_archive"
                 | "dir_to_archive"
                 | "decompress"
+                | "bphcl_validate"
                 | "compress" // | "msbt_dump"
                              // | "msbt_verify"
                              // | "rstb_validate"
         );
         let expected_arguments = if matches!(
             operation.as_str(),
-            "decompress" | "msbt_dump" | "msbt_verify" | "rstb_validate"
+            "decompress" | "bphcl_validate" | "msbt_dump" | "msbt_verify" | "rstb_validate"
         ) {
             5
         } else {
@@ -81,7 +82,7 @@ impl CliCommand {
         };
         if matches!(
             operation.as_str(),
-            "decompress" | "msbt_dump" | "msbt_verify" | "rstb_validate"
+            "decompress" | "bphcl_validate" | "msbt_dump" | "msbt_verify" | "rstb_validate"
         ) {
             Some(Self {
                 operation,
@@ -109,6 +110,7 @@ impl CliCommand {
             "extract_archive" => self.extract_archive(),
             "dir_to_archive" => self.dir_to_archive(),
             "decompress" => self.decompress(),
+            "bphcl_validate" => self.bphcl_validate(),
             "compress" => self.compress(),
             // "msbt_dump" => self.msbt_dump(),
             // "msbt_verify" => self.msbt_verify(),
@@ -134,6 +136,57 @@ impl CliCommand {
         let rebuilt = table.to_bytes().map_err(|e| e.to_string())?;
         println!("RSTB valid: version={:?}, endian={:?}, hashes={}, overflow={}, bytes={}, byte_exact={}", table.version, table.endian, table.hash_table.len(), table.overflow_table.len(), bytes.len(), bytes == rebuilt);
         write_output(&self.output, &rebuilt)
+    }
+
+    /// Parse every BPHCL below `input`, validate every exposed YAML leaf, and
+    /// write a stable SHA-256 manifest to `output`.
+    fn bphcl_validate(&self) -> Result<(), String> {
+        let mut rows = Vec::new();
+        for entry in walkdir::WalkDir::new(&self.input) {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let bytes = fs::read(entry.path()).map_err(|e| e.to_string())?;
+            let file =
+                crate::file_format::bphcl::BphclFile::from_binary(&bytes, Some(entry.path()))
+                    .map_err(|e| format!("{}: {e}", entry.path().display()))?;
+            file.document.validate().map_err(|e| e.to_string())?;
+            for leaf in file.leaves().map_err(|e| e.to_string())? {
+                if leaf.yaml.to_ascii_lowercase().contains("base64") {
+                    return Err(format!(
+                        "{} {} contains base64",
+                        entry.path().display(),
+                        leaf.path
+                    ));
+                }
+                let _: serde_yaml::Value = serde_yaml::from_str(&leaf.yaml)
+                    .map_err(|e| format!("{} {}: {e}", entry.path().display(), leaf.path))?;
+            }
+            if file.raw_binary() != bytes {
+                return Err(format!(
+                    "{} raw hash roundtrip mismatch",
+                    entry.path().display()
+                ));
+            }
+            let relative = entry
+                .path()
+                .strip_prefix(&self.input)
+                .unwrap_or(entry.path());
+            rows.push(format!(
+                "{}\t{:x}",
+                relative.display(),
+                Sha256::digest(&bytes)
+            ));
+        }
+        rows.sort();
+        write_output(&self.output, rows.join("\n").as_bytes())?;
+        println!(
+            "BPHCL valid: {} files; hashes written to {}",
+            rows.len(),
+            self.output.display()
+        );
+        Ok(())
     }
 
     fn bin_to_text(&self) -> Result<(), String> {

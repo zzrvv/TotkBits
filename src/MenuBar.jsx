@@ -253,12 +253,25 @@ function MenuBarDisplay({ updateButton = null }) {
   }, []);
   const iconSize = '20px';
   const blankIcon = 'menu/blank.png';
+  let isSaveEnabled = true;
+  if (activeTab === 'COMPARER') {
+    isSaveEnabled = false;
+  } else if (activeTab === 'YAML' && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) {
+    isSaveEnabled = false;
+  }
+  
+  
+  // const isMonacoReadOnly = activeTab === 'YAML' && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly);
+  // const isMonacoWriteable = !isMonacoReadOnly;
+  // const isSaveEnabled = isMonacoWriteable || activeTab !== 'COMPARER';
+  console.log("save enabled?", activeTab, isSaveEnabled);
+  // const isSaveEnabled = !(editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) && activeTab !== 'COMPARER';
 
   const fileMenuItems = [
     { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.png', shortcut: 'Ctrl+O' },
     { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
-    { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S', condition: activeTab !== 'COMPARER' },
-    { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S', condition: activeTab !== 'COMPARER' },
+    { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S', condition: isSaveEnabled },
+    { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S', condition: isSaveEnabled },
     { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },
     { label: 'Settings', onClick: handleEditOptions, icon: 'menu/edit_config.png', shortcut: '' },
     { label: 'Restart', onClick: restartAppClick, icon: 'menu/restart.png', shortcut: '' },

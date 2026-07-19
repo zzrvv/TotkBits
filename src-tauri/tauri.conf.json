@@ -10,9 +10,7 @@
     "targets": "all",
     "resources": [
       "bin",
-      "misc",
-      "totkbits.py",
-      "pip.txt"
+      "misc"
     ],
     "icon": [
       "icons/32x32.png",

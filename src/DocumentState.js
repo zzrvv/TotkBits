@@ -9,7 +9,7 @@ const documentCommands = new Set([
     'rstb_get_entries', 'rstb_edit_entry', 'rstb_remove_entry', 'search_in_sarc',
     'clear_search_in_sarc', 'compare_files', 'compare_internal_file_with_vanila',
     'close_all_opened_files',
-    'expand_nested_sarc', 'edit_nested_sarc_file', 'extract_nested_sarc_file',
+    'expand_nested_sarc', 'edit_nested_sarc_file', 'open_bphcl_leaf', 'extract_nested_sarc_file',
     'mutate_nested_archive',
 ]);
 
@@ -108,7 +108,7 @@ const allocateChildDocument = (args, parentDocumentId) => {
 export const invoke = async (command, args = {}) => {
     if (!documentCommands.has(command)) return tauriInvoke(command, args);
     const isOpen = command === 'open_file_struct' || command === 'open_file_from_path' || command === 'open_folder_struct';
-    const isChildOpen = command === 'edit_internal_file' || command === 'edit_nested_sarc_file';
+    const isChildOpen = command === 'edit_internal_file' || command === 'edit_nested_sarc_file' || command === 'open_bphcl_leaf';
     const isComparison = command === 'compare_files'
         || command === 'compare_internal_file_with_vanila'
         || (command === 'mutate_nested_archive' && args?.action === 'compare');

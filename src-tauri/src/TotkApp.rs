@@ -135,6 +135,28 @@ impl<'a> TotkBitsApp<'a> {
         path: String,
         bytes: Vec<u8>,
     ) -> Option<SendData> {
+        if let Ok(bphcl) =
+            crate::file_format::bphcl::BphclFile::from_binary(&bytes, Some(Path::new(&path)))
+        {
+            let status = match &outer_path {
+                Some(outer) => format!("Opened {path} inside {outer}"),
+                None => format!("Opened {path} from archive"),
+            };
+            let data = bphcl.send_data(Path::new(&path), status).ok()?;
+            self.opened_file = OpenedFile::default();
+            self.opened_file.file_type = TotkFileType::Bphcl;
+            self.opened_file.path = Pathlib::new(&path);
+            self.opened_file.bphcl = Some(bphcl);
+            let mut internal = InternalFile::new(path.clone());
+            internal.file_type = TotkFileType::Bphcl;
+            self.internal_file = Some(internal);
+            self.internal_parent = Some(InternalParentLink {
+                document_id: parent_document_id,
+                outer_path,
+                inner_path: path,
+            });
+            return Some(data);
+        }
         let Some((internal, text)) = get_string_from_data(path.clone(), bytes, self.zstd.clone())
         else {
             return self.initialization_error_data();

@@ -594,6 +594,7 @@ pub struct SarcPaths {
     pub added_paths: Vec<String>,
     pub modded_paths: Vec<String>,
     pub nested_paths: HashMap<String, Vec<String>>,
+    pub read_only: bool,
 }
 impl Default for SarcPaths {
     fn default() -> Self {
@@ -602,6 +603,7 @@ impl Default for SarcPaths {
             added_paths: Vec::new(),
             modded_paths: Vec::new(),
             nested_paths: HashMap::new(),
+            read_only: false,
         }
     }
 }

@@ -2,6 +2,7 @@ import { getDocumentsSnapshot, invoke } from './DocumentState';
 import { set } from 'lodash';
 import { act } from 'react';
 import { flushSync } from 'react-dom';
+import * as monaco from 'monaco-editor';
 
 
 export async function addEmptyByml(fullPath,setStatusText, setpaths) {
@@ -176,6 +177,16 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
   }
 
 
+}
+
+export async function openBphclLeaf(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, setReadOnly) {
+  const content = await invoke('open_bphcl_leaf', { path: fullPath });
+  if (!content) return;
+  setLabelTextDisplay(prev => ({ ...prev, yaml: content.file_label }));
+  updateEditorContent(content.text, content.lang || 'yaml');
+  setReadOnly(true);
+  setActiveTab('YAML');
+  setStatusText(content.status_text);
 }
 
 export async function expandNestedSarc(outerPath, setStatusText, setpaths, setPathsFilters) {
@@ -439,6 +450,7 @@ const activeFileName = () => {
 };
 
 export async function saveFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots) {
+  if (editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) { setStatusText('Read-only BPHCL views cannot be saved'); return; }
   setSavingFile?.(activeFileName());
   try {
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -480,6 +492,7 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
 }
 
 export async function saveAsFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots) {
+  if (editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) { setStatusText('Read-only BPHCL views cannot be saved'); return; }
   setSavingFile?.(activeFileName());
   try {
     await new Promise((resolve) => requestAnimationFrame(resolve));

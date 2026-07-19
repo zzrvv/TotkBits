@@ -168,6 +168,18 @@ pub fn edit_internal_file(
 }
 
 #[tauri::command]
+pub fn open_bphcl_leaf(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    parentDocumentId: String,
+    path: String,
+) -> Option<SendData> {
+    app_handle
+        .state::<DocumentState>()
+        .open_bphcl_leaf(&parentDocumentId, &documentId, path)
+}
+
+#[tauri::command]
 pub fn expand_nested_sarc(
     app_handle: tauri::AppHandle,
     documentId: String,

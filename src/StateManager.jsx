@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import * as monaco from 'monaco-editor';
 
 const EditorContext = createContext();
@@ -13,6 +13,10 @@ export const EditorProvider = ({ children }) => {
   const documentViewStates = useRef(new Map());
   const documentSnapshots = useRef(new Map());
   const [editorValue, setEditorValue] = useState(''); //monaco editor content
+  const [readOnly, setReadOnly] = useState(false);
+  useEffect(() => {
+    editorRef.current?.updateOptions({ readOnly, domReadOnly: readOnly });
+  }, [readOnly]);
   const [lang, setLang] = useState('yaml'); //monaco editor content
   const [statusText, setStatusText] = useState("Ready"); //status bar text
   const [renamePromptMessage, setRenamePromptMessage] = useState({ message: "Rename internal SARC file:", path: "" });
@@ -76,7 +80,7 @@ export const EditorProvider = ({ children }) => {
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
-    editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
+    editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang, readOnly, setReadOnly,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, pathsFilters, setPathsFilters, treeExpandedNodes, setTreeExpandedNodes,
     isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
