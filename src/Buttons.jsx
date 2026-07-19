@@ -79,10 +79,12 @@ const ButtonsDisplay = () => {
   };
 
   const handleSaveClick = () => {
+    if (activeTab === "COMPARER") {return null;}
     console.log(activeTabRef.current, activeTab);
     saveFileClick(setStatusText, activeTabRef.current, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
   const handleSaveAsClick = () => {
+    if (activeTab === "COMPARER") {return null;}
     saveAsFileClick(setStatusText, activeTabRef.current, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
   const handleClearSarcSearch = () => {
