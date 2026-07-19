@@ -257,8 +257,8 @@ function MenuBarDisplay({ updateButton = null }) {
   const fileMenuItems = [
     { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.png', shortcut: 'Ctrl+O' },
     { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
-    { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S' },
-    { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S' },
+    { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S', condition: activeTab !== 'COMPARER' },
+    { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S', condition: activeTab !== 'COMPARER' },
     { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },
     { label: 'Settings', onClick: handleEditOptions, icon: 'menu/edit_config.png', shortcut: '' },
     { label: 'Restart', onClick: restartAppClick, icon: 'menu/restart.png', shortcut: '' },
@@ -310,7 +310,7 @@ function MenuBarDisplay({ updateButton = null }) {
           <div className="menu-item" onClick={() => toggleDropdown('file')} ref={el => dropdownRefs.current.file = el}>
             File
             <div className="dropdown-content" style={{ display: showDropdown.file ? 'block' : 'none' }}>
-              {fileMenuItems.map((item, id) => (
+              {fileMenuItems.filter(item => item.condition !== false).map((item, id) => (
                 <li
                   key={id}
                   className="menu-item"
