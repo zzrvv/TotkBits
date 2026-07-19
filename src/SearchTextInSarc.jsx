@@ -4,10 +4,10 @@ import {searchTextInSarcClick} from './ButtonClicks';
 
 function SearchTextInSarcPrompt({  setStatusText, setpaths,
     searchInSarcQuery, setSearchInSarcQuery,
-    isSearchInSarcOpened, setIsSearchInSarcOpened, }) {
+    isSearchInSarcOpened, setIsSearchInSarcOpened, documentSnapshots, }) {
 
     const handleSearchClick = () => {
-        searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened);
+        searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened, documentSnapshots);
     };
 
     const cancelClick = () => {

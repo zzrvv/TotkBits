@@ -298,11 +298,11 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::Byml => {
-            // if is_gamedatalist(file_path) {
-            //     rawdata = GameDataList::text_to_binary(text)
-            //         .map_err(|e| println!("Unable to encode GameDataList: {e}"))
-            //         .ok()?;
-            // }
+            if is_gamedatalist(file_path) {
+                rawdata = GameDataList::text_to_binary(text)
+                    .map_err(|e| println!("Unable to encode GameDataList: {e}"))
+                    .ok()?;
+            }
             if (rawdata.is_empty()) {
                 let processed_text = if is_banc_path(&file_path) && zstd.totk_config.rotation_deg {
                     &replace_rotate_deg_to_rad(&text)

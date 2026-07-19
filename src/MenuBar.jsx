@@ -165,7 +165,7 @@ function MenuBarDisplay({ updateButton = null }) {
   const handleShowAllClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
-    clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery);
+    clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery, documentSnapshots);
   }
 
   const handleShowAddedClick = (event) => {
@@ -211,7 +211,7 @@ function MenuBarDisplay({ updateButton = null }) {
   const handleClearSearchTextInSarc = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
-    clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery);
+    clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery, documentSnapshots);
   }
   const handleEditOptions = (event) => {
     console.log("Edit options clicked");

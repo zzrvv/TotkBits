@@ -11,6 +11,7 @@ const emptySnapshot = () => ({
     activeTab: 'SARC', statusText: 'Ready', selectedPath: { path: '', isfile: false },
     labelTextDisplay: { sarc: '', yaml: '', rstb: '', comparer: '' },
     paths: { paths: [], added_paths: [], modded_paths: [], nested_paths: {} },
+    searchInSarcQuery: '',
     pathsFilters: { showAll: true, showAdded: false, showModded: false },
     treeExpandedNodes: new Set(),
     compareData: { decision: 'FilesFromDisk', content1: '', content2: '', filepath1: '', filepath2: '', isSmall: true, isFromDisk: false, isInternal: false, label1: '', label2: '', isTiedToMonaco: false, lang: 'yaml' },
@@ -25,6 +26,7 @@ const snapshotFor = (context, model) => ({
     activeTab: context.activeTab, statusText: context.statusText,
     selectedPath: context.selectedPath, labelTextDisplay: context.labelTextDisplay,
     paths: context.paths, pathsFilters: context.pathsFilters,
+    searchInSarcQuery: context.searchInSarcQuery,
     treeExpandedNodes: new Set(context.treeExpandedNodes), compareData: context.compareData,
     editorText: isUsableModel(model) ? model.getValue() : '',
     editorLanguage: isUsableModel(model) ? model.getLanguageId() : 'yaml',
@@ -123,6 +125,7 @@ export default function DocumentTabs() {
         latest.setSelectedPath(snapshot.selectedPath);
         latest.setLabelTextDisplay(snapshot.labelTextDisplay);
         latest.setpaths(snapshot.paths);
+        latest.setSearchInSarcQuery(snapshot.searchInSarcQuery || '');
         latest.setPathsFilters(snapshot.pathsFilters || { showAll: true, showAdded: false, showModded: false });
         latest.setTreeExpandedNodes(new Set(snapshot.treeExpandedNodes || []));
         latest.setCompareData(snapshot.compareData);

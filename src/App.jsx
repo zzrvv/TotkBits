@@ -39,7 +39,7 @@ function App() {
     documentModels,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal, compareData,
-    savingFile
+    savingFile, documentSnapshots
   } = useEditorContext();
   
   const { isFileHovering, parsingFile } = useFileDropHandler(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
@@ -167,6 +167,7 @@ function App() {
         searchInSarcQuery={searchInSarcQuery}
         setSearchInSarcQuery={setSearchInSarcQuery}
         isSearchInSarcOpened={isSearchInSarcOpened}
+        documentSnapshots={documentSnapshots}
         setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
       </SearchTextInSarcPrompt>
 

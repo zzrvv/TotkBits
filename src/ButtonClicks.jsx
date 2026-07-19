@@ -86,7 +86,19 @@ export async function extractRootFolderClick(setStatusText) {
   return extractFolderClick("", setStatusText);
 }
 
-export async function searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened) {
+const persistArchiveSearch = (paths, query, documentSnapshots) => {
+  const { activeDocumentId } = getDocumentsSnapshot();
+  const snapshot = documentSnapshots?.current?.get(activeDocumentId);
+  if (snapshot) {
+    documentSnapshots.current.set(activeDocumentId, {
+      ...snapshot,
+      paths,
+      searchInSarcQuery: query,
+    });
+  }
+};
+
+export async function searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened, documentSnapshots) {
   try {
     if (searchInSarcQuery === "") {
       setStatusText("Search query is empty!");
@@ -106,13 +118,14 @@ export async function searchTextInSarcClick(searchInSarcQuery, setpaths, setStat
     } else {
       setStatusText(content.status_text);
       setpaths(content.sarc_paths);
+      persistArchiveSearch(content.sarc_paths, searchInSarcQuery, documentSnapshots);
     }
     setIsSearchInSarcOpened(false);
   } catch (error) {
     console.error("Error invoking 'add_click':", error);
   }
 }
-export async function clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery) {
+export async function clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery, documentSnapshots) {
   try {
     const content = await invoke('clear_search_in_sarc');
     if (content !== null) {
@@ -120,6 +133,7 @@ export async function clearSearchInSarcClick(setpaths, setStatusText, setSearchI
     }
     setSearchInSarcQuery("");
     setpaths(content.sarc_paths);
+    persistArchiveSearch(content.sarc_paths, '', documentSnapshots);
   }
   catch (error) {
     console.error('Failed to clear search in sarc file:', error);

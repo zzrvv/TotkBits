@@ -86,7 +86,7 @@ const ButtonsDisplay = () => {
     saveAsFileClick(setStatusText, activeTabRef.current, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
   const handleClearSarcSearch = () => {
-    clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery);
+    clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery, documentSnapshots);
   };
   const handleAddClick = () => {
     setIsAddPrompt(true);
