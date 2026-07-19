@@ -1,7 +1,7 @@
 Milestones:
 
-  1. Port Havok TYPE-table parsing and rebuilding from PhysicsTool.
-  2. Port ITEM graph closure collection and PTCH pointer relocation.
+  1. Port Havok TYPE-table parsing and rebuilding from PhysicsTool.     DONE!
+  2. Port ITEM graph closure collection and PTCH pointer relocation.    DONE!
   3. Port DATA-section rebuilding and reference-array replacement.
   4. Port skeleton parsing and cloth/skeleton pairing.
   5. Port AAMP cloth/collidable registration merging.
