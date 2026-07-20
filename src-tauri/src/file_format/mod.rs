@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_camel_case_types)]
 pub mod BinTextFile;
+pub mod Model3D;
 pub mod Pack;
 pub mod Rstb;
 pub mod SimpleOpeners;
