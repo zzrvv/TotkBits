@@ -34,7 +34,7 @@ pub struct BphclSelectableNode {
     pub item_index: usize,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BphclMergeResult {
     pub selected_count: usize,
@@ -42,9 +42,116 @@ pub struct BphclMergeResult {
     pub skipped_count: usize,
     pub cloth_count: usize,
     pub collidable_count: usize,
+    pub imported: Vec<String>,
+    pub skipped: Vec<BphclMergeSkip>,
+    pub sarc_paths: crate::file_format::Pack::SarcPaths,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BphclMergeSkip {
+    pub name: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BphclMutationResult {
+    pub status_text: String,
+    pub sarc_paths: crate::file_format::Pack::SarcPaths,
 }
 
 impl DocumentState {
+    pub fn remove_bphcl_node(
+        &self,
+        document_id: &str,
+        path: &str,
+    ) -> Result<BphclMutationResult, String> {
+        let normalized = path.replace('\\', "/");
+        let parts: Vec<_> = normalized.split('/').collect();
+        let (kind, file_name) = parts
+            .windows(2)
+            .find_map(|parts| match parts[0] {
+                "Cloth" => Some(("cloth", parts[1])),
+                "Collidables" => Some(("collidable", parts[1])),
+                _ => None,
+            })
+            .ok_or_else(|| "Only cloth and collidable nodes can be removed".to_string())?;
+        let index = file_name
+            .split_whitespace()
+            .next()
+            .and_then(|value| value.parse::<usize>().ok())
+            .ok_or_else(|| format!("Cannot determine BPHCL node index from '{file_name}'"))?;
+
+        let mut documents = self.documents();
+        let app = documents
+            .get(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' is not open"))?;
+        let file = app
+            .opened_file
+            .bphcl
+            .as_ref()
+            .ok_or_else(|| format!("Document '{document_id}' is not a BPHCL document"))?;
+        let source_path = file.source_path.clone();
+        let parent_link = app.internal_parent.clone();
+        let display_name = if kind == "cloth" {
+            file.document
+                .cloth
+                .get(index)
+                .map(|node| node.name.clone())
+                .ok_or_else(|| format!("Cloth {index} no longer exists"))?
+        } else {
+            file.document
+                .collidables
+                .get(index)
+                .map(|node| node.name.clone())
+                .ok_or_else(|| format!("Collidable {index} no longer exists"))?
+        };
+        let bytes = if kind == "cloth" {
+            file.document.remove_cloth(index)
+        } else {
+            file.document.remove_collidable(index)
+        }
+        .map_err(|error| error.to_string())?;
+        let rebuilt = crate::parser::bphcl::BphclDocument::parse(&bytes)
+            .map_err(|error| format!("Removed BPHCL did not reparse: {error}"))?;
+
+        if let Some(link) = &parent_link {
+            documents
+                .get_mut(&link.document_id)
+                .ok_or_else(|| format!("Parent document '{}' is not open", link.document_id))?
+                .update_child_entry(link.outer_path.as_deref(), &link.inner_path, bytes)?;
+        }
+        let target = documents
+            .get_mut(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' was closed during removal"))?;
+        target.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
+            source_path,
+            document: rebuilt,
+        });
+        let root_name = if target.opened_file.path.name.is_empty() {
+            "modified.bphcl".to_string()
+        } else {
+            target.opened_file.path.name.clone()
+        };
+        let mut sarc_paths = crate::file_format::Pack::SarcPaths::default();
+        sarc_paths.read_only = true;
+        sarc_paths.paths = target
+            .opened_file
+            .bphcl
+            .as_ref()
+            .expect("modified BPHCL was just assigned")
+            .leaves()
+            .map_err(|error| format!("Failed to refresh BPHCL tree: {error}"))?
+            .into_iter()
+            .map(|leaf| format!("{root_name}/{}", leaf.path))
+            .collect();
+        Ok(BphclMutationResult {
+            status_text: format!("Removed {kind} '{display_name}'"),
+            sarc_paths,
+        })
+    }
+
     pub fn merge_bphcl_nodes(
         &self,
         target_document_id: &str,
@@ -78,13 +185,16 @@ impl DocumentState {
         let target_source_path = target_file.source_path.clone();
         let target_link = target_app.internal_parent.clone();
         let mut merged = target_file.document.clone();
-        let mut imported_count = 0;
-        let mut skipped_count = 0;
+        let mut imported = Vec::new();
+        let mut skipped = Vec::new();
         let mut seen = std::collections::HashSet::new();
 
         for node_id in node_ids {
             if !seen.insert(node_id.as_str()) {
-                skipped_count += 1;
+                skipped.push(BphclMergeSkip {
+                    name: node_id.clone(),
+                    reason: "Duplicate selection".into(),
+                });
                 continue;
             }
             let (kind, index) = node_id
@@ -94,14 +204,18 @@ impl DocumentState {
                 .parse()
                 .map_err(|_| format!("Invalid BPHCL node ID '{node_id}'"))?;
             let before = merged.raw.clone();
-            let bytes = match kind {
+            let (display_name, bytes) = match kind {
                 "cloth" => {
                     let position = source
                         .cloth
                         .iter()
                         .position(|cloth| cloth.index == index)
                         .ok_or_else(|| format!("Source cloth '{node_id}' no longer exists"))?;
-                    merged.merge_complete_cloth(&source, position)
+                    let name = source.cloth[position].name.clone();
+                    (
+                        format!("Cloth: {name}"),
+                        merged.merge_complete_cloth(&source, position),
+                    )
                 }
                 "collidable" => {
                     let position = source
@@ -109,18 +223,48 @@ impl DocumentState {
                         .iter()
                         .position(|collidable| collidable.index == index)
                         .ok_or_else(|| format!("Source collidable '{node_id}' no longer exists"))?;
-                    merged.merge_collidable(&source, position)
+                    let name = source.collidables[position].name.clone();
+                    (
+                        format!("Collidable: {name}"),
+                        merged.merge_collidable(&source, position),
+                    )
                 }
-                _ => Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    format!("Unsupported BPHCL node kind '{kind}'"),
-                )),
-            }
-            .map_err(|error| format!("Failed to merge '{node_id}': {error}"))?;
+                _ => (
+                    node_id.clone(),
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        format!("Unsupported BPHCL node kind '{kind}'"),
+                    )),
+                ),
+            };
+            let bytes = match bytes {
+                Ok(bytes) => bytes,
+                Err(error)
+                    if kind == "collidable"
+                        && error
+                            .to_string()
+                            .contains("target already has a different collidable named") =>
+                {
+                    skipped.push(BphclMergeSkip {
+                        name: display_name,
+                        reason: error.to_string(),
+                    });
+                    continue;
+                }
+                Err(error) => return Err(format!("Failed to merge '{node_id}': {error}")),
+            };
             if bytes == before {
-                skipped_count += 1;
+                skipped.push(BphclMergeSkip {
+                    name: display_name,
+                    reason: if kind == "cloth" {
+                        "Target already contains a cloth with this name"
+                    } else {
+                        "Target already contains an identical collidable"
+                    }
+                    .into(),
+                });
             } else {
-                imported_count += 1;
+                imported.push(display_name);
                 merged = crate::parser::bphcl::BphclDocument::parse(&bytes)
                     .map_err(|error| format!("Merged BPHCL did not reparse: {error}"))?;
             }
@@ -142,13 +286,33 @@ impl DocumentState {
             source_path: target_source_path,
             document: merged,
         });
+        let root_name = if target.opened_file.path.name.is_empty() {
+            "merged.bphcl".to_string()
+        } else {
+            target.opened_file.path.name.clone()
+        };
+        let mut sarc_paths = crate::file_format::Pack::SarcPaths::default();
+        sarc_paths.read_only = true;
+        sarc_paths.paths = target
+            .opened_file
+            .bphcl
+            .as_ref()
+            .expect("merged BPHCL was just assigned")
+            .leaves()
+            .map_err(|error| format!("Failed to refresh merged BPHCL tree: {error}"))?
+            .into_iter()
+            .map(|leaf| format!("{root_name}/{}", leaf.path))
+            .collect();
 
         Ok(BphclMergeResult {
             selected_count: node_ids.len(),
-            imported_count,
-            skipped_count,
+            imported_count: imported.len(),
+            skipped_count: skipped.len(),
             cloth_count,
             collidable_count,
+            imported,
+            skipped,
+            sarc_paths,
         })
     }
 

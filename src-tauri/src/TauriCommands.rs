@@ -21,7 +21,7 @@ use tauri::Manager;
 use updater::TotkbitsVersion::TotkbitsVersion;
 use windows::{
     core::PCWSTR,
-    Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONWARNING, MB_OK},
+    Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK},
 };
 
 #[tauri::command]
@@ -39,6 +39,17 @@ pub fn list_bphcl_selectable_nodes(
     app_handle
         .state::<DocumentState>()
         .bphcl_selectable_nodes(&documentId)
+}
+
+#[tauri::command]
+pub fn remove_bphcl_node(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+) -> Result<crate::DocumentState::BphclMutationResult, String> {
+    app_handle
+        .state::<DocumentState>()
+        .remove_bphcl_node(&documentId, &path)
 }
 
 #[tauri::command]
@@ -78,11 +89,49 @@ pub fn merge_bphcl_nodes(
     sourceDocumentId: String,
     nodeIds: Vec<String>,
 ) -> Result<crate::DocumentState::BphclMergeResult, String> {
-    app_handle.state::<DocumentState>().merge_bphcl_nodes(
+    let result = app_handle.state::<DocumentState>().merge_bphcl_nodes(
         &targetDocumentId,
         &sourceDocumentId,
         &nodeIds,
-    )
+    )?;
+    let imported = if result.imported.is_empty() {
+        "  (none)".into()
+    } else {
+        result
+            .imported
+            .iter()
+            .map(|name| format!("  - {name}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let skipped = if result.skipped.is_empty() {
+        "  (none)".into()
+    } else {
+        result
+            .skipped
+            .iter()
+            .map(|item| format!("  - {} — {}", item.name, item.reason))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let text = format!(
+        "Physics merge completed.\n\nMerged: {}\n{}\n\nSkipped: {}\n{}",
+        result.imported_count, imported, result.skipped_count, skipped
+    );
+    let message: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+    let title: Vec<u16> = "TotkBits - Physics Merge"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        let _ = MessageBoxW(
+            None,
+            PCWSTR(message.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            MB_OK | MB_ICONINFORMATION,
+        );
+    }
+    Ok(result)
 }
 
 fn show_open_error(data: &SendData) {

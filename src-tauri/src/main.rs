@@ -35,9 +35,9 @@ use crate::TauriCommands::{
     extract_internal_file, extract_nested_sarc_file, extract_opened_sarc, get_toml_config,
     list_bphcl_selectable_nodes, list_open_bphcl_documents, merge_bphcl_nodes,
     mutate_nested_archive, open_bphcl_leaf, open_dir_dialog, open_file_dialog, open_file_from_path,
-    open_file_struct, open_folder_struct, remove_internal_sarc_file, rename_internal_sarc_file,
-    restart_app, rstb_edit_entry, rstb_get_entries, rstb_remove_entry, save_as_click,
-    save_file_struct, search_in_sarc, update_app, update_toml_config,
+    open_file_struct, open_folder_struct, remove_bphcl_node, remove_internal_sarc_file,
+    rename_internal_sarc_file, restart_app, rstb_edit_entry, rstb_get_entries, rstb_remove_entry,
+    save_as_click, save_file_struct, search_in_sarc, update_app, update_toml_config,
     validate_bphcl_merge_documents,
 };
 use updater::TotkbitsVersion::TotkbitsVersion;
@@ -87,6 +87,7 @@ fn main() -> io::Result<()> {
             list_bphcl_selectable_nodes,
             validate_bphcl_merge_documents,
             merge_bphcl_nodes,
+            remove_bphcl_node,
             expand_nested_sarc,
             edit_nested_sarc_file,
             extract_nested_sarc_file,

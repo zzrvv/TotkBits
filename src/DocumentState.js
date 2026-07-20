@@ -10,6 +10,7 @@ const documentCommands = new Set([
     'clear_search_in_sarc', 'compare_files', 'compare_internal_file_with_vanila',
     'close_all_opened_files',
     'expand_nested_sarc', 'edit_nested_sarc_file', 'open_bphcl_leaf', 'extract_nested_sarc_file',
+    'remove_bphcl_node',
     'mutate_nested_archive',
 ]);
 

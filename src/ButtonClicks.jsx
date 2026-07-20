@@ -189,6 +189,18 @@ export async function openBphclLeaf(fullPath, setStatusText, setActiveTab, setLa
   setStatusText(content.status_text);
 }
 
+export async function removeBphclNodeClick(fullPath, setStatusText, setpaths) {
+  try {
+    const content = await invoke('remove_bphcl_node', { path: fullPath });
+    setpaths(content.sarcPaths);
+    setStatusText(content.statusText);
+    return true;
+  } catch (error) {
+    setStatusText(`ERROR: ${String(error)}`);
+    return false;
+  }
+}
+
 export async function expandNestedSarc(outerPath, setStatusText, setpaths, setPathsFilters) {
   const content = await invoke('expand_nested_sarc', { outerPath });
   if (!content) return false;

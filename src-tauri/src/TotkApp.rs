@@ -947,6 +947,26 @@ impl<'a> TotkBitsApp<'a> {
                     return Some(data);
                 }
                 "SARC" => {
+                    if let Some(bphcl) = &self.opened_file.bphcl {
+                        let bytes = bphcl.raw_binary();
+                        if let Err(error) = fs::write(&dest_file, bytes) {
+                            data.tab = "ERROR".into();
+                            data.status_text = format!("Error: failed to save BPHCL: {error}");
+                            return Some(data);
+                        }
+                        self.opened_file.path = Pathlib::new(dest_file.clone());
+                        if let Some(bphcl) = &mut self.opened_file.bphcl {
+                            bphcl.source_path = Some(dest_file.clone());
+                        }
+                        let mut result = self
+                            .opened_file
+                            .bphcl
+                            .as_ref()?
+                            .send_data(Path::new(&dest_file), format!("Saved BPHCL {dest_file}"))
+                            .ok()?;
+                        result.path = self.opened_file.path.clone();
+                        return Some(result);
+                    }
                     if let Some(archive) = &mut self.archive {
                         return Some(match archive.save_atomic(Path::new(&dest_file)) {
                             Ok(()) => self.archive_send_data(format!("Saved archive {dest_file}")),
@@ -1165,6 +1185,30 @@ impl<'a> TotkBitsApp<'a> {
                 return self.save_tab_yaml(save_data);
             }
             "SARC" => {
+                if let Some(bphcl) = &self.opened_file.bphcl {
+                    let destination = self.opened_file.path.full_path.clone();
+                    if destination.is_empty() {
+                        data.tab = "ERROR".into();
+                        data.status_text = "Error: BPHCL has no save path".into();
+                        return Some(data);
+                    }
+                    if check_if_save_in_romfs(&destination, self.zstd.clone()) {
+                        data.tab = "ERROR".into();
+                        data.status_text = "Error: refusing to save inside romfs".into();
+                        return Some(data);
+                    }
+                    if let Err(error) = fs::write(&destination, bphcl.raw_binary()) {
+                        data.tab = "ERROR".into();
+                        data.status_text = format!("Error: failed to save BPHCL: {error}");
+                        return Some(data);
+                    }
+                    return bphcl
+                        .send_data(
+                            Path::new(&destination),
+                            format!("Saved BPHCL {destination}"),
+                        )
+                        .ok();
+                }
                 if let Some(archive) = &mut self.archive {
                     let destination = PathBuf::from(&archive.path);
                     return Some(match archive.save_atomic(&destination) {

@@ -142,23 +142,23 @@ def build_dotnet(cwd:Path):
 def tauri_build():
     t1 = time.time()
     os.system("cls")
-    cwd_str = os.getcwd()
-    cwd  = Path(cwd_str)
+    cwd  = Path(__file__).parent
+    cwd_str = str(cwd)
     #Dotnet wrapper
-    build_dotnet(cwd)
+    # build_dotnet(cwd)
     # Updater
-    print(f"[+] Building updater")
-    os.chdir(str(cwd / "ext_projects/updater"))
-    run(["cargo", "clean"])
-    run(["cargo", "build", "--release"])
-    os.chdir(cwd_str)
-    dest_file = cwd / "src-tauri/updater.exe"
-    delete_file(dest_file)
-    # if dest_file.exists():
-    #     run(["cmd", "/c", "del", "/f", "/q", str(dest_file)])
-    shutil.copyfile(cwd / "ext_projects/updater/target/release/updater.exe", dest_file)
-    assert(dest_file.exists())
-    print(f"[+] Updater built")
+    # print(f"[+] Building updater")
+    # os.chdir(str(cwd / "ext_projects/updater"))
+    # run(["cargo", "clean"])
+    # run(["cargo", "build", "--release"])
+    # os.chdir(cwd_str)
+    # dest_file = cwd / "src-tauri/updater.exe"
+    # delete_file(dest_file)
+    # # if dest_file.exists():
+    # #     run(["cmd", "/c", "del", "/f", "/q", str(dest_file)])
+    # shutil.copyfile(cwd / "ext_projects/updater/target/release/updater.exe", dest_file)
+    # assert(dest_file.exists())
+    # print(f"[+] Updater built")
     os.chdir(str(cwd / "src-tauri"))
     print(f"[+] Cleaning tauri project")
     run(["cargo", "clean"])

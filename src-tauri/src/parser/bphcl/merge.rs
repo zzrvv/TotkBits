@@ -8,6 +8,67 @@ use std::{
 };
 
 impl BphclDocument {
+    /// Removes a cloth and its paired skeleton from the container arrays.
+    pub fn remove_cloth(&self, cloth_index: usize) -> io::Result<Vec<u8>> {
+        if self.cloth.len() <= 1 {
+            return Err(invalid("a BPHCL must retain at least one cloth"));
+        }
+        if self.collidables.is_empty() {
+            return Err(invalid("a BPHCL must retain at least one collidable"));
+        }
+        let cloth = self
+            .cloth
+            .get(cloth_index)
+            .ok_or_else(|| invalid("cloth index is out of range"))?;
+        let skeleton = self
+            .paired_skeleton(cloth_index)
+            .ok_or_else(|| invalid("cloth has no paired skeleton"))?;
+        let cloth_array = cloth_container_array(self, 40)?;
+        let skeleton_array = container_array(self, "hkaAnimationContainer", 24)?;
+        let mut builder = BphclBuilder::new(self)?;
+        builder.replace_reference_array(
+            &cloth_array,
+            self.reference_item_indices(cloth_array.field_offset)?
+                .into_iter()
+                .filter(|item| *item != cloth.item_index),
+        )?;
+        builder.replace_reference_array(
+            &skeleton_array,
+            self.reference_item_indices(skeleton_array.field_offset)?
+                .into_iter()
+                .filter(|item| *item != skeleton.item_index),
+        )?;
+        builder.replace_aamp(AampRegistrationMerger::remove_cloth(self, &cloth.name)?);
+        validate_rebuild(builder.build()?)
+    }
+
+    /// Removes a standalone collidable from the cloth-container root array.
+    pub fn remove_collidable(&self, collidable_index: usize) -> io::Result<Vec<u8>> {
+        if self.collidables.len() <= 1 {
+            return Err(invalid("a BPHCL must retain at least one collidable"));
+        }
+        if self.cloth.is_empty() {
+            return Err(invalid("a BPHCL must retain at least one cloth"));
+        }
+        let collidable = self
+            .collidables
+            .get(collidable_index)
+            .ok_or_else(|| invalid("collidable index is out of range"))?;
+        let array = cloth_container_array(self, 24)?;
+        let mut builder = BphclBuilder::new(self)?;
+        builder.replace_reference_array(
+            &array,
+            self.reference_item_indices(array.field_offset)?
+                .into_iter()
+                .filter(|item| *item != collidable.item_index),
+        )?;
+        builder.replace_aamp(AampRegistrationMerger::remove_collidable(
+            self,
+            &collidable.name,
+        )?);
+        validate_rebuild(builder.build()?)
+    }
+
     /// Imports one collidable and its complete reachable graph without a cloth.
     pub fn merge_collidable(
         &self,
@@ -415,20 +476,83 @@ fn reusable_colliders(
 }
 fn colliders_match(left: &Collidable, right: &Collidable) -> bool {
     left.name == right.name
+        && left.class_name == right.class_name
         && left.enabled == right.enabled
-        && shape_key(&left.shape) == shape_key(&right.shape)
-        && approx(left.translation.x, right.translation.x)
-        && approx(left.translation.y, right.translation.y)
-        && approx(left.translation.z, right.translation.z)
+        && vector_matches(&left.translation, &right.translation)
+        && vector_matches(&left.axis_x, &right.axis_x)
+        && vector_matches(&left.axis_y, &right.axis_y)
+        && vector_matches(&left.axis_z, &right.axis_z)
+        && shapes_match(&left.shape, &right.shape)
 }
-fn shape_key(shape: &CollidableShape) -> (&str, u32) {
-    match shape {
-        CollidableShape::Capsule { .. } => ("Capsule", 0),
-        CollidableShape::Sphere { .. } => ("Sphere", 0),
-        CollidableShape::TaperedCapsule { .. } => ("TaperedCapsule", 0),
-        CollidableShape::Plane { .. } => ("Plane", 0),
-        CollidableShape::Unknown { class_name, kind } => (class_name, *kind),
+fn shapes_match(left: &CollidableShape, right: &CollidableShape) -> bool {
+    match (left, right) {
+        (
+            CollidableShape::Capsule {
+                start: ls,
+                end: le,
+                radius: lr,
+            },
+            CollidableShape::Capsule {
+                start: rs,
+                end: re,
+                radius: rr,
+            },
+        ) => vector_matches(ls, rs) && vector_matches(le, re) && approx(*lr, *rr),
+        (
+            CollidableShape::Sphere {
+                center: lc,
+                radius: lr,
+            },
+            CollidableShape::Sphere {
+                center: rc,
+                radius: rr,
+            },
+        ) => vector_matches(lc, rc) && approx(*lr, *rr),
+        (
+            CollidableShape::TaperedCapsule {
+                start: ls,
+                end: le,
+                start_radius: lsr,
+                end_radius: ler,
+            },
+            CollidableShape::TaperedCapsule {
+                start: rs,
+                end: re,
+                start_radius: rsr,
+                end_radius: rer,
+            },
+        ) => {
+            vector_matches(ls, rs)
+                && vector_matches(le, re)
+                && approx(*lsr, *rsr)
+                && approx(*ler, *rer)
+        }
+        (CollidableShape::Plane { equation: left }, CollidableShape::Plane { equation: right }) => {
+            vector_matches(left, right)
+        }
+        (
+            CollidableShape::Unknown {
+                class_name: lc,
+                kind: lk,
+            },
+            CollidableShape::Unknown {
+                class_name: rc,
+                kind: rk,
+            },
+        ) => lc == rc && lk == rk,
+        _ => false,
     }
+}
+fn vector_matches(left: &super::Vector4, right: &super::Vector4) -> bool {
+    approx(left.x, right.x)
+        && approx(left.y, right.y)
+        && approx(left.z, right.z)
+        && approx(left.w, right.w)
+}
+fn validate_rebuild(bytes: Vec<u8>) -> io::Result<Vec<u8>> {
+    let rebuilt = BphclDocument::parse(&bytes)?;
+    rebuilt.validate_item_graph()?;
+    Ok(bytes)
 }
 fn approx(left: f32, right: f32) -> bool {
     (left - right).abs() <= 0.00001
@@ -497,6 +621,15 @@ mod tests {
         assert_eq!(
             collidable_policy(&target, &collider("Other", 1.0)),
             CollidablePolicy::Import
+        );
+        let mut different_radius = collider("Body", 1.0);
+        different_radius.shape = CollidableShape::Sphere {
+            center: Default::default(),
+            radius: 2.0,
+        };
+        assert_eq!(
+            collidable_policy(&target, &different_radius),
+            CollidablePolicy::Conflict
         );
     }
 }

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './PhysicsMerge.css';
+import { getDocumentsSnapshot } from './DocumentState';
 
 const locationLabel = {
     disk: 'Disk',
@@ -8,7 +9,7 @@ const locationLabel = {
     'nested-archive': 'Nested archive',
 };
 
-function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText }) {
+function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpaths, documentSnapshots }) {
     const [documents, setDocuments] = useState([]);
     const [targetId, setTargetId] = useState('');
     const [sourceId, setSourceId] = useState('');
@@ -17,40 +18,54 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText }) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [merging, setMerging] = useState(false);
+    const documentRequest = useRef(0);
+    const refreshingDocuments = useRef(false);
 
-    const refreshDocuments = useCallback(async () => {
+    const refreshDocuments = useCallback(async (preferredSourceId = '') => {
+        const request = ++documentRequest.current;
+        refreshingDocuments.current = true;
         setLoading(true);
         setError('');
         try {
             const openDocuments = await invoke('list_open_bphcl_documents');
+            if (request !== documentRequest.current) return;
+            const source = openDocuments.some((item) => item.documentId === preferredSourceId)
+                ? preferredSourceId
+                : openDocuments.some((item) => item.documentId === sourceId)
+                    ? sourceId
+                    : openDocuments[0]?.documentId || '';
+            const target = openDocuments.some((item) => item.documentId === targetId && item.documentId !== source)
+                ? targetId
+                : openDocuments.find((item) => item.documentId !== source)?.documentId || '';
             setDocuments(openDocuments);
-            setTargetId((current) => openDocuments.some((item) => item.documentId === current)
-                ? current
-                : openDocuments[0]?.documentId || '');
-            setSourceId((current) => {
-                const target = openDocuments.some((item) => item.documentId === targetId)
-                    ? targetId
-                    : openDocuments[0]?.documentId;
-                if (openDocuments.some((item) => item.documentId === current && item.documentId !== target)) {
-                    return current;
-                }
-                return openDocuments.find((item) => item.documentId !== target)?.documentId || '';
-            });
+            setSourceId(source);
+            setTargetId(target);
         } catch (reason) {
+            if (request !== documentRequest.current) return;
             const message = String(reason);
             setError(message);
             setStatusText(`ERROR: ${message}`);
         } finally {
-            setLoading(false);
+            if (request === documentRequest.current) {
+                refreshingDocuments.current = false;
+                setLoading(false);
+            }
         }
-    }, [setStatusText, targetId]);
+    }, [setStatusText, sourceId, targetId]);
 
     useEffect(() => {
-        if (activeTab === 'PHYSICS_MERGE') refreshDocuments();
+        if (activeTab !== 'PHYSICS_MERGE') return;
+        const activeDocumentId = getDocumentsSnapshot().activeDocumentId;
+        setDocuments([]);
+        setSourceId('');
+        setTargetId('');
+        setNodes([]);
+        setSelectedNodeIds(new Set());
+        refreshDocuments(activeDocumentId);
     }, [activeTab]);
 
     useEffect(() => {
-        if (activeTab !== 'PHYSICS_MERGE' || !sourceId) {
+        if (activeTab !== 'PHYSICS_MERGE' || !sourceId || refreshingDocuments.current) {
             setNodes([]);
             setSelectedNodeIds(new Set());
             return;
@@ -109,7 +124,12 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText }) {
                 nodeIds: Array.from(selectedNodeIds),
             });
             setSelectedNodeIds(new Set());
-            await refreshDocuments();
+            const targetSnapshot = documentSnapshots.current.get(targetId);
+            if (targetSnapshot) {
+                documentSnapshots.current.set(targetId, { ...targetSnapshot, paths: result.sarcPaths });
+            }
+            if (getDocumentsSnapshot().activeDocumentId === targetId) setpaths(result.sarcPaths);
+            await refreshDocuments(sourceId);
             const status = `Physics merge completed: ${result.importedCount} imported, ${result.skippedCount} skipped`;
             setStatusText(status);
         } catch (reason) {
@@ -123,14 +143,23 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText }) {
 
     if (activeTab !== 'PHYSICS_MERGE') return null;
 
+    const sourceName = documents.find((document) => document.documentId === sourceId)?.label || 'source';
+    const targetName = documents.find((document) => document.documentId === targetId)?.label || 'target';
+
     return <section className="physics-merge-view" aria-labelledby="physics-merge-title">
+        {merging && <div className="parsing-overlay" role="status" aria-live="polite">
+            <div className="parsing-content">
+                <div className="loading-swirl" aria-hidden="true"></div>
+                <div>Merging {sourceName} -&gt; {targetName}</div>
+            </div>
+        </div>}
         <header className="physics-merge-header">
-            <div>
+            <div className="physics-merge-title">
                 <h1 id="physics-merge-title">Physics Merge</h1>
-                <p>Select complete cloth graphs or standalone collidables to import into another open BPHCL document.</p>
+                <p>Select complete cloth graphs or standalone collidables<br />to import into another open BPHCL document.</p>
             </div>
             <div className="physics-merge-actions">
-                <button type="button" onClick={refreshDocuments} disabled={loading}>Refresh</button>
+                <button type="button" onClick={() => refreshDocuments(sourceId)} disabled={loading}>Refresh</button>
                 <button type="button" onClick={() => setActiveTab(returnTab)}>Close</button>
             </div>
         </header>

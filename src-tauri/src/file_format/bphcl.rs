@@ -94,7 +94,7 @@ impl BphclFile {
         let mut out = vec![];
         for c in &self.document.cloth {
             out.push(BphclLeaf {
-                path: format!("Cloth/{:03} {}.yaml", c.index, c.name),
+                path: format!("Cloth/{:03} {}.bin", c.index, c.name),
                 yaml: serde_yaml::to_string(c).map_err(io::Error::other)?,
                 viewer_type: "Cloth".into(),
                 read_only: true,
@@ -102,7 +102,7 @@ impl BphclFile {
         }
         for c in &self.document.collidables {
             out.push(BphclLeaf {
-                path: format!("Collidables/{:03} {}.yaml", c.index, c.name),
+                path: format!("Collidables/{:03} {}.bin", c.index, c.name),
                 yaml: serde_yaml::to_string(c).map_err(io::Error::other)?,
                 viewer_type: "Collidable".into(),
                 read_only: true,
@@ -110,7 +110,7 @@ impl BphclFile {
         }
         for skeleton in &self.document.skeletons {
             out.push(BphclLeaf {
-                path: format!("Skeletons/{:03} {}.yaml", skeleton.index, skeleton.name),
+                path: format!("Skeletons/{:03} {}.bin", skeleton.index, skeleton.name),
                 yaml: serde_yaml::to_string(skeleton).map_err(io::Error::other)?,
                 viewer_type: "Skeleton".into(),
                 read_only: true,

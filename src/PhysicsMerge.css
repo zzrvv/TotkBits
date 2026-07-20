@@ -18,6 +18,7 @@
 
 .physics-merge-header h1 { margin: 0 0 6px; font-size: 24px; }
 .physics-merge-header p { margin: 0; color: #aaa; }
+.physics-merge-title { flex: 1; text-align: center; }
 .physics-merge-actions { display: flex; gap: 8px; }
 .physics-merge-view button,
 .physics-merge-view select {

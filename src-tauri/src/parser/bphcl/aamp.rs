@@ -77,6 +77,52 @@ impl AampRegistrationMerger {
             false,
         )
     }
+
+    pub fn remove_cloth(document: &BphclDocument, name: &str) -> io::Result<Vec<u8>> {
+        remove_entry(document, CLOTH_LIST, name)
+    }
+
+    pub fn remove_collidable(document: &BphclDocument, name: &str) -> io::Result<Vec<u8>> {
+        remove_entry(document, COLLIDABLE_LIST, name)
+    }
+}
+
+fn remove_entry(document: &BphclDocument, list_hash: u32, name: &str) -> io::Result<Vec<u8>> {
+    let archive = Archive::from_document(document)?;
+    let list = archive.find_list(list_hash)?;
+    let removed: Vec<_> = list
+        .objects
+        .iter()
+        .filter(|object| object.name == name)
+        .collect();
+    if removed.is_empty() {
+        return Ok(archive.bytes);
+    }
+    let object_delta = -(removed.len() as i64);
+    let parameter_delta = -removed
+        .iter()
+        .map(|object| object.parameters.len() as i64)
+        .sum::<i64>();
+    let string_delta = -removed
+        .iter()
+        .flat_map(|object| object.parameters.iter())
+        .filter(|parameter| parameter.kind == STRING_REFERENCE)
+        .map(|parameter| parameter.value.len() as i64)
+        .sum::<i64>();
+    let objects: Vec<_> = list
+        .objects
+        .iter()
+        .filter(|object| object.name != name)
+        .cloned()
+        .collect();
+    rebuild_list(
+        &archive,
+        &list,
+        &objects,
+        object_delta,
+        parameter_delta,
+        string_delta,
+    )
 }
 
 fn append_entries<'a>(

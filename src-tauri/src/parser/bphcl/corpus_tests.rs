@@ -47,6 +47,35 @@ fn validate_merged(label: &str, bytes: &[u8]) -> BphclDocument {
 }
 
 #[test]
+fn cloth_and_collidable_removals_reparse_across_corpus_samples() {
+    let documents = corpus();
+    let (cloth_name, cloth_document) = documents
+        .iter()
+        .find(|(_, document)| document.cloth.len() > 1 && !document.collidables.is_empty())
+        .expect("corpus has no BPHCL with removable cloth");
+    let cloth_bytes = cloth_document
+        .remove_cloth(1)
+        .unwrap_or_else(|error| panic!("failed to remove cloth from {cloth_name}: {error}"));
+    let cloth_result = validate_merged("cloth removal", &cloth_bytes);
+    assert_eq!(cloth_result.cloth.len(), cloth_document.cloth.len() - 1);
+
+    let (collidable_name, collidable_document) = documents
+        .iter()
+        .find(|(_, document)| document.collidables.len() > 1 && !document.cloth.is_empty())
+        .expect("corpus has no BPHCL with removable collidable");
+    let collidable_bytes = collidable_document
+        .remove_collidable(1)
+        .unwrap_or_else(|error| {
+            panic!("failed to remove collidable from {collidable_name}: {error}")
+        });
+    let collidable_result = validate_merged("collidable removal", &collidable_bytes);
+    assert_eq!(
+        collidable_result.collidables.len(),
+        collidable_document.collidables.len() - 1
+    );
+}
+
+#[test]
 #[ignore = "full tmp/_bphcl corpus matrix takes about 90 seconds"]
 fn corpus_merges_reparse_with_valid_pointers_and_survive_sarc_roundtrips() {
     let documents = corpus();
