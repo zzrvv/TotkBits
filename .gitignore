@@ -33,7 +33,7 @@ dist-ssr
 /src-tauri/bin/
 /src-tauri/external
 /res/*
-/tmp/
+./tmp/
 /ext_projects/updater/target
 ext_projects/bphcl/__pycache__
 ext_projects/oead

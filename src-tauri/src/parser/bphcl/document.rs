@@ -1,6 +1,6 @@
 use super::{
-    AampSection, BphclHeader, Cloth, Collidable, CollidableShape, Item, NamedVariant, Particle,
-    Patch, Section, SimCloth, TypeTable, Vector4,
+    AampSection, Bone, BphclHeader, Cloth, ClothSkeletonPair, Collidable, CollidableShape, Item,
+    NamedVariant, Particle, Patch, Section, SimCloth, Skeleton, TypeTable, Vector4,
 };
 use crate::parser::binary::BinaryReader;
 use std::{
@@ -19,6 +19,8 @@ pub struct BphclDocument {
     pub type_table: TypeTable,
     pub variants: Vec<NamedVariant>,
     pub cloth: Vec<Cloth>,
+    pub skeletons: Vec<Skeleton>,
+    pub cloth_skeleton_pairs: Vec<ClothSkeletonPair>,
     pub collidables: Vec<Collidable>,
     pub aamp: Option<AampSection>,
 }
@@ -41,6 +43,8 @@ impl BphclDocument {
             type_table,
             variants: vec![],
             cloth: vec![],
+            skeletons: vec![],
+            cloth_skeleton_pairs: vec![],
             collidables: vec![],
             aamp,
         };
@@ -160,6 +164,46 @@ impl BphclDocument {
             }
         }
         out
+    }
+    pub fn reference_item_indices(&self, field: u32) -> io::Result<Vec<usize>> {
+        let storage = self
+            .referenced(field)
+            .ok_or_else(|| invalid(&format!("array at DATA+{field:#x} has no ITEM reference")))?;
+        let item = self
+            .items
+            .get(storage)
+            .ok_or_else(|| invalid("array storage ITEM is missing"))?;
+        (0..item.count)
+            .map(|index| {
+                let offset = item.data_offset + index * 8;
+                self.referenced(offset).ok_or_else(|| {
+                    invalid(&format!("unresolved array pointer at DATA+{offset:#x}"))
+                })
+            })
+            .collect()
+    }
+
+    pub fn reference_array_metadata(&self, field: u32) -> io::Result<super::ReferenceArray> {
+        let storage_item_index = self
+            .referenced(field)
+            .ok_or_else(|| invalid(&format!("array at DATA+{field:#x} has no ITEM reference")))?;
+        let storage_item = self
+            .items
+            .get(storage_item_index)
+            .cloned()
+            .ok_or_else(|| invalid("array storage ITEM is missing"))?;
+        let entry_patch_type_index = self
+            .patches
+            .iter()
+            .find(|patch| patch.offsets.contains(&storage_item.data_offset))
+            .map(|patch| patch.type_index)
+            .ok_or_else(|| invalid("array storage has no entry relocation patch"))?;
+        Ok(super::ReferenceArray {
+            field_offset: field,
+            storage_item_index,
+            storage_item,
+            entry_patch_type_index,
+        })
     }
     fn array_item(&self, field: u32) -> Option<&Item> {
         self.items.get(self.referenced(field)?)
@@ -284,6 +328,48 @@ impl BphclDocument {
             }
         }
     }
+    fn read_skeleton_bones(&self, skeleton_offset: u32) -> Vec<Bone> {
+        let parents = self
+            .array_item(skeleton_offset + 32)
+            .map(|item| {
+                (0..item.count)
+                    .filter_map(|index| self.u16(item.data_offset + index * 2))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let Some(bone_entries) = self.array_item(skeleton_offset + 48) else {
+            return vec![];
+        };
+        let poses = self.array_item(skeleton_offset + 64);
+        (0..bone_entries.count as usize)
+            .map(|index| {
+                let bone_offset = bone_entries.data_offset + index as u32 * 16;
+                let pose_offset = poses
+                    .filter(|item| index < item.count as usize)
+                    .map(|item| item.data_offset + index as u32 * 48);
+                Bone {
+                    index,
+                    name: self
+                        .string_ptr(bone_offset)
+                        .unwrap_or_else(|| format!("Bone {index}")),
+                    parent_index: parents
+                        .get(index)
+                        .copied()
+                        .filter(|parent| *parent != u16::MAX)
+                        .map(usize::from),
+                    lock_translation: self
+                        .data_bytes(bone_offset + 8, 1)
+                        .is_some_and(|data| data[0] != 0),
+                    translation: pose_offset
+                        .map(|offset| self.vec4(offset))
+                        .unwrap_or_default(),
+                    rotation: pose_offset
+                        .map(|offset| self.vec4(offset + 16))
+                        .unwrap_or_default(),
+                }
+            })
+            .collect()
+    }
     fn read_variants(&self) -> io::Result<Vec<NamedVariant>> {
         let Some(vi) = self.referenced(0) else {
             return Ok(vec![]);
@@ -311,64 +397,98 @@ impl BphclDocument {
         Ok(out)
     }
     fn read_domain(&mut self) -> io::Result<()> {
-        let Some(root) = self
+        if let Some(root) = self
             .variants
             .iter()
             .find(|v| v.class_name == "hclClothContainer")
-        else {
-            return Ok(());
-        };
-        let base = self.items[root.item_index].data_offset;
-        let coll = self.reference_array(base + 24);
-        self.collidables = coll
-            .into_iter()
-            .enumerate()
-            .map(|(index, item_index)| {
-                let item = &self.items[item_index];
-                Collidable {
-                    index,
-                    name: self
-                        .string_ptr(item.data_offset + 144)
-                        .unwrap_or_else(|| format!("Collidable {index}")),
-                    item_index,
-                    class_name: self
-                        .type_names
-                        .get(item.type_index as usize)
-                        .cloned()
-                        .unwrap_or_default(),
-                    translation: self.vec4(item.data_offset + 80),
-                    axis_x: self.vec4(item.data_offset + 32),
-                    axis_y: self.vec4(item.data_offset + 48),
-                    axis_z: self.vec4(item.data_offset + 64),
-                    enabled: self
-                        .data_bytes(item.data_offset + 159, 1)
-                        .is_some_and(|b| b[0] != 0),
-                    shape: self.read_shape(item),
-                }
-            })
-            .collect();
-        let cloth = self.reference_array(base + 40);
-        self.cloth = cloth
-            .into_iter()
-            .enumerate()
-            .map(|(index, item_index)| {
-                let item = &self.items[item_index];
-                Cloth {
-                    index,
-                    name: self
-                        .string_ptr(item.data_offset + 24)
-                        .unwrap_or_else(|| format!("Cloth {index}")),
-                    item_index,
-                    simulations: self
-                        .reference_array(item.data_offset + 32)
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, si)| self.read_sim(i, si))
-                        .collect(),
-                }
-            })
-            .collect();
+        {
+            let base = self.items[root.item_index].data_offset;
+            let coll = self.reference_array(base + 24);
+            self.collidables = coll
+                .into_iter()
+                .enumerate()
+                .map(|(index, item_index)| {
+                    let item = &self.items[item_index];
+                    Collidable {
+                        index,
+                        name: self
+                            .string_ptr(item.data_offset + 144)
+                            .unwrap_or_else(|| format!("Collidable {index}")),
+                        item_index,
+                        class_name: self
+                            .type_names
+                            .get(item.type_index as usize)
+                            .cloned()
+                            .unwrap_or_default(),
+                        translation: self.vec4(item.data_offset + 80),
+                        axis_x: self.vec4(item.data_offset + 32),
+                        axis_y: self.vec4(item.data_offset + 48),
+                        axis_z: self.vec4(item.data_offset + 64),
+                        enabled: self
+                            .data_bytes(item.data_offset + 159, 1)
+                            .is_some_and(|b| b[0] != 0),
+                        shape: self.read_shape(item),
+                    }
+                })
+                .collect();
+            let cloth = self.reference_array(base + 40);
+            self.cloth = cloth
+                .into_iter()
+                .enumerate()
+                .map(|(index, item_index)| {
+                    let item = &self.items[item_index];
+                    Cloth {
+                        index,
+                        name: self
+                            .string_ptr(item.data_offset + 24)
+                            .unwrap_or_else(|| format!("Cloth {index}")),
+                        item_index,
+                        simulations: self
+                            .reference_array(item.data_offset + 32)
+                            .into_iter()
+                            .enumerate()
+                            .map(|(i, si)| self.read_sim(i, si))
+                            .collect(),
+                    }
+                })
+                .collect();
+        }
+
+        if let Some(root) = self
+            .variants
+            .iter()
+            .find(|variant| variant.class_name == "hkaAnimationContainer")
+        {
+            let base = self.items[root.item_index].data_offset;
+            self.skeletons = self
+                .reference_array(base + 24)
+                .into_iter()
+                .enumerate()
+                .map(|(index, item_index)| {
+                    let item = &self.items[item_index];
+                    Skeleton {
+                        index,
+                        name: self
+                            .string_ptr(item.data_offset + 24)
+                            .unwrap_or_else(|| format!("Skeleton {index}")),
+                        item_index,
+                        bones: self.read_skeleton_bones(item.data_offset),
+                    }
+                })
+                .collect();
+        }
+        self.cloth_skeleton_pairs = pair_cloths_and_skeletons(&self.cloth, &self.skeletons);
         Ok(())
+    }
+
+    pub fn paired_skeleton(&self, cloth_index: usize) -> Option<&Skeleton> {
+        let pair = self
+            .cloth_skeleton_pairs
+            .iter()
+            .find(|pair| pair.index == cloth_index)?;
+        self.skeletons
+            .iter()
+            .find(|skeleton| skeleton.item_index == pair.skeleton_item_index)
     }
     pub fn validate(&self) -> io::Result<()> {
         if self.to_bytes() != self.raw {
@@ -410,6 +530,18 @@ impl BphclDocument {
         Ok(())
     }
 }
+fn pair_cloths_and_skeletons(cloths: &[Cloth], skeletons: &[Skeleton]) -> Vec<ClothSkeletonPair> {
+    cloths
+        .iter()
+        .zip(skeletons)
+        .enumerate()
+        .map(|(index, (cloth, skeleton))| ClothSkeletonPair {
+            index,
+            cloth_item_index: cloth.item_index,
+            skeleton_item_index: skeleton.item_index,
+        })
+        .collect()
+}
 fn invalid(s: &str) -> io::Error {
     io::Error::new(ErrorKind::InvalidData, s)
 }
@@ -442,4 +574,43 @@ fn varuint(data: &[u8], p: &mut usize, end: usize) -> io::Result<u64> {
         *p += 1
     }
     Ok(v)
+}
+
+#[cfg(test)]
+mod pairing_tests {
+    use super::*;
+
+    #[test]
+    fn cloth_and_skeleton_arrays_pair_by_index_and_preserve_extras() {
+        let cloths = vec![
+            Cloth {
+                index: 0,
+                name: "A".into(),
+                item_index: 10,
+                simulations: vec![],
+            },
+            Cloth {
+                index: 1,
+                name: "B".into(),
+                item_index: 11,
+                simulations: vec![],
+            },
+        ];
+        let skeletons = vec![Skeleton {
+            index: 0,
+            name: "A skeleton".into(),
+            item_index: 20,
+            bones: vec![],
+        }];
+        assert_eq!(
+            pair_cloths_and_skeletons(&cloths, &skeletons),
+            vec![ClothSkeletonPair {
+                index: 0,
+                cloth_item_index: 10,
+                skeleton_item_index: 20
+            }]
+        );
+        assert_eq!(cloths.len(), 2);
+        assert_eq!(skeletons.len(), 1);
+    }
 }

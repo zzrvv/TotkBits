@@ -21,13 +21,14 @@ def download_files():
         "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.lib": "src-tauri/bin/dlls/xlink_tool.lib",
         "https://github.com/SolidLink95/oead/releases/download/v1.0/oead_byml_pipe.exe": "src-tauri/bin/cpp/oead_byml_pipe.exe",
     }
-    if files:
-        print("[+] Downloading files")
-        for url, local_path in files.items():
-            local_path = Path(local_path)
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            download_file(url, local_path)
-        print(f"[+] Downloaded {len(files.keys())} files")
+    if not files:
+        return
+    print("[+] Downloading files")
+    for url, local_path in files.items():
+        local_path = Path(local_path)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        download_file(url, local_path)
+    print(f"[+] Downloaded {len(files.keys())} files")
 
 
 def remove_file(file):
@@ -85,21 +86,23 @@ def copy_files(bin_path):
 
 
 def repo_init():
-    cwd = os.getcwd()
-    cwd_path = Path(cwd)
+    cwd_path = Path(__file__).parent
+    cwd = str(cwd_path)
     bin_path = "src-tauri/bin"
     bin_path_p = Path(bin_path)
     if bin_path_p.exists() and bin_path_p.is_dir():
         shutil.rmtree(bin_path)
     bin_path_p.mkdir(parents=True, exist_ok=True)
-    (CWD / "tmp").mkdir(parents=True, exist_ok=True)
+    (cwd_path / "tmp").mkdir(parents=True, exist_ok=True)
 
     print(f"[+] Copying compressed json files")
 
     # Copy zlib compressed json files
     for file in (cwd_path / "src-tauri/misc").glob("*.bin"):
+        if not file.is_file():
+            continue
         destfile = cwd_path / "src-tauri/bin" / file.name
-        if not destfile.exists():
+        if not destfile.is_file():
             print(f"Copying: {file.name}")
             shutil.copyfile(file, destfile)
 
@@ -108,7 +111,7 @@ def repo_init():
     for src_dir, dest_dir in dirs_to_copy.items():
         src_dir_path = Path(src_dir)
         dest_dir_path = Path(dest_dir)
-        if not dest_dir_path.exists():
+        if not dest_dir_path.is_dir():
             shutil.copytree(src_dir_path, dest_dir_path)
             print(f"[+] Copied {src_dir} -> {dest_dir}")
         else:

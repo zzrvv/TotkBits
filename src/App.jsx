@@ -21,6 +21,7 @@ import { useEditorContext } from './StateManager';
 import { checkIfUpdateNeeded } from './ButtonClicks';
 import  OptionsEditor  from './OptionsEditor';
 import DocumentTabs from './DocumentTabs';
+import PhysicsMerge from './PhysicsMerge';
 
 
 let triggered = false
@@ -40,6 +41,7 @@ function App() {
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
+    physicsMergeReturnTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     documentModels, documentViewStates,
     rightEditorContainerRef, rightEditorRef, rightDocumentId, setRightDocumentId,
@@ -270,6 +272,7 @@ function App() {
         style={{ display: activeTab === 'RSTB' ? "block" : "none" }}
       />
       <Comparer setStatusText={setStatusText} activeTab={activeTab}/>
+      <PhysicsMerge activeTab={activeTab} setActiveTab={setActiveTab} returnTab={physicsMergeReturnTab} setStatusText={setStatusText} />
       
 
       <div ref={editorContainerRef} className="code_editor" style={{ display: activeTab === 'YAML' ? "block" : "none" }}></div>

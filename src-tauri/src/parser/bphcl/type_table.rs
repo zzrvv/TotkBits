@@ -16,7 +16,139 @@ pub struct TypeTable {
     original: Vec<u8>,
 }
 
+pub struct TypeMerge {
+    pub target_to_merged: HashMap<u32, u32>,
+    pub source_to_merged: HashMap<u32, u32>,
+    pub replacement_section: Option<Vec<u8>>,
+}
+
 impl TypeTable {
+    pub fn merge_required(
+        &self,
+        source: &TypeTable,
+        required: impl IntoIterator<Item = u32>,
+    ) -> io::Result<TypeMerge> {
+        let required = source.dependency_closure(required);
+        let target_keys = self.definition_keys();
+        let source_keys = source.definition_keys();
+        let by_key: HashMap<_, _> = target_keys
+            .iter()
+            .map(|(index, key)| (key.clone(), *index))
+            .collect();
+        let mut source_to_merged = HashMap::from([(0, 0)]);
+        let mut additions = Vec::new();
+        for source_index in required {
+            if let Some(target_index) = source_keys
+                .get(&source_index)
+                .and_then(|key| by_key.get(key))
+            {
+                source_to_merged.insert(source_index, *target_index);
+            } else {
+                let index = u32::try_from(self.type_count() + additions.len())
+                    .map_err(|_| invalid("TYPE index exceeds u32"))?;
+                source_to_merged.insert(source_index, index);
+                additions.push(source_index);
+            }
+        }
+        if additions.is_empty() {
+            return Ok(TypeMerge {
+                target_to_merged: self.identity_map(),
+                source_to_merged,
+                replacement_section: None,
+            });
+        }
+        let mut merged = self.clone();
+        let mut type_strings: HashMap<String, u32> = merged
+            .type_strings
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, value)| (value, i as u32))
+            .collect();
+        let mut field_strings: HashMap<String, u32> = merged
+            .field_strings
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(i, value)| (value, i as u32))
+            .collect();
+        let mut type_string = |index: u32, merged: &mut TypeTable| -> io::Result<u32> {
+            let value = source
+                .type_strings
+                .get(index as usize)
+                .ok_or_else(|| invalid("source TYPE string is missing"))?
+                .clone();
+            Ok(*type_strings.entry(value.clone()).or_insert_with(|| {
+                merged.type_strings.push(value);
+                (merged.type_strings.len() - 1) as u32
+            }))
+        };
+        for source_index in additions {
+            let named = source
+                .named_types
+                .get(source_index as usize - 1)
+                .ok_or_else(|| invalid("source TYPE record is missing"))?;
+            let remap = |index: u32| {
+                source_to_merged
+                    .get(&index)
+                    .copied()
+                    .ok_or_else(|| invalid("source TYPE dependency is unmapped"))
+            };
+            let string_index = type_string(named.string_index, &mut merged)?;
+            let mut templates = Vec::with_capacity(named.templates.len());
+            for template in &named.templates {
+                templates.push(TypeTemplate {
+                    string_index: type_string(template.string_index, &mut merged)?,
+                    type_index: remap(template.type_index)?,
+                });
+            }
+            merged.named_types.push(TypeNamed {
+                string_index,
+                templates,
+            });
+            if let Some(body) = source
+                .bodies
+                .iter()
+                .find(|body| body.type_index == source_index)
+            {
+                let mut body = body.clone();
+                body.type_index = remap(body.type_index)?;
+                body.parent_type_index = remap(body.parent_type_index)?;
+                body.subtype_index = body.subtype_index.map(&remap).transpose()?;
+                for member in &mut body.members {
+                    let value = source
+                        .field_strings
+                        .get(member.name_index as usize)
+                        .ok_or_else(|| invalid("source field string is missing"))?
+                        .clone();
+                    member.name_index = *field_strings.entry(value.clone()).or_insert_with(|| {
+                        merged.field_strings.push(value);
+                        (merged.field_strings.len() - 1) as u32
+                    });
+                    member.type_index = remap(member.type_index)?;
+                }
+                for interface in &mut body.interfaces {
+                    interface.type_index = remap(interface.type_index)?;
+                }
+                merged.bodies.push(body);
+            }
+            if let Some(hash) = source
+                .hashes
+                .iter()
+                .find(|hash| hash.type_index == source_index)
+            {
+                merged.hashes.push(TypeHash {
+                    type_index: remap(hash.type_index)?,
+                    hash: hash.hash,
+                });
+            }
+        }
+        Ok(TypeMerge {
+            target_to_merged: self.identity_map(),
+            source_to_merged,
+            replacement_section: Some(merged.rebuild()?),
+        })
+    }
     pub fn parse(tag: &Section, data: &[u8]) -> io::Result<Self> {
         let section = tag
             .find("TYPE")

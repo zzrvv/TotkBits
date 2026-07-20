@@ -21,8 +21,69 @@ use tauri::Manager;
 use updater::TotkbitsVersion::TotkbitsVersion;
 use windows::{
     core::PCWSTR,
-    Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_OK},
+    Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONWARNING, MB_OK},
 };
+
+#[tauri::command]
+pub fn list_open_bphcl_documents(
+    app_handle: tauri::AppHandle,
+) -> Vec<crate::DocumentState::OpenBphclDocument> {
+    app_handle.state::<DocumentState>().open_bphcl_documents()
+}
+
+#[tauri::command]
+pub fn list_bphcl_selectable_nodes(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+) -> Result<Vec<crate::DocumentState::BphclSelectableNode>, String> {
+    app_handle
+        .state::<DocumentState>()
+        .bphcl_selectable_nodes(&documentId)
+}
+
+#[tauri::command]
+pub fn validate_bphcl_merge_documents(app_handle: tauri::AppHandle) -> bool {
+    if app_handle
+        .state::<DocumentState>()
+        .open_bphcl_documents()
+        .len()
+        >= 2
+    {
+        return true;
+    }
+
+    let message: Vec<u16> = "Open at least two BPHCL documents before using Physics Merge."
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let title: Vec<u16> = "TotkBits - Physics Merge"
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        let _ = MessageBoxW(
+            None,
+            PCWSTR(message.as_ptr()),
+            PCWSTR(title.as_ptr()),
+            MB_OK | MB_ICONWARNING,
+        );
+    }
+    false
+}
+
+#[tauri::command]
+pub fn merge_bphcl_nodes(
+    app_handle: tauri::AppHandle,
+    targetDocumentId: String,
+    sourceDocumentId: String,
+    nodeIds: Vec<String>,
+) -> Result<crate::DocumentState::BphclMergeResult, String> {
+    app_handle.state::<DocumentState>().merge_bphcl_nodes(
+        &targetDocumentId,
+        &sourceDocumentId,
+        &nodeIds,
+    )
+}
 
 fn show_open_error(data: &SendData) {
     let message = if data.status_text.is_empty() {

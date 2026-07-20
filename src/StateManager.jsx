@@ -7,6 +7,7 @@ const EditorContext = createContext();
 
 export const EditorProvider = ({ children }) => {
   const [activeTab, setActiveTab] = useState('SARC'); // Adjust this initial value as needed
+  const [physicsMergeReturnTab, setPhysicsMergeReturnTab] = useState('SARC');
   const editorContainerRef = useRef(null); //monaco editor container
   const editorRef = useRef(null); //monaco editor reference
   const documentModels = useRef(new Map());
@@ -85,7 +86,7 @@ export const EditorProvider = ({ children }) => {
     isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,
-    activeTab, setActiveTab,
+    activeTab, setActiveTab, physicsMergeReturnTab, setPhysicsMergeReturnTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang, readOnly, setReadOnly,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, pathsFilters, setPathsFilters, treeExpandedNodes, setTreeExpandedNodes,

@@ -7,6 +7,7 @@ import CommandsHelp from './CommandsHelp';
 import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
 import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
 import { useEditorContext } from './StateManager';
+import { invoke } from '@tauri-apps/api/core';
 
 function MenuBarDisplay({ updateButton = null }) {
   const { documents, activeDocumentId } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
@@ -20,6 +21,7 @@ function MenuBarDisplay({ updateButton = null }) {
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
+    setPhysicsMergeReturnTab,
     editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
@@ -224,6 +226,20 @@ function MenuBarDisplay({ updateButton = null }) {
     console.log("Config options open: ", isOptionsOpen);
   }
 
+  const handlePhysicsMerge = async (event) => {
+    event.stopPropagation();
+    closeMenu();
+    try {
+      if (await invoke('validate_bphcl_merge_documents')) {
+        setPhysicsMergeReturnTab(activeTab);
+        setActiveTab('PHYSICS_MERGE');
+        setStatusText('Select BPHCL nodes to merge');
+      }
+    } catch (error) {
+      setStatusText(`ERROR: ${error}`);
+    }
+  };
+
   const toggleDropdown = (menu) => {
     setShowDropdown(prevState => ({
       ...{ file: false, view: false, tools: false, compare: false, about: false }, // Reset all to false
@@ -280,6 +296,7 @@ function MenuBarDisplay({ updateButton = null }) {
   const isSarcOpened = paths.paths.length > 0 && activeTab === "SARC";
   const isInternalFileSelected = isSarcOpened && selectedPath.path !== '' && selectedPath.isfile;
   const toolsMenuItems = [
+    { label: 'Physics merge', onClick: handlePhysicsMerge, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.png', shortcut: '', condition: isSarcOpened },
     { label: 'Add folder', onClick: handleAddFolderClick, icon: 'menu/add_folder.png', shortcut: '', condition: isSarcOpened },
     { label: 'Extract sarc contents', onClick: handleExtractOpenedSarc, icon: 'context_menu/extract_all.png', shortcut: '', condition: isSarcOpened },
@@ -358,7 +375,7 @@ function MenuBarDisplay({ updateButton = null }) {
                 ) : null))}
             </div>
           </div>
-          {activeTab === "SARC" && isToolsMenuVisible && (
+          {isToolsMenuVisible && (
             <div className="menu-item" onClick={() => toggleDropdown('tools')} ref={el => dropdownRefs.current.tools = el}>
               Tools
               <div className="dropdown-content" style={{ display: showDropdown.tools ? 'block' : 'none' }}>

@@ -1,3 +1,4 @@
+use serde::Serialize;
 use std::{collections::HashMap, sync::Mutex};
 
 use crate::{
@@ -11,7 +12,226 @@ pub struct DocumentState {
     documents: Mutex<HashMap<String, TotkBitsApp<'static>>>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenBphclDocument {
+    pub document_id: String,
+    pub label: String,
+    pub path: String,
+    pub location: String,
+    pub cloth_count: usize,
+    pub collidable_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BphclSelectableNode {
+    pub document_id: String,
+    pub node_id: String,
+    pub kind: String,
+    pub index: usize,
+    pub name: String,
+    pub item_index: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BphclMergeResult {
+    pub selected_count: usize,
+    pub imported_count: usize,
+    pub skipped_count: usize,
+    pub cloth_count: usize,
+    pub collidable_count: usize,
+}
+
 impl DocumentState {
+    pub fn merge_bphcl_nodes(
+        &self,
+        target_document_id: &str,
+        source_document_id: &str,
+        node_ids: &[String],
+    ) -> Result<BphclMergeResult, String> {
+        if target_document_id == source_document_id {
+            return Err("Source and target BPHCL documents must be different".into());
+        }
+        if node_ids.is_empty() {
+            return Err("Select at least one cloth or collidable to merge".into());
+        }
+
+        let mut documents = self.documents();
+        let source = documents
+            .get(source_document_id)
+            .ok_or_else(|| format!("Document '{source_document_id}' is not open"))?
+            .opened_file
+            .bphcl
+            .as_ref()
+            .ok_or_else(|| format!("Document '{source_document_id}' is not a BPHCL document"))?
+            .document
+            .clone();
+        let target_app = documents
+            .get(target_document_id)
+            .ok_or_else(|| format!("Document '{target_document_id}' is not open"))?;
+        let target_file =
+            target_app.opened_file.bphcl.as_ref().ok_or_else(|| {
+                format!("Document '{target_document_id}' is not a BPHCL document")
+            })?;
+        let target_source_path = target_file.source_path.clone();
+        let target_link = target_app.internal_parent.clone();
+        let mut merged = target_file.document.clone();
+        let mut imported_count = 0;
+        let mut skipped_count = 0;
+        let mut seen = std::collections::HashSet::new();
+
+        for node_id in node_ids {
+            if !seen.insert(node_id.as_str()) {
+                skipped_count += 1;
+                continue;
+            }
+            let (kind, index) = node_id
+                .split_once(':')
+                .ok_or_else(|| format!("Invalid BPHCL node ID '{node_id}'"))?;
+            let index: usize = index
+                .parse()
+                .map_err(|_| format!("Invalid BPHCL node ID '{node_id}'"))?;
+            let before = merged.raw.clone();
+            let bytes = match kind {
+                "cloth" => {
+                    let position = source
+                        .cloth
+                        .iter()
+                        .position(|cloth| cloth.index == index)
+                        .ok_or_else(|| format!("Source cloth '{node_id}' no longer exists"))?;
+                    merged.merge_complete_cloth(&source, position)
+                }
+                "collidable" => {
+                    let position = source
+                        .collidables
+                        .iter()
+                        .position(|collidable| collidable.index == index)
+                        .ok_or_else(|| format!("Source collidable '{node_id}' no longer exists"))?;
+                    merged.merge_collidable(&source, position)
+                }
+                _ => Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Unsupported BPHCL node kind '{kind}'"),
+                )),
+            }
+            .map_err(|error| format!("Failed to merge '{node_id}': {error}"))?;
+            if bytes == before {
+                skipped_count += 1;
+            } else {
+                imported_count += 1;
+                merged = crate::parser::bphcl::BphclDocument::parse(&bytes)
+                    .map_err(|error| format!("Merged BPHCL did not reparse: {error}"))?;
+            }
+        }
+
+        let merged_bytes = merged.raw.clone();
+        if let Some(link) = &target_link {
+            documents
+                .get_mut(&link.document_id)
+                .ok_or_else(|| format!("Parent document '{}' is not open", link.document_id))?
+                .update_child_entry(link.outer_path.as_deref(), &link.inner_path, merged_bytes)?;
+        }
+        let cloth_count = merged.cloth.len();
+        let collidable_count = merged.collidables.len();
+        let target = documents
+            .get_mut(target_document_id)
+            .ok_or_else(|| format!("Document '{target_document_id}' was closed during merge"))?;
+        target.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
+            source_path: target_source_path,
+            document: merged,
+        });
+
+        Ok(BphclMergeResult {
+            selected_count: node_ids.len(),
+            imported_count,
+            skipped_count,
+            cloth_count,
+            collidable_count,
+        })
+    }
+
+    pub fn open_bphcl_documents(&self) -> Vec<OpenBphclDocument> {
+        let documents = self.documents();
+        let mut result: Vec<_> = documents
+            .iter()
+            .filter_map(|(document_id, app)| {
+                let bphcl = app.opened_file.bphcl.as_ref()?;
+                let path = app.opened_file.path.full_path.clone();
+                let label = if app.opened_file.path.name.is_empty() {
+                    document_id.clone()
+                } else {
+                    app.opened_file.path.name.clone()
+                };
+                let location = match app
+                    .internal_parent
+                    .as_ref()
+                    .and_then(|link| link.outer_path.as_ref())
+                {
+                    Some(_) => "nested-archive",
+                    None if app.internal_parent.is_some() => "archive",
+                    None => "disk",
+                };
+                Some(OpenBphclDocument {
+                    document_id: document_id.clone(),
+                    label,
+                    path,
+                    location: location.into(),
+                    cloth_count: bphcl.document.cloth.len(),
+                    collidable_count: bphcl.document.collidables.len(),
+                })
+            })
+            .collect();
+        result.sort_by(|left, right| left.document_id.cmp(&right.document_id));
+        result
+    }
+
+    pub fn bphcl_selectable_nodes(
+        &self,
+        document_id: &str,
+    ) -> Result<Vec<BphclSelectableNode>, String> {
+        let documents = self.documents();
+        let app = documents
+            .get(document_id)
+            .ok_or_else(|| format!("Document '{document_id}' is not open"))?;
+        let bphcl = app
+            .opened_file
+            .bphcl
+            .as_ref()
+            .ok_or_else(|| format!("Document '{document_id}' is not a BPHCL document"))?;
+        let mut nodes =
+            Vec::with_capacity(bphcl.document.cloth.len() + bphcl.document.collidables.len());
+        nodes.extend(
+            bphcl
+                .document
+                .cloth
+                .iter()
+                .map(|cloth| BphclSelectableNode {
+                    document_id: document_id.into(),
+                    node_id: format!("cloth:{}", cloth.index),
+                    kind: "cloth".into(),
+                    index: cloth.index,
+                    name: cloth.name.clone(),
+                    item_index: cloth.item_index,
+                }),
+        );
+        nodes.extend(
+            bphcl
+                .document
+                .collidables
+                .iter()
+                .map(|collidable| BphclSelectableNode {
+                    document_id: document_id.into(),
+                    node_id: format!("collidable:{}", collidable.index),
+                    kind: "collidable".into(),
+                    index: collidable.index,
+                    name: collidable.name.clone(),
+                    item_index: collidable.item_index,
+                }),
+        );
+        Ok(nodes)
+    }
     pub fn open_bphcl_leaf(
         &self,
         parent_id: &str,

@@ -108,6 +108,14 @@ impl BphclFile {
                 read_only: true,
             })
         }
+        for skeleton in &self.document.skeletons {
+            out.push(BphclLeaf {
+                path: format!("Skeletons/{:03} {}.yaml", skeleton.index, skeleton.name),
+                yaml: serde_yaml::to_string(skeleton).map_err(io::Error::other)?,
+                viewer_type: "Skeleton".into(),
+                read_only: true,
+            })
+        }
         if let Some(a) = &self.document.aamp {
             let pio = ParameterIO::from_binary(&a.raw).map_err(io::Error::other)?;
             out.push(BphclLeaf {
