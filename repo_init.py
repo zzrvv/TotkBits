@@ -20,6 +20,9 @@ def download_files():
         "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.exp": "src-tauri/bin/dlls/xlink_tool.exp",
         "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.lib": "src-tauri/bin/dlls/xlink_tool.lib",
         "https://github.com/SolidLink95/oead/releases/download/v1.0/oead_byml_pipe.exe": "src-tauri/bin/cpp/oead_byml_pipe.exe",
+        "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/meshcodec.dll": "src-tauri/bin/dlls/meshcodec.dll",
+        "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/meshcodec.exp": "src-tauri/bin/dlls/meshcodec.exp",
+        "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/MeshCodec.lib": "src-tauri/bin/dlls/MeshCodec.lib",
     }
     if not files:
         return
@@ -98,9 +101,9 @@ def repo_init():
     print(f"[+] Copying compressed json files")
 
     # Copy zlib compressed json files
-    json_dir = (cwd_path / "src-tauri/misc")
+    json_dir = cwd_path / "src-tauri/misc"
     files = list(json_dir.glob("*.bin"))
-    files +=list(json_dir.glob("*.json"))
+    files += list(json_dir.glob("*.json"))
     for file in files:
         if not file.is_file():
             continue

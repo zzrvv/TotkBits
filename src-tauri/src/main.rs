@@ -23,6 +23,7 @@ mod TauriCommands;
 mod TotkApp;
 mod TotkConfig;
 mod Zstd;
+mod compression;
 mod file_format;
 mod parser;
 use crate::DocumentState::DocumentState as Documents;

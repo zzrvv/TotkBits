@@ -325,7 +325,9 @@ impl CliCommand {
 
     fn decompress(&self) -> Result<(), String> {
         let bytes = fs::read(&self.input).map_err(|e| format!("failed to read input: {e}"))?;
-        let decompressed = if bytes.starts_with(b"Yaz0") {
+        let decompressed = if crate::compression::meshcodec::MeshCodec::has_magic(&bytes) {
+            crate::compression::meshcodec::MeshCodec::decompress(&bytes)
+        } else if bytes.starts_with(b"Yaz0") {
             crate::Zstd::TotkZstd::decompress_yaz0(&bytes)
         } else {
             self.zstd()?.try_decompress(&bytes)

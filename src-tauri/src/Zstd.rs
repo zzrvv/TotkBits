@@ -274,6 +274,9 @@ impl<'a> TotkZstd<'_> {
         }
     }
     pub fn try_decompress(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
+        if crate::compression::meshcodec::MeshCodec::has_magic(data) {
+            return crate::compression::meshcodec::MeshCodec::decompress(data);
+        }
         self.try_decompress_with_dictionary(data)
             .map(|(data, _)| data)
     }
