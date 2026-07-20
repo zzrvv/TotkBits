@@ -34,7 +34,7 @@ function boneWorldMatrices(bones) {
     return matrices;
 }
 
-function RenderMesh({ mesh, bones, wireframe, weightBone, onSelect }) {
+function RenderMesh({ mesh, bones, wireframe, weightBone, showNormals, onSelect }) {
     const geometry = useMemo(() => {
         const result = new THREE.BufferGeometry();
         const positions = new Float32Array(mesh.positions.flat());
@@ -78,9 +78,29 @@ function RenderMesh({ mesh, bones, wireframe, weightBone, onSelect }) {
         return result;
     }, [mesh, bones, weightBone]);
     useEffect(() => () => geometry.dispose(), [geometry]);
-    return <mesh geometry={geometry} onClick={(event) => { event.stopPropagation(); onSelect(mesh); }} castShadow receiveShadow>
-        <meshStandardMaterial vertexColors wireframe={wireframe} roughness={0.72} metalness={0.05} side={THREE.DoubleSide} />
-    </mesh>;
+    const normalLines = useMemo(() => {
+        const lineGeometry = new THREE.BufferGeometry();
+        const position = geometry.getAttribute('position');
+        const normal = geometry.getAttribute('normal');
+        if (!position || !normal) return lineGeometry;
+        const length = Math.max(geometry.boundingSphere?.radius || 1, 0.01) * 0.012;
+        const step = Math.max(1, Math.ceil(position.count / 4000));
+        const points = [];
+        for (let index = 0; index < position.count; index += step) {
+            const start = new THREE.Vector3().fromBufferAttribute(position, index);
+            const end = new THREE.Vector3().fromBufferAttribute(normal, index).normalize().multiplyScalar(length).add(start);
+            points.push(...start.toArray(), ...end.toArray());
+        }
+        lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+        return lineGeometry;
+    }, [geometry]);
+    useEffect(() => () => normalLines.dispose(), [normalLines]);
+    return <group>
+        <mesh geometry={geometry} onClick={(event) => { event.stopPropagation(); onSelect(mesh); }} castShadow receiveShadow>
+            <meshStandardMaterial vertexColors wireframe={wireframe} roughness={0.72} metalness={0.05} side={THREE.DoubleSide} />
+        </mesh>
+        {showNormals && <lineSegments geometry={normalLines}><lineBasicMaterial color="#55e6ff" depthTest={false} transparent opacity={0.8} /></lineSegments>}
+    </group>;
 }
 
 function Skeleton({ bones }) {
@@ -97,7 +117,7 @@ function Skeleton({ bones }) {
     return <lineSegments><bufferGeometry><bufferAttribute attach="attributes-position" args={[points, 3]} /></bufferGeometry><lineBasicMaterial color="#ffd166" depthTest={false} /></lineSegments>;
 }
 
-function ResourceScene({ render, wireframe, showSkeleton, weightBone, onSelectMesh }) {
+function ResourceScene({ render, wireframe, showSkeleton, showNormals, weightBone, onSelectMesh }) {
     return <>
         <color attach="background" args={['#11151b']} />
         <ambientLight intensity={1.4} />
@@ -106,7 +126,7 @@ function ResourceScene({ render, wireframe, showSkeleton, weightBone, onSelectMe
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
         <Bounds fit clip observe margin={1.15}>
-            <group>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={mesh} bones={render.bones} wireframe={wireframe} weightBone={weightBone} onSelect={onSelectMesh} />)}</group>
+            <group>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={mesh} bones={render.bones} wireframe={wireframe} weightBone={weightBone} showNormals={showNormals} onSelect={onSelectMesh} />)}</group>
             {showSkeleton && <Skeleton bones={render.bones} />}
         </Bounds>
     </>;
@@ -138,10 +158,11 @@ function ResourceTree({ bfres, onSection, onMesh, onBone }) {
     });
     return <nav className="bfres-resource-tree" aria-label="BFRES resources">
         <header>Scene collection</header>
-        <TreeFolder label="Models" count={meshes.length}>{meshes.map((mesh, index) => node(mesh.name, `${mesh.positions.length} vertices`, () => onMesh(mesh), `mesh-${index}`))}</TreeFolder>
+        <TreeFolder label="Meshes" count={meshes.length}>{meshes.map((mesh, index) => node(mesh.name, `${mesh.positions.length} vertices`, () => onMesh(mesh), `mesh-${index}`))}</TreeFolder>
         <TreeFolder label="Materials" count={materials.length}>{materials.map((material) => node(material.name, `${material.texture_slots.length} textures`, () => onSection(material, 'material'), `material-${material.offset}`))}</TreeFolder>
-        <TreeFolder label="Skeleton" count={bones.length}>{boneNodes(-1)}</TreeFolder>
+        
         <TreeFolder label="Textures" count={textures.length}>{textures.map((section) => node(section.name, 'Unparsed texture data', () => onSection(section), `texture-${section.offset}`))}</TreeFolder>
+        <TreeFolder label="Skeleton" count={bones.length}>{boneNodes(-1)}</TreeFolder>
     </nav>;
 }
 
@@ -156,6 +177,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [panel, setPanel] = useState('resources');
     const [wireframe, setWireframe] = useState(false);
     const [showSkeleton, setShowSkeleton] = useState(false);
+    const [showNormals, setShowNormals] = useState(false);
     const [weightBone, setWeightBone] = useState(-2);
     const [detail, setDetail] = useState(null);
     const [showEditor, setShowEditor] = useState(false);
@@ -205,6 +227,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <button type="button" onClick={() => setPanel('animations')} className={panel === 'animations' ? 'active' : ''}>Animations <small>{animations.length}</small></button>
             <button type="button" onClick={() => setWireframe((value) => !value)} className={wireframe ? 'active' : ''}>Wireframe</button>
             <button type="button" onClick={() => setShowSkeleton((value) => !value)} className={showSkeleton ? 'active' : ''}>Skeleton</button>
+            <button type="button" onClick={() => setShowNormals((value) => !value)} className={showNormals ? 'active' : ''}>Normals</button>
             <button type="button" onClick={() => setShowEditor((value) => !value)} className={!showEditor ? 'active' : ''}>{showEditor ? 'Hide YAML' : 'Show YAML'}</button>
             <select value={weightBone} onChange={(event) => setWeightBone(Number(event.target.value))} aria-label="Visualize vertex weights">
                 <option value={-2}>Solid</option>
@@ -233,7 +256,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             }} />
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
                 <Canvas dpr={[1, 2]} gl={{ antialias: true }}>
-                    {bfres?.render && <ResourceScene render={bfres.render} wireframe={wireframe} showSkeleton={showSkeleton} weightBone={weightBone} onSelectMesh={(mesh) => {
+                    {bfres?.render && <ResourceScene render={bfres.render} wireframe={wireframe} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} onSelectMesh={(mesh) => {
                         setYaml(JSON.stringify(mesh, null, 2));
                         setStatusText(`${mesh.name}: ${mesh.positions.length.toLocaleString()} vertices, ${(mesh.indices.length / 3).toLocaleString()} triangles`);
                     }} />}

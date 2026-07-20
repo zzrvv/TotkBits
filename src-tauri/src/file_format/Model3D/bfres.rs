@@ -469,7 +469,9 @@ fn parse_shape(
         }
     }
     let mut result = Vec::new();
-    for mesh_index in 0..mesh_count {
+    // Mesh entries are ordered from highest to lowest detail. Rendering only
+    // the first avoids drawing every LOD on top of the same shape.
+    for mesh_index in 0..mesh_count.min(1) {
         let entry = mesh_offset + mesh_index * 56;
         let size_offset = u64_at(data, entry + 24, endian)? as usize;
         let face_offset = u32_at(data, entry + 32, endian)? as usize;
@@ -556,6 +558,16 @@ fn decode_vertex_value(data: &[u8], offset: usize, format: u16) -> Result<[f32; 
     let s = |i| i16_at(data, offset + i, Endian::Little);
     let f = |i| f32_at(data, offset + i, Endian::Little);
     Ok(match format {
+        0x020E => {
+            let packed = u32_at(data, offset, Endian::Little)?;
+            let signed = |shift: u32| (((packed >> shift) & 0x3ff) as i32) << 22 >> 22;
+            [
+                signed(0) as f32 / 511.0,
+                signed(10) as f32 / 511.0,
+                signed(20) as f32 / 511.0,
+                ((packed >> 30) & 3) as f32,
+            ]
+        }
         0x0518 => [f(0)?, f(4)?, f(8)?, 1.0],
         0x0519 => [f(0)?, f(4)?, f(8)?, f(12)?],
         0x0517 => [f(0)?, f(4)?, 0.0, 1.0],
@@ -828,6 +840,15 @@ mod tests {
                     .iter()
                     .all(|index| *index < mesh.positions.len() as u32)),
                 "{} has out-of-range mesh indices",
+                path.display()
+            );
+            assert!(
+                bfres
+                    .render
+                    .meshes
+                    .iter()
+                    .all(|mesh| mesh.normals.len() == mesh.positions.len()),
+                "{} has incomplete vertex normals",
                 path.display()
             );
             parsed += 1;
