@@ -4,7 +4,8 @@ use std::{
     ops::Range,
 };
 
-pub const SECTION_HEADER_SIZE: usize = 0x30;
+pub const SECTION_HEADER_SIZE: usize = 0x40;
+const SECTION_TAG_SIZE: usize = 16;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HkclSection {
@@ -28,13 +29,19 @@ impl HkclSection {
         }
         let mut reader = BinaryReader::with_endian(data, endian);
         reader.seek(header_offset)?;
-        let tag_bytes = reader.read_bytes(20)?;
-        let tag_end = tag_bytes.iter().position(|byte| *byte == 0).unwrap_or(20);
+        let tag_bytes = reader.read_bytes(SECTION_TAG_SIZE)?;
+        let tag_end = tag_bytes
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(SECTION_TAG_SIZE);
         let tag = String::from_utf8(tag_bytes[..tag_end].to_vec())
             .map_err(|_| invalid("HKCL section tag is not UTF-8"))?;
         if tag.is_empty() {
             return Err(invalid("HKCL section tag is empty"));
         }
+        // TotK HKCL stores an additional 32-bit header field before the section
+        // payload offset.
+        reader.skip(4)?;
         let absolute_data_start = reader.read_u32()? as usize;
         let offsets = [
             reader.read_u32()? as usize,

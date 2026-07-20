@@ -135,6 +135,54 @@ impl<'a> TotkBitsApp<'a> {
         path: String,
         bytes: Vec<u8>,
     ) -> Option<SendData> {
+        if path.to_ascii_lowercase().ends_with(".bphhb") {
+            if let Ok(bphhb) =
+                crate::file_format::bphhb::BphhbFile::from_binary(&bytes, Some(Path::new(&path)))
+            {
+                let status = match &outer_path {
+                    Some(outer) => format!("Opened {path} inside {outer}"),
+                    None => format!("Opened {path} from archive"),
+                };
+                let data = bphhb.send_data(Path::new(&path), status).ok()?;
+                self.opened_file = OpenedFile::default();
+                self.opened_file.file_type = TotkFileType::Bphhb;
+                self.opened_file.path = Pathlib::new(&path);
+                self.opened_file.bphhb = Some(bphhb);
+                let mut internal = InternalFile::new(path.clone());
+                internal.file_type = TotkFileType::Bphhb;
+                self.internal_file = Some(internal);
+                self.internal_parent = Some(InternalParentLink {
+                    document_id: parent_document_id,
+                    outer_path,
+                    inner_path: path,
+                });
+                return Some(data);
+            }
+        }
+        if path.to_ascii_lowercase().ends_with(".hkcl") {
+            if let Ok(hkcl) =
+                crate::file_format::hkcl::HkclFile::from_binary(&bytes, Some(Path::new(&path)))
+            {
+                let status = match &outer_path {
+                    Some(outer) => format!("Opened {path} inside {outer}"),
+                    None => format!("Opened {path} from archive"),
+                };
+                let data = hkcl.send_data(Path::new(&path), status).ok()?;
+                self.opened_file = OpenedFile::default();
+                self.opened_file.file_type = TotkFileType::Hkcl;
+                self.opened_file.path = Pathlib::new(&path);
+                self.opened_file.hkcl = Some(hkcl);
+                let mut internal = InternalFile::new(path.clone());
+                internal.file_type = TotkFileType::Hkcl;
+                self.internal_file = Some(internal);
+                self.internal_parent = Some(InternalParentLink {
+                    document_id: parent_document_id,
+                    outer_path,
+                    inner_path: path,
+                });
+                return Some(data);
+            }
+        }
         if let Ok(bphcl) =
             crate::file_format::bphcl::BphclFile::from_binary(&bytes, Some(Path::new(&path)))
         {

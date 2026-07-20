@@ -25,6 +25,10 @@ pub struct BphclDocument {
     pub aamp: Option<AampSection>,
 }
 impl BphclDocument {
+    pub fn neutral_physics_graph(&self) -> crate::parser::physics_graph::FormatNeutralPhysicsGraph {
+        self.into()
+    }
+
     pub fn parse(data: &[u8]) -> io::Result<Self> {
         let header = BphclHeader::read(data)?;
         let tag = Section::read(data, header.tag_offset as usize, data.len(), Some("TAG0"))?;

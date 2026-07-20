@@ -360,14 +360,18 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     setContextMenu({ visible: false, x: 0, y: 0 });
   };
 
-  const bphclNode = sarcPaths.read_only && (fullPath.includes('/Cloth/') || fullPath.includes('/Collidables/'));
-  const contextMenuActions = bphclNode ? [
+  const readOnlyPhysicsNode = sarcPaths.read_only;
+  const bphclNode = readOnlyPhysicsNode
+    && fullPath.split('/')[0].toLowerCase().endsWith('.bphcl')
+    && (fullPath.includes('/Cloth/') || fullPath.includes('/Collidables/'));
+  const readOnlyActions = [
     { label: 'View', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: 'F3' },
     { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },
-    { label: 'Delete', method: handleRemoveBphclNode, icon: 'context_menu/remove.png', shortcut: '' },
+    ...(bphclNode ? [{ label: 'Delete', method: handleRemoveBphclNode, icon: 'context_menu/remove.png', shortcut: '' }] : []),
     { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: '' },
     { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },
-  ] : isFile ? [
+  ];
+  const contextMenuActions = readOnlyPhysicsNode && isFile ? readOnlyActions : isFile ? [
     { label: 'Edit', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: 'F3' },
     { label: 'Compare', method: handleCompareInternalSarcFile, icon: 'context_menu/compare.png', shortcut: '' },
     { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },

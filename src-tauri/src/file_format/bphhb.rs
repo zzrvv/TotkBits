@@ -1,0 +1,90 @@
+use crate::parser::{bphhb::BphhbDocument, hkcl::HkclLeaf};
+use std::{io, path::Path};
+
+pub struct BphhbFile {
+    pub source_path: Option<String>,
+    pub document: BphhbDocument,
+}
+
+impl BphhbFile {
+    pub fn from_binary(data: &[u8], path: Option<&Path>) -> io::Result<Self> {
+        let document = BphhbDocument::parse(data)?;
+        document.validate()?;
+        Ok(Self {
+            source_path: path.map(|path| path.to_string_lossy().into_owned()),
+            document,
+        })
+    }
+
+    pub fn open(
+        path: &Path,
+    ) -> Option<(
+        crate::file_format::BinTextFile::OpenedFile<'static>,
+        crate::Open_and_Save::SendData,
+    )> {
+        if !is_bphhb_path(path) {
+            return None;
+        }
+        let bytes = std::fs::read(path).ok()?;
+        let file = Self::from_binary(&bytes, Some(path)).ok()?;
+        let data = file
+            .send_data(path, "Opened read-only BPHHB structure".into())
+            .ok()?;
+        let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
+        opened.file_type = crate::Zstd::TotkFileType::Bphhb;
+        opened.path = crate::Settings::Pathlib::new(path);
+        opened.bphhb = Some(file);
+        Some((opened, data))
+    }
+
+    pub fn send_data(
+        &self,
+        path: &Path,
+        status_text: String,
+    ) -> io::Result<crate::Open_and_Save::SendData> {
+        let root_name = path
+            .file_name()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "BPHHB path has no name"))?
+            .to_string_lossy();
+        let mut data = crate::Open_and_Save::SendData::default();
+        data.path = crate::Settings::Pathlib::new(path);
+        data.tab = "SARC".into();
+        data.read_only = true;
+        data.sarc_paths.paths = self
+            .document
+            .leaves()?
+            .into_iter()
+            .map(|leaf| format!("{root_name}/{}", leaf.path))
+            .collect();
+        data.sarc_paths.read_only = true;
+        data.get_file_label(crate::Zstd::TotkFileType::Bphhb, None);
+        data.status_text = status_text;
+        Ok(data)
+    }
+
+    pub fn leaf(&self, path: &str) -> io::Result<HkclLeaf> {
+        let path = path.split_once('/').map(|(_, leaf)| leaf).unwrap_or(path);
+        self.document
+            .leaves()?
+            .into_iter()
+            .find(|leaf| leaf.path == path)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "BPHHB leaf not found"))
+    }
+}
+
+fn is_bphhb_path(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("bphhb"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disk_opener_requires_bphhb_extension() {
+        assert!(is_bphhb_path(Path::new("bones.bphhb")));
+        assert!(is_bphhb_path(Path::new("bones.BPHHB")));
+        assert!(!is_bphhb_path(Path::new("bones.bphcl")));
+    }
+}

@@ -47,6 +47,27 @@ fn validate_merged(label: &str, bytes: &[u8]) -> BphclDocument {
 }
 
 #[test]
+fn corpus_projects_to_format_neutral_graphs() {
+    for (name, document) in corpus() {
+        let graph = document.neutral_physics_graph();
+        assert_eq!(graph.cloths.len(), document.cloth.len(), "{name}");
+        assert_eq!(graph.skeletons.len(), document.skeletons.len(), "{name}");
+        assert_eq!(
+            graph.collidables.len(),
+            document.collidables.len(),
+            "{name}"
+        );
+        assert!(graph
+            .cloths
+            .iter()
+            .all(|cloth| cloth.simulations.iter().all(|simulation| simulation
+                .particles
+                .iter()
+                .all(|particle| particle.position.is_some()))));
+    }
+}
+
+#[test]
 fn cloth_and_collidable_removals_reparse_across_corpus_samples() {
     let documents = corpus();
     let (cloth_name, cloth_document) = documents

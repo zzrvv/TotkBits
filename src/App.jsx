@@ -42,7 +42,7 @@ function App() {
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
     physicsMergeReturnTab,
-    editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
+    editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang, readOnly,
     documentModels, documentViewStates,
     rightEditorContainerRef, rightEditorRef, rightDocumentId, setRightDocumentId,
     splitRatio, setSplitRatio,
@@ -275,7 +275,11 @@ function App() {
       <PhysicsMerge activeTab={activeTab} setActiveTab={setActiveTab} returnTab={physicsMergeReturnTab} setStatusText={setStatusText} setpaths={setpaths} documentSnapshots={documentSnapshots} />
       
 
-      <div ref={editorContainerRef} className="code_editor" style={{ display: activeTab === 'YAML' ? "block" : "none" }}></div>
+      {activeTab === 'YAML' && readOnly && <div className="physics-yaml-preview-banner" role="status">
+        <strong>{labelTextDisplay.yaml?.includes('[HKCL]') ? 'HKCL YAML preview' : 'Physics YAML preview'}</strong>
+        <span>Read-only parsed data</span>
+      </div>}
+      <div ref={editorContainerRef} className={`code_editor ${activeTab === 'YAML' && readOnly ? 'physics-yaml-preview-editor' : ''}`} style={{ display: activeTab === 'YAML' ? "block" : "none" }}></div>
       {rightDocumentId && <>
         <div className="split-view-divider" onMouseDown={startSplitDrag} role="separator" aria-orientation="vertical" />
         <section className="right-document-view">

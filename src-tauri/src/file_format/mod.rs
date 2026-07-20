@@ -5,6 +5,8 @@ pub mod Rstb;
 pub mod SimpleOpeners;
 pub mod TagProduct;
 pub mod bphcl;
+pub mod bphhb;
+pub mod hkcl;
 pub mod msbt;
 // pub mod RstbData;
 // pub mod SarcEntriesData;

@@ -79,6 +79,27 @@ body {
   scrollbar-color: #565961 #202126;
 }
 
+.physics-yaml-preview-banner {
+  position: absolute;
+  z-index: 8;
+  top: var(--main-top-offset);
+  left: 0;
+  right: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid #4d5360;
+  color: #d8e5ff;
+  background: #252a34;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.physics-yaml-preview-banner span { color: #9da8ba; }
+.code_editor.physics-yaml-preview-editor { margin-top: calc(var(--main-top-offset) + 30px); }
+
 .has-split-view .code_editor,
 .has-split-view .directory-tree,
 .has-split-view .rstb-tree {

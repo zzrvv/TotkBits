@@ -42,6 +42,60 @@ pub fn list_bphcl_selectable_nodes(
 }
 
 #[tauri::command]
+pub fn list_open_hkcl_documents(
+    app_handle: tauri::AppHandle,
+) -> Vec<crate::DocumentState::OpenHkclDocument> {
+    app_handle.state::<DocumentState>().open_hkcl_documents()
+}
+
+#[tauri::command]
+pub fn list_open_bphhb_documents(
+    app_handle: tauri::AppHandle,
+) -> Vec<crate::DocumentState::OpenBphhbDocument> {
+    app_handle.state::<DocumentState>().open_bphhb_documents()
+}
+
+#[tauri::command]
+pub fn list_hkcl_selectable_nodes(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+) -> Result<Vec<crate::DocumentState::HkclSelectableNode>, String> {
+    app_handle
+        .state::<DocumentState>()
+        .hkcl_selectable_nodes(&documentId)
+}
+
+#[tauri::command]
+pub fn validate_physics_merge_request(
+    app_handle: tauri::AppHandle,
+    request: crate::DocumentState::PhysicsMergeRequest,
+) -> crate::DocumentState::PhysicsMergeValidation {
+    app_handle
+        .state::<DocumentState>()
+        .validate_physics_merge_request(&request)
+}
+
+#[tauri::command]
+pub fn build_physics_merge_graph(
+    app_handle: tauri::AppHandle,
+    request: crate::DocumentState::PhysicsMergeRequest,
+) -> Result<crate::DocumentState::PhysicsGraphMergeResult, String> {
+    app_handle
+        .state::<DocumentState>()
+        .build_physics_merge_graph(&request)
+}
+
+#[tauri::command]
+pub fn commit_rebuilt_physics_document(
+    app_handle: tauri::AppHandle,
+    request: crate::DocumentState::RebuiltPhysicsDocument,
+) -> Result<crate::DocumentState::PhysicsDocumentUpdateResult, String> {
+    app_handle
+        .state::<DocumentState>()
+        .commit_rebuilt_physics_document(request)
+}
+
+#[tauri::command]
 pub fn remove_bphcl_node(
     app_handle: tauri::AppHandle,
     documentId: String,

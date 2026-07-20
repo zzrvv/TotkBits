@@ -256,6 +256,8 @@ pub fn get_binary_by_filetype(
         TotkFileType::Bphcl => {
             rawdata = opened_file.bphcl.as_ref()?.raw_binary();
         }
+        TotkFileType::Hkcl => return None,
+        TotkFileType::Bphhb => return None,
         TotkFileType::Xlink => {
             rawdata = Xlink_rs::text_to_binary(text, file_path, zstd.clone(), zstd_dictionary)?;
         }
@@ -609,6 +611,8 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
         .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
         .or_else(|| MsbtFile::open_mstb(file_name))
         .or_else(|| crate::file_format::bphcl::BphclFile::open(file_name))
+        .or_else(|| crate::file_format::hkcl::HkclFile::open(file_name))
+        .or_else(|| crate::file_format::bphhb::BphhbFile::open(file_name))
         .or_else(|| crate::file_format::SimpleOpeners::AampFile::open_aamp(&file_name))
         .or_else(|| BfevFile::open_bfev(&file_name, zstd.clone()))
         .or_else(|| SmoSaveFile::open_smo_save_file(&file_name, zstd.clone()))
