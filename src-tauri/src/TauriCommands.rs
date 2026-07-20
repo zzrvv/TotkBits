@@ -25,6 +25,14 @@ use windows::{
 };
 
 #[tauri::command]
+pub fn inspect_bfres(
+    path: String,
+) -> Result<crate::file_format::Model3D::bfres::BfresFile, String> {
+    crate::file_format::Model3D::bfres::BfresFile::from_path(path)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn list_open_bphcl_documents(
     app_handle: tauri::AppHandle,
 ) -> Vec<crate::DocumentState::OpenBphclDocument> {

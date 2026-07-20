@@ -486,6 +486,7 @@ pub struct OpenedFile<'a> {
     // pub msyt: Option<MsbtFile>,
     pub msyt: Option<Msbt>,
     pub aamp: Option<()>,
+    pub bfres: Option<crate::file_format::Model3D::bfres::BfresFile>,
     pub bphcl: Option<crate::file_format::bphcl::BphclFile>,
     pub bphhb: Option<crate::file_format::bphhb::BphhbFile>,
     pub hkcl: Option<crate::file_format::hkcl::HkclFile>,
@@ -505,6 +506,7 @@ impl Default for OpenedFile<'_> {
             endian: None,
             msyt: None,
             aamp: None,
+            bfres: None,
             bphcl: None,
             bphhb: None,
             hkcl: None,
@@ -532,6 +534,7 @@ impl<'a> OpenedFile<'_> {
             endian: endian,
             msyt: msyt,
             aamp: None,
+            bfres: None,
             bphcl: None,
             bphhb: None,
             hkcl: None,
@@ -551,6 +554,7 @@ impl<'a> OpenedFile<'_> {
             endian: None,
             msyt: None,
             aamp: None,
+            bfres: None,
             bphcl: None,
             bphhb: None,
             hkcl: None,
@@ -569,6 +573,7 @@ impl<'a> OpenedFile<'_> {
         self.endian = None;
         self.msyt = None;
         self.aamp = None;
+        self.bfres = None;
         self.bphcl = None;
         self.bphhb = None;
         self.hkcl = None;

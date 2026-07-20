@@ -276,7 +276,7 @@ function MenuBarDisplay({ updateButton = null }) {
   const iconSize = '20px';
   const blankIcon = 'menu/blank.png';
   let isSaveEnabled = true;
-  if (activeTab === 'COMPARER') {
+  if (activeTab === 'COMPARER' || activeTab === '3D') {
     isSaveEnabled = false;
   } else if (activeTab === 'YAML' && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) {
     isSaveEnabled = false;

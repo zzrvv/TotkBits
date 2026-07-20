@@ -8,6 +8,7 @@ export const BackendEnum = {
   COMPARER: 'COMPARER',
   RSTB: 'RSTB',
   LOADING: 'LOADING',
+  MODEL_3D: '3D',
 };
 
 function ActiveTabDisplay({ activeTab, setActiveTab, labelTextDisplay }) {

@@ -31,6 +31,7 @@ pub enum TotkFileType {
     MalsSarc,
     Byml,
     Aamp,
+    Bfres,
     Bphcl,
     Bphhb,
     Hkcl,

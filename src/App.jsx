@@ -22,6 +22,7 @@ import { checkIfUpdateNeeded } from './ButtonClicks';
 import  OptionsEditor  from './OptionsEditor';
 import DocumentTabs from './DocumentTabs';
 import PhysicsMerge from './PhysicsMerge';
+import Bfres3DView from './Bfres3DView';
 
 
 let triggered = false
@@ -243,7 +244,7 @@ function App() {
         setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
       </SearchTextInSarcPrompt>
 
-      <ButtonsDisplay
+      {activeTab !== '3D' && <ButtonsDisplay
         editorRef={editorRef}
         updateEditorContent={updateEditorContent}
         setStatusText={setStatusText}
@@ -254,7 +255,7 @@ function App() {
         selectedPath={selectedPath}
         setIsModalOpen={setIsModalOpen}
         setIsAddPrompt={setIsAddPrompt}
-      />
+      />}
       <DirectoryTree
         onNodeSelect={handleNodeSelect}
         sarcPaths={paths}
@@ -273,6 +274,7 @@ function App() {
       />
       <Comparer setStatusText={setStatusText} activeTab={activeTab}/>
       <PhysicsMerge activeTab={activeTab} setActiveTab={setActiveTab} returnTab={physicsMergeReturnTab} setStatusText={setStatusText} setpaths={setpaths} documentSnapshots={documentSnapshots} />
+      <Bfres3DView activeTab={activeTab} setStatusText={setStatusText} />
       
 
       {activeTab === 'YAML' && readOnly && <div className="physics-yaml-preview-banner" role="status">

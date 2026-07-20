@@ -1,0 +1,46 @@
+.bfres-workspace { position: fixed; inset: var(--main-top-offset) 0 20px; display: grid; grid-template: 42px minmax(0, 1fr) / max-content minmax(320px, 1fr) 390px; background: #11151b; color: #dce3ea; z-index: 2; }
+.bfres-toolbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; padding: 0 10px; border-bottom: 1px solid #303946; background: #1a2029; }
+.bfres-toolbar > div { display: flex; flex-direction: column; margin-right: auto; min-width: 0; }
+.bfres-toolbar span { color: #8e9baa; font-size: 11px; }
+.bfres-toolbar button, .bfres-yaml-panel button { color: #cbd5df; border: 1px solid #394655; background: #222b35; border-radius: 4px; padding: 6px 10px; }
+.bfres-toolbar select { max-width: 190px; color: #cbd5df; border: 1px solid #394655; background: #222b35; border-radius: 4px; padding: 5px 8px; }
+.bfres-toolbar button.active { background: #31536c; border-color: #4c86aa; color: white; }
+.bfres-toolbar small { margin-left: 4px; color: #97bed8; }
+.bfres-viewport { position: relative; min-width: 0; min-height: 0; }
+.bfres-resource-tree { min-width: 170px; max-width: 520px; width: 240px; overflow: auto; resize: horizontal; border-right: 1px solid #303946; background: #171c23; z-index: 1; }
+.bfres-resource-tree > header { padding: 10px; color: #8291a1; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; border-bottom: 1px solid #303946; }
+.bfres-tree-folder { border-bottom: 1px solid #252e38; }
+.bfres-tree-folder summary { display: flex; align-items: center; gap: 6px; padding: 7px 9px; cursor: pointer; color: #d1dae3; font-size: 12px; user-select: none; list-style: none; }
+.bfres-tree-folder summary::-webkit-details-marker { display: none; }
+.bfres-tree-folder summary small { margin-left: auto; color: #718191; }
+.bfres-tree-folder:not([open]) summary > span { transform: rotate(-90deg); }
+.bfres-tree-folder > div { padding: 0 0 5px 15px; }
+.bfres-tree-node { width: 100%; display: flex; align-items: center; gap: 5px; border: 0; background: transparent; color: #b9c5d0; padding: 5px 8px; text-align: left; font-size: 11px; }
+.bfres-tree-node:hover { background: #253543; color: white; }
+.bfres-tree-node > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bfres-tree-node > small { margin-left: auto; flex: 0 0 auto; color: #68798a; font-size: 9px; }
+.bfres-bone-branch > summary { display: flex; align-items: center; gap: 6px; padding: 5px 8px; cursor: pointer; list-style: none; color: #b9c5d0; font-size: 11px; }.bfres-bone-branch > summary::-webkit-details-marker { display: none; }.bfres-bone-branch > summary:hover { background: #253543; color: white; }.bfres-bone-branch > summary small { margin-left: auto; color: #68798a; }.bfres-bone-branch[open] > summary > span { transform: rotate(90deg); }
+.bfres-bone-branch > div { margin-left: 11px; border-left: 1px solid #33404d; padding-left: 4px; }
+.bfres-viewport-note { position: absolute; left: 12px; bottom: 10px; padding: 5px 8px; border-radius: 4px; background: #10151bcc; color: #8795a5; font-size: 11px; pointer-events: none; }
+.bfres-inspector { min-width: 260px; max-width: 680px; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid #303946; background: #171c23; resize: horizontal; overflow: auto; }
+.bfres-inspector > input { margin: 8px; padding: 7px 9px; color: #e2e8ef; background: #10151b; border: 1px solid #354252; border-radius: 4px; }
+.bfres-node-detail { padding: 10px 12px; max-height: 42%; overflow: auto; resize: vertical; border-bottom: 1px solid #303946; font-size: 11px; }
+.bfres-node-detail > header { display: flex; justify-content: space-between; align-items: baseline; }.bfres-node-detail > header small, .bfres-node-detail p { color: #7f8d9b; }
+.bfres-node-detail h4 { margin: 12px 0 6px; color: #8998a7; text-transform: uppercase; font-size: 10px; }
+.bfres-node-detail dl { display: grid; grid-template-columns: 100px 1fr; gap: 6px; }.bfres-node-detail dt { color: #8190a0; }.bfres-node-detail dd { margin: 0; font-family: Consolas, monospace; overflow-wrap: anywhere; }
+.bfres-slot-list > div { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 7px; padding: 6px; border-top: 1px solid #27313b; align-items: center; }.bfres-slot-list span { color: #68798a; }.bfres-slot-list strong { overflow: hidden; text-overflow: ellipsis; }.bfres-slot-list small { color: #74c69d; }
+.bfres-resource-table { overflow: auto; height: 260px; min-height: 100px; max-height: 70%; resize: vertical; border-block: 1px solid #303946; }
+.bfres-row { width: 100%; display: grid; grid-template-columns: 60px minmax(0, 1fr) 78px; gap: 6px; padding: 6px 8px; border: 0; border-bottom: 1px solid #242d37; background: transparent; color: #bdc8d3; text-align: left; font-size: 12px; }
+button.bfres-row:hover, button.bfres-row.selected { background: #253543; }
+.bfres-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bfres-table-head { position: sticky; top: 0; background: #202730; color: #7f8d9c; font-size: 10px; text-transform: uppercase; z-index: 1; }
+.bfres-parameters { display: grid; grid-template-columns: 130px 1fr; gap: 8px 12px; margin: 0; padding: 14px; border-bottom: 1px solid #303946; font-size: 12px; }
+.bfres-parameters dt { color: #8291a1; }.bfres-parameters dd { margin: 0; color: #e1e7ed; font-family: Consolas, monospace; }
+.bfres-animation-list { max-height: 42%; overflow: auto; border-bottom: 1px solid #303946; }
+.bfres-animation-list p { color: #8493a3; padding: 8px 14px; }
+.bfres-animation-list > button { width: 100%; display: flex; gap: 10px; align-items: center; border: 0; border-bottom: 1px solid #27303a; background: transparent; color: #cbd5df; padding: 9px 12px; text-align: left; }
+.bfres-animation-list > button:hover { background: #253543; }.bfres-animation-list strong, .bfres-animation-list small { display: block; }.bfres-animation-list small { color: #7f8d9b; margin-top: 2px; }
+.bfres-yaml-panel { flex: 1; min-height: 160px; display: flex; flex-direction: column; resize: vertical; overflow: auto; }
+.bfres-yaml-panel > header { height: 36px; flex: 0 0 36px; display: flex; align-items: center; justify-content: space-between; padding: 0 8px; color: #9aa8b6; font-size: 12px; }
+.bfres-yaml-panel > header button { padding: 4px 8px; }.bfres-yaml-panel > header button:disabled { opacity: .45; }
+.bfres-error { grid-column: 1 / -1; padding: 20px; color: #ff8c8c; }
