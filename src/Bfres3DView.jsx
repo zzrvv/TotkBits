@@ -20,27 +20,40 @@ const sectionYaml = (section) => [
     'parameters: {}',
 ].join('\n');
 
-function boneWorldMatrices(bones) {
+function boneWorldMatrices(bones, rotationMode = 'quaternion', scaleMode = 'none') {
     const matrices = bones.map(() => new THREE.Matrix4());
     bones.forEach((bone, index) => {
+        const rotation = rotationMode === 'euler_xyz'
+            ? new THREE.Quaternion().setFromEuler(new THREE.Euler(bone.rotation[0], bone.rotation[1], bone.rotation[2], 'XYZ'))
+            : new THREE.Quaternion(...bone.rotation).normalize();
         const local = new THREE.Matrix4().compose(
             new THREE.Vector3(...bone.translation),
-            new THREE.Quaternion(...bone.rotation).normalize(),
+            rotation,
             new THREE.Vector3(...bone.scale),
         );
-        matrices[index] = bone.parent_index >= 0 && matrices[bone.parent_index]
-            ? matrices[bone.parent_index].clone().multiply(local) : local;
+        if (bone.parent_index >= 0 && matrices[bone.parent_index]) {
+            const parent = matrices[bone.parent_index].clone();
+            if (scaleMode === 'maya') {
+                const scale = bones[bone.parent_index].scale;
+                parent.multiply(new THREE.Matrix4().makeScale(
+                    scale[0] ? 1 / scale[0] : 1,
+                    scale[1] ? 1 / scale[1] : 1,
+                    scale[2] ? 1 / scale[2] : 1,
+                ));
+            }
+            matrices[index] = parent.multiply(local);
+        } else matrices[index] = local;
     });
     return matrices;
 }
 
-function RenderMesh({ mesh, bones, wireframe, weightBone, showNormals, onSelect }) {
+function RenderMesh({ mesh, bones, rotationMode, scaleMode, wireframe, weightBone, showNormals, onSelect }) {
     const geometry = useMemo(() => {
         const result = new THREE.BufferGeometry();
         const positions = new Float32Array(mesh.positions.flat());
         const normals = mesh.normals.length === mesh.positions.length ? new Float32Array(mesh.normals.flat()) : null;
         if (mesh.vertex_skin_count <= 1 && bones.length) {
-            const worlds = boneWorldMatrices(bones);
+            const worlds = boneWorldMatrices(bones, rotationMode, scaleMode);
             const fallback = mesh.bone_index;
             for (let index = 0; index < mesh.positions.length; index += 1) {
                 const bone = mesh.vertex_skin_count === 1 ? mesh.bone_indices[index]?.[0] : fallback;
@@ -52,6 +65,37 @@ function RenderMesh({ mesh, bones, wireframe, weightBone, showNormals, onSelect 
                     const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
                     const normal = new THREE.Vector3(normals[index * 3], normals[index * 3 + 1], normals[index * 3 + 2]).applyMatrix3(normalMatrix).normalize();
                     normals.set(normal.toArray(), index * 3);
+                }
+            }
+        } else if (mesh.vertex_skin_count > 1 && bones.length) {
+            const worlds = boneWorldMatrices(bones, rotationMode, scaleMode);
+            for (let vertex = 0; vertex < mesh.positions.length; vertex += 1) {
+                const sourcePosition = new THREE.Vector3(...mesh.positions[vertex]);
+                const sourceNormal = normals ? new THREE.Vector3(...mesh.normals[vertex]) : null;
+                const skinnedPosition = new THREE.Vector3();
+                const skinnedNormal = new THREE.Vector3();
+                let totalWeight = 0;
+                for (let influence = 0; influence < 4; influence += 1) {
+                    const weight = mesh.bone_weights[vertex]?.[influence] || 0;
+                    const boneIndex = mesh.bone_indices[vertex]?.[influence];
+                    const bone = bones[boneIndex];
+                    if (weight <= 0.000001 || !bone || !worlds[boneIndex] || !bone.inverse_bind_matrix) continue;
+                    const inverse = bone.inverse_bind_matrix;
+                    const inverseBind = new THREE.Matrix4().set(
+                        inverse[0], inverse[1], inverse[2], inverse[3],
+                        inverse[4], inverse[5], inverse[6], inverse[7],
+                        inverse[8], inverse[9], inverse[10], inverse[11],
+                        0, 0, 0, 1,
+                    );
+                    const skinMatrix = worlds[boneIndex].clone().multiply(inverseBind);
+                    skinnedPosition.add(sourcePosition.clone().applyMatrix4(skinMatrix).multiplyScalar(weight));
+                    if (sourceNormal) skinnedNormal.add(sourceNormal.clone().applyMatrix3(new THREE.Matrix3().getNormalMatrix(skinMatrix)).multiplyScalar(weight));
+                    totalWeight += weight;
+                }
+                if (totalWeight > 0.000001) {
+                    skinnedPosition.multiplyScalar(1 / totalWeight);
+                    positions.set(skinnedPosition.toArray(), vertex * 3);
+                    if (normals && skinnedNormal.lengthSq() > 0) normals.set(skinnedNormal.normalize().toArray(), vertex * 3);
                 }
             }
         }
@@ -76,7 +120,7 @@ function RenderMesh({ mesh, bones, wireframe, weightBone, showNormals, onSelect 
         result.setIndex(mesh.indices);
         result.computeBoundingSphere();
         return result;
-    }, [mesh, bones, weightBone]);
+    }, [mesh, bones, rotationMode, scaleMode, weightBone]);
     useEffect(() => () => geometry.dispose(), [geometry]);
     const normalLines = useMemo(() => {
         const lineGeometry = new THREE.BufferGeometry();
@@ -95,17 +139,20 @@ function RenderMesh({ mesh, bones, wireframe, weightBone, showNormals, onSelect 
         return lineGeometry;
     }, [geometry]);
     useEffect(() => () => normalLines.dispose(), [normalLines]);
+    const selectedEdges = useMemo(() => new THREE.WireframeGeometry(geometry), [geometry]);
+    useEffect(() => () => selectedEdges.dispose(), [selectedEdges]);
     return <group>
         <mesh geometry={geometry} onClick={(event) => { event.stopPropagation(); onSelect(mesh); }} castShadow receiveShadow>
             <meshStandardMaterial vertexColors wireframe={wireframe} roughness={0.72} metalness={0.05} side={THREE.DoubleSide} />
         </mesh>
+        {mesh.selected && <lineSegments geometry={selectedEdges} renderOrder={20}><lineBasicMaterial color="#ffffff" depthTest={false} /></lineSegments>}
         {showNormals && <lineSegments geometry={normalLines}><lineBasicMaterial color="#55e6ff" depthTest={false} transparent opacity={0.8} /></lineSegments>}
     </group>;
 }
 
-function Skeleton({ bones }) {
+function Skeleton({ bones, rotationMode, scaleMode }) {
     const points = useMemo(() => {
-        const worlds = boneWorldMatrices(bones);
+        const worlds = boneWorldMatrices(bones, rotationMode, scaleMode);
         const values = [];
         bones.forEach((bone, index) => {
             if (bone.parent_index < 0 || !worlds[bone.parent_index]) return;
@@ -113,11 +160,11 @@ function Skeleton({ bones }) {
             values.push(...new THREE.Vector3().setFromMatrixPosition(worlds[index]).toArray());
         });
         return new Float32Array(values);
-    }, [bones]);
+    }, [bones, rotationMode, scaleMode]);
     return <lineSegments><bufferGeometry><bufferAttribute attach="attributes-position" args={[points, 3]} /></bufferGeometry><lineBasicMaterial color="#ffd166" depthTest={false} /></lineSegments>;
 }
 
-function ResourceScene({ render, wireframe, showSkeleton, showNormals, weightBone, onSelectMesh }) {
+function ResourceScene({ render, wireframe, showSkeleton, showNormals, weightBone, selectedMesh, onSelectMesh }) {
     return <>
         <color attach="background" args={['#11151b']} />
         <ambientLight intensity={1.4} />
@@ -126,8 +173,8 @@ function ResourceScene({ render, wireframe, showSkeleton, showNormals, weightBon
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
         <Bounds fit clip observe margin={1.15}>
-            <group>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={mesh} bones={render.bones} wireframe={wireframe} weightBone={weightBone} showNormals={showNormals} onSelect={onSelectMesh} />)}</group>
-            {showSkeleton && <Skeleton bones={render.bones} />}
+            <group>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh }} bones={render.bones} rotationMode={render.rotation_mode} scaleMode={render.scale_mode} wireframe={wireframe} weightBone={weightBone} showNormals={showNormals} onSelect={onSelectMesh} />)}</group>
+            {showSkeleton && <Skeleton bones={render.bones} rotationMode={render.rotation_mode} scaleMode={render.scale_mode} />}
         </Bounds>
     </>;
 }
@@ -181,6 +228,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [weightBone, setWeightBone] = useState(-2);
     const [detail, setDetail] = useState(null);
     const [showEditor, setShowEditor] = useState(false);
+    const [selectedMesh, setSelectedMesh] = useState('');
 
     useEffect(() => {
         if (activeTab !== '3D' || !document?.fullPath) return;
@@ -244,6 +292,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     setStatusText(`Selected material ${value.name}`);
                 } else choose(value);
             }} onMesh={(mesh) => {
+                setSelectedMesh(mesh.name);
                 setDetail({ type: 'mesh', value: mesh });
                 setYaml(JSON.stringify(mesh, null, 2));
                 setStatusText(`Selected mesh ${mesh.name}`);
@@ -256,7 +305,8 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             }} />
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
                 <Canvas dpr={[1, 2]} gl={{ antialias: true }}>
-                    {bfres?.render && <ResourceScene render={bfres.render} wireframe={wireframe} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} onSelectMesh={(mesh) => {
+                    {bfres?.render && <ResourceScene render={bfres.render} wireframe={wireframe} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} selectedMesh={selectedMesh} onSelectMesh={(mesh) => {
+                        setSelectedMesh(mesh.name);
                         setYaml(JSON.stringify(mesh, null, 2));
                         setStatusText(`${mesh.name}: ${mesh.positions.length.toLocaleString()} vertices, ${(mesh.indices.length / 3).toLocaleString()} triangles`);
                     }} />}
