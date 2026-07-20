@@ -101,9 +101,12 @@ export default function DocumentTabs() {
         }
 
         const previousModel = latest.editorRef.current?.getModel();
-        latest.documentSnapshots.current.set(previous, snapshotFor(latest, previousModel));
+        const previousIsOpen = documents.some((document) => document.id === previous);
+        if (previousIsOpen) {
+            latest.documentSnapshots.current.set(previous, snapshotFor(latest, previousModel));
+        }
         if (latest.editorRef.current) {
-            if (isOwnedModel(previousModel, previous)) {
+            if (previousIsOpen && isOwnedModel(previousModel, previous)) {
                 latest.documentModels.current.set(previous, previousModel);
                 const previousViewState = latest.editorRef.current.saveViewState();
                 if (previousViewState) latest.documentViewStates.current.set(previous, previousViewState);

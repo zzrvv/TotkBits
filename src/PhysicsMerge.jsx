@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './PhysicsMerge.css';
 import { getDocumentsSnapshot } from './DocumentState';
 
@@ -20,8 +20,10 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpa
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [merging, setMerging] = useState(false);
+    const refreshSequence = useRef(0);
 
     const refreshDocuments = useCallback(async () => {
+        const sequence = ++refreshSequence.current;
         setLoading(true);
         setError('');
         try {
@@ -30,20 +32,29 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpa
                 invoke('list_open_bphcl_documents'),
                 invoke('list_open_bphhb_documents'),
             ]);
-            setDocuments({ hkcl, bphcl, bphhb });
+            if (sequence === refreshSequence.current) setDocuments({ hkcl, bphcl, bphhb });
         } catch (reason) {
+            if (sequence !== refreshSequence.current) return;
             const message = String(reason);
             setError(message);
             setStatusText(`ERROR: ${message}`);
         } finally {
-            setLoading(false);
+            if (sequence === refreshSequence.current) setLoading(false);
         }
     }, [setStatusText]);
 
     useEffect(() => {
         if (activeTab !== 'PHYSICS_MERGE') return;
+        // IDs are allocated per open operation. Do not let the node effect use
+        // IDs retained from a previous visit while the fresh list is loading.
+        setDocuments({ hkcl: [], bphcl: [], bphhb: [] });
+        setTargetId('');
+        setSourceId('');
+        setHelperId('');
+        setNodes([]);
         setSelectedNodeIds(new Set());
         setValidation(null);
+        setError('');
         refreshDocuments();
     }, [activeTab, refreshDocuments]);
 
@@ -59,14 +70,20 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpa
     }, [documents, sourceFormat, targetFormat, targetId]);
 
     useEffect(() => {
+        setHelperId((current) => current && documents.bphhb.some((item) => item.documentId === current)
+            ? current : '');
+    }, [documents.bphhb]);
+
+    useEffect(() => {
         if (!sourceId || activeTab !== 'PHYSICS_MERGE') {
             setNodes([]);
             return;
         }
         let cancelled = false;
+        setNodes([]);
         setLoading(true);
         invoke(sourceFormat === 'hkcl' ? 'list_hkcl_selectable_nodes' : 'list_bphcl_selectable_nodes', { documentId: sourceId })
-            .then((result) => { if (!cancelled) setNodes(result); })
+            .then((result) => { if (!cancelled) { setNodes(result); setError(''); } })
             .catch((reason) => { if (!cancelled) setError(String(reason)); })
             .finally(() => { if (!cancelled) setLoading(false); });
         setSelectedNodeIds(new Set());
@@ -113,6 +130,30 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpa
         return next;
     });
 
+    const toggleGroup = (groupNodes) => setSelectedNodeIds((current) => {
+        const next = new Set(current);
+        const ids = groupNodes.map((node) => node.nodeId);
+        const allSelected = ids.length > 0 && ids.every((id) => current.has(id));
+        ids.forEach((id) => allSelected ? next.delete(id) : next.add(id));
+        return next;
+    });
+
+    const selectableNodes = useMemo(() => groups.flatMap((group) => group.nodes), [groups]);
+    const allSelected = (groupNodes) => groupNodes.length > 0
+        && groupNodes.every((node) => selectedNodeIds.has(node.nodeId));
+
+    const swapDocuments = () => {
+        setTargetFormat(sourceFormat);
+        setSourceFormat(targetFormat);
+        setTargetId(sourceId);
+        setSourceId(targetId);
+        setHelperId('');
+        setTemplateIndex(0);
+        setSelectedNodeIds(new Set());
+        setValidation(null);
+        setError('');
+    };
+
     const mergeSelection = async () => {
         if (!validation?.valid) return;
         setMerging(true);
@@ -158,6 +199,7 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpa
             <label>Target document<select value={targetId} onChange={(event) => setTargetId(event.target.value)}>{targetDocuments.map((document) => <option key={document.documentId} value={document.documentId} disabled={document.documentId === sourceId}>{document.label} — {locationLabel[document.location]}</option>)}</select></label>
             <label>Source format<select value={sourceFormat} onChange={(event) => setSourceFormat(event.target.value)}><option value="bphcl">BPHCL</option><option value="hkcl">HKCL</option></select></label>
             <label>Source document<select value={sourceId} onChange={(event) => setSourceId(event.target.value)}>{sourceDocuments.filter((document) => document.documentId !== targetId).map((document) => <option key={document.documentId} value={document.documentId}>{document.label} — {locationLabel[document.location]}</option>)}</select></label>
+            <button className="physics-merge-swap" type="button" onClick={swapDocuments} disabled={!targetId || !sourceId}>Swap source / target</button>
         </div>
 
         {crossFormat && <div className="physics-merge-documents physics-merge-options">
@@ -168,6 +210,10 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpa
         {error && <div className="physics-merge-error" role="alert">{error}</div>}
         {validation && !validation.valid && <div className="physics-merge-error" role="alert">{validation.issues.map((issue) => <div key={issue}>{issue}</div>)}</div>}
         {(crossFormat || targetFormat === 'hkcl') && <p className="physics-merge-notice">Cross-format and HKCL merge results are validated graph previews until binary rebuilding is implemented.</p>}
+        <div className="physics-merge-selection-actions">
+            <button type="button" onClick={() => toggleGroup(selectableNodes)} disabled={loading || selectableNodes.length === 0}>{allSelected(selectableNodes) ? 'Deselect all nodes' : 'Select all nodes'}</button>
+            {groups.map((group) => <button type="button" key={group.kind} onClick={() => toggleGroup(group.nodes)} disabled={loading || group.nodes.length === 0}>{allSelected(group.nodes) ? `Deselect all ${group.kind === 'cloth' ? 'cloths' : 'collidables'}` : `Select all ${group.kind === 'cloth' ? 'cloths' : 'collidables'}`}</button>)}
+        </div>
         {loading && <div className="physics-merge-empty">Loading {formatLabel[sourceFormat]} nodes…</div>}
         {!loading && groups.map((group) => <div className="physics-merge-group" key={group.kind}><h2>{group.label} <span>{group.nodes.length}</span></h2>{group.nodes.length === 0 ? <p className="physics-merge-empty">No selectable {group.label.toLowerCase()}.</p> : <div className="physics-merge-node-list">{group.nodes.map((node) => <label className="physics-merge-node" key={node.nodeId}><input type="checkbox" checked={selectedNodeIds.has(node.nodeId)} onChange={() => toggleNode(node.nodeId)} /><span className="physics-merge-node-name">{node.name || `Unnamed ${node.kind} ${node.index}`}</span><span className="physics-merge-node-meta">{sourceFormat === 'bphcl' ? `ITEM ${node.itemIndex}` : `DATA 0x${node.dataOffset.toString(16)}`}</span></label>)}</div>}</div>)}
 

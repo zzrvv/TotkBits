@@ -33,6 +33,7 @@
 
 .physics-merge-documents { margin: 24px 0; align-items: flex-end; }
 .physics-merge-formats { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+.physics-merge-swap { grid-column: 1 / -1; justify-self: center; }
 .physics-merge-options { justify-content: flex-start; }
 .physics-merge-options label { max-width: 420px; }
 .physics-merge-documents label { display: grid; flex: 1; gap: 7px; color: #bbb; }
@@ -58,4 +59,5 @@
 .physics-merge-empty { padding: 12px; color: #999; }
 .physics-merge-error { padding: 10px 12px; border: 1px solid #8b3535; color: #ffabab; background: #3b2020; }
 .physics-merge-notice { padding: 10px 12px; border: 1px solid #665b32; color: #e6d58b; background: #35311f; }
+.physics-merge-selection-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
 .physics-merge-footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid #444; color: #aaa; }

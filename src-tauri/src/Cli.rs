@@ -15,6 +15,7 @@ use roead::{
 };
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     env, fs,
     path::{Path, PathBuf},
     sync::Arc,
@@ -49,6 +50,7 @@ impl CliCommand {
                 | "extract_archive"
                 | "dir_to_archive"
                 | "decompress"
+                | "bphcl_nodes"
                 // | "bphcl_validate"
                 | "compress" // | "msbt_dump"
                              // | "msbt_verify"
@@ -56,14 +58,19 @@ impl CliCommand {
         );
         let expected_arguments = if matches!(
             operation.as_str(),
-            "decompress" | "bphcl_validate" | "msbt_dump" | "msbt_verify" | "rstb_validate"
+            "decompress"
+                | "bphcl_nodes"
+                | "bphcl_validate"
+                | "msbt_dump"
+                | "msbt_verify"
+                | "rstb_validate"
         ) {
             5
         } else {
             6
         };
         if !is_public_operation || arguments.len() != expected_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli <decompress|bphcl_nodes> <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -82,7 +89,12 @@ impl CliCommand {
         };
         if matches!(
             operation.as_str(),
-            "decompress" | "bphcl_validate" | "msbt_dump" | "msbt_verify" | "rstb_validate"
+            "decompress"
+                | "bphcl_nodes"
+                | "bphcl_validate"
+                | "msbt_dump"
+                | "msbt_verify"
+                | "rstb_validate"
         ) {
             Some(Self {
                 operation,
@@ -110,6 +122,7 @@ impl CliCommand {
             "extract_archive" => self.extract_archive(),
             "dir_to_archive" => self.dir_to_archive(),
             "decompress" => self.decompress(),
+            "bphcl_nodes" => self.bphcl_nodes(),
             // "bphcl_validate" => self.bphcl_validate(),
             "compress" => self.compress(),
             // "msbt_dump" => self.msbt_dump(),
@@ -188,6 +201,59 @@ impl CliCommand {
         println!(
             "BPHCL valid: {} files; hashes written to {}",
             rows.len(),
+            self.output.display()
+        );
+        Ok(())
+    }
+
+    fn bphcl_nodes(&self) -> Result<(), String> {
+        #[derive(serde::Serialize)]
+        struct Nodes {
+            cloth: Vec<String>,
+            collidables: Vec<String>,
+        }
+
+        let mut files = walkdir::WalkDir::new(&self.input)
+            .into_iter()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry.file_type().is_file()
+                    && entry
+                        .path()
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("bphcl"))
+            })
+            .map(|entry| entry.into_path())
+            .collect::<Vec<_>>();
+        files.sort();
+
+        let mut manifest = BTreeMap::new();
+        for path in files {
+            let bytes = fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            let document = crate::parser::bphcl::BphclDocument::parse(&bytes)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let relative = path.strip_prefix(&self.input).unwrap_or(&path);
+            let key = relative.to_string_lossy().replace('\\', "/");
+            if manifest.contains_key(&key) {
+                return Err(format!("duplicate BPHCL corpus name: {key}"));
+            }
+            manifest.insert(
+                key,
+                Nodes {
+                    cloth: document.cloth.into_iter().map(|node| node.name).collect(),
+                    collidables: document
+                        .collidables
+                        .into_iter()
+                        .map(|node| node.name)
+                        .collect(),
+                },
+            );
+        }
+        let json = serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?;
+        write_output(&self.output, &json)?;
+        println!(
+            "BPHCL nodes: {} files written to {}",
+            manifest.len(),
             self.output.display()
         );
         Ok(())

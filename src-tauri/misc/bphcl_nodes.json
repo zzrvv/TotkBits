@@ -1,0 +1,7057 @@
+{
+  "Animal_Donkey.bphcl": {
+    "cloth": [
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Waist"
+    ]
+  },
+  "Animal_Horse_Nushi.bphcl": {
+    "cloth": [
+      "Body_Cloth",
+      "Ear_Havok",
+      "Feeler_Havok",
+      "Nose_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Neck_2_",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Neck_2",
+      "Collidable_Neck_3",
+      "Collidable_Waist"
+    ]
+  },
+  "Animal_Skl_Horse.bphcl": {
+    "cloth": [
+      "Rope_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Spine_2",
+      "Collidable_Waist"
+    ]
+  },
+  "Animal_SkyCassowary.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hairside"
+    ],
+    "collidables": []
+  },
+  "Animal_Sunazarashi.bphcl": {
+    "cloth": [
+      "pPlane3"
+    ],
+    "collidables": []
+  },
+  "Armor_001_Head_A.bphcl": {
+    "cloth": [
+      "Hair_001_A_Havok",
+      "Hair_001_B_Havok",
+      "Hood_001_Havok",
+      "Mant_001_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Spine_1_Wide",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Waist_2",
+      "Collidable_Pod_A",
+      "Collidable_Pod_AA"
+    ]
+  },
+  "Armor_001_Head_B.bphcl": {
+    "cloth": [
+      "Hair_B_001_A_Havok",
+      "Hair_B_001_B_Havok",
+      "Hood_B_001_Havok",
+      "Mant_B_001_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Spine_1_Wide",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Waist_2",
+      "Collidable_Pod_A",
+      "Collidable_Pod_AA"
+    ]
+  },
+  "Armor_001_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Belt_A_Havok",
+      "Tunic_001_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_L_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_1_R_2"
+    ]
+  },
+  "Armor_005_Head.bphcl": {
+    "cloth": [
+      "Hair_1_005_Havok",
+      "Hair_2_005_Havok",
+      "Hair_B_005_Havok",
+      "Hair_D_005_Havok",
+      "Hair_E_005_Havok",
+      "Hair_F_005_Havok",
+      "Hair_H_005_Havok",
+      "Hat_200_Havok"
+    ],
+    "collidables": [
+      "Collidable_Neck",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_005_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Outer_005_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_006_Head.bphcl": {
+    "cloth": [
+      "Hire_006_Havok",
+      "O_006_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Spine_2_1"
+    ]
+  },
+  "Armor_006_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Body_Metal_006_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_008_Head.bphcl": {
+    "cloth": [
+      "Add_Hair_008_Hacok",
+      "Earring_028_Havok",
+      "Hair_1_008_Havok",
+      "Hair_2_008_Havok",
+      "Hair_B_008_Havok",
+      "Hair_D_008_Havok",
+      "Hair_E_008_Havok",
+      "Hair_F_008_Havok",
+      "Hair_H_008_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_009_Head.bphcl": {
+    "cloth": [
+      "Hair_1_009_Havok",
+      "Hair_2_009_Havok",
+      "Hair_3_009_Havok",
+      "Hair_B_009_Havok",
+      "Hair_D_009_Havok",
+      "Hair_E_009_Havok",
+      "Hair_F_009_Havok",
+      "Hair_G_009_Havok",
+      "Hair_H_009_Havok",
+      "Hair_I_009_Havok",
+      "Hair_J_009_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_009_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Apron_009_Havok",
+      "Tunick_009_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_1_R_2"
+    ]
+  },
+  "Armor_012_Head_A.bphcl": {
+    "cloth": [
+      "Add_Hair_A_Hacok",
+      "Hair_1_A_012_Havok",
+      "Hair_2_A_012_Havok",
+      "Hair_B_A_012_Havok",
+      "Hair_E_A_012_Havok",
+      "Hair_F_A_012_Havok",
+      "Hair_H_A_012_Havok",
+      "Muffler_A_A_012_Havok",
+      "Muffler_B_A_012_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Waist_1"
+    ]
+  },
+  "Armor_012_Head_B.bphcl": {
+    "cloth": [
+      "Add_Hair_B_Hacok",
+      "Hair_1_B_012_Havok",
+      "Hair_2_B_012_Havok",
+      "Hair_B_B_012_Havok",
+      "Hair_E_B_012_Havok",
+      "Hair_F_B_012_Havok",
+      "Hair_H_B_012_Havok",
+      "Muffler_A_B_012_Havok",
+      "Muffler_B_B_012_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Waist_1"
+    ]
+  },
+  "Armor_014_Head.bphcl": {
+    "cloth": [
+      "Hair_2_Havok",
+      "Hair_Acs_Havok",
+      "Hair_H_Havok",
+      "Knot_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_014_Lower.bphcl": {
+    "cloth": [
+      "Rope_Leg_A_L_Havok",
+      "Rope_Leg_A_R_Havok"
+    ],
+    "collidables": [
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Leg_2_R_2"
+    ]
+  },
+  "Armor_014_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Carabiner_Havok",
+      "Poach_B_Havok",
+      "Poach_C_Havok",
+      "Rope_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_L_1",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_1_R_2"
+    ]
+  },
+  "Armor_017_Head.bphcl": {
+    "cloth": [
+      "Hair_Havok",
+      "Headrope_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_020_Head.bphcl": {
+    "cloth": [
+      "Hair_2_Havok",
+      "Hair_3_Havok",
+      "Hairtop_020_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_020_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Belt_A_Havok",
+      "Tunic_001_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_L_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_1_R_2"
+    ]
+  },
+  "Armor_022_Head_A.bphcl": {
+    "cloth": [
+      "Ear_022_A_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head"
+    ]
+  },
+  "Armor_022_Head_B.bphcl": {
+    "cloth": [
+      "Ear_022_B_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1"
+    ]
+  },
+  "Armor_024_Head.bphcl": {
+    "cloth": [
+      "Link:Hair_1_Havok",
+      "Link:Hair_2_Havok",
+      "Link:Hair_3_Havok",
+      "Link:Hair_B_Havok",
+      "Link:Hair_D_Havok",
+      "Link:Hair_E_Havok",
+      "Link:Hair_F_Havok",
+      "Link:Hair_G_Havok",
+      "Link:Hair_H_Havok",
+      "Link:Hair_I_Havok",
+      "Link:Hair_J_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_025_Head.bphcl": {
+    "cloth": [
+      "Cloth_1_025_Havok",
+      "Cloth_2_025_Havok",
+      "Link:Hair_1_Havok",
+      "Link:Hair_2_Havok",
+      "Link:Hair_3_Havok",
+      "Link:Hair_B_Havok",
+      "Link:Hair_D_Havok",
+      "Link:Hair_E_Havok",
+      "Link:Hair_F_Havok",
+      "Link:Hair_G_Havok",
+      "Link:Hair_H_Havok",
+      "Link:Hair_I_Havok",
+      "Link:Hair_J_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_026_Head.bphcl": {
+    "cloth": [
+      "Link:Hair_1_Havok",
+      "Link:Hair_2_Havok",
+      "Link:Hair_3_Havok",
+      "Link:Hair_B_Havok",
+      "Link:Hair_D_Havok",
+      "Link:Hair_E_Havok",
+      "Link:Hair_F_Havok",
+      "Link:Hair_G_Havok",
+      "Link:Hair_H_Havok",
+      "Link:Hair_I_Havok",
+      "Link:Hair_J_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_027_Head.bphcl": {
+    "cloth": [
+      "Earring_027_Havok",
+      "Link:Hair_1_Havok",
+      "Link:Hair_2_Havok",
+      "Link:Hair_3_Havok",
+      "Link:Hair_B_Havok",
+      "Link:Hair_D_Havok",
+      "Link:Hair_E_Havok",
+      "Link:Hair_F_Havok",
+      "Link:Hair_G_Havok",
+      "Link:Hair_H_Havok",
+      "Link:Hair_I_Havok",
+      "Link:Hair_J_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_028_Head.bphcl": {
+    "cloth": [
+      "Earring_028_Havok",
+      "Link:Hair_1_Havok",
+      "Link:Hair_2_Havok",
+      "Link:Hair_3_Havok",
+      "Link:Hair_B_Havok",
+      "Link:Hair_D_Havok",
+      "Link:Hair_E_Havok",
+      "Link:Hair_F_Havok",
+      "Link:Hair_G_Havok",
+      "Link:Hair_H_Havok",
+      "Link:Hair_I_Havok",
+      "Link:Hair_J_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_029_Head.bphcl": {
+    "cloth": [
+      "Earring_029_Havok",
+      "Link:Hair_1_Havok",
+      "Link:Hair_2_Havok",
+      "Link:Hair_3_Havok",
+      "Link:Hair_B_Havok",
+      "Link:Hair_D_Havok",
+      "Link:Hair_E_Havok",
+      "Link:Hair_F_Havok",
+      "Link:Hair_G_Havok",
+      "Link:Hair_H_Havok",
+      "Link:Hair_I_Havok",
+      "Link:Hair_J_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_030_Head.bphcl": {
+    "cloth": [
+      "Hair_030_A_Havok",
+      "Hair_030_B_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1"
+    ]
+  },
+  "Armor_045_Head.bphcl": {
+    "cloth": [
+      "Below_045_Havok",
+      "Ear_045_Havok",
+      "Mob_045_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1"
+    ]
+  },
+  "Armor_046_Head.bphcl": {
+    "cloth": [
+      "Beard_046_Havok",
+      "Caudal_Fin_046_Havok",
+      "Fin_046_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_5"
+    ]
+  },
+  "Armor_048_Head.bphcl": {
+    "cloth": [
+      "Dread_Havok",
+      "Hair_2_Havok",
+      "Pony_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_048_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "AccSpine_Havok",
+      "Skirt_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_1_R_2"
+    ]
+  },
+  "Armor_055_Head.bphcl": {
+    "cloth": [
+      "Below_055_Havok",
+      "Ear_055_Havok",
+      "Liza_055_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1"
+    ]
+  },
+  "Armor_056_Head.bphcl": {
+    "cloth": [
+      "Beard_Havok",
+      "Beardside_Havok",
+      "Hairback_Havok",
+      "Hairfront_Havok",
+      "Hairside_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1"
+    ]
+  },
+  "Armor_1006_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_2",
+      "SimulationMesh_Hair_Back_F",
+      "SimulationMesh_Hair_Back_G",
+      "SimulationMesh_Hair_Back_I",
+      "SimulationMesh_Hair_Back_J",
+      "SimulationMesh_Hair_Back",
+      "SimulationMesh_Hair_Back_A",
+      "SimulationMesh_Hair_Back_E",
+      "SimulationMesh_Hair_Back_H",
+      "SimulationMesh_Head_String",
+      "SimulationMesh_Mask_Stone_A",
+      "SimulationMesh_Mask_Stone_B"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Clavicle_R_1",
+      "Collidable_Head_1",
+      "Collidable_Head_10",
+      "Collidable_Head_11",
+      "Collidable_Head_12",
+      "Collidable_Head_13",
+      "Collidable_Head_14",
+      "Collidable_Head_15",
+      "Collidable_Head_16",
+      "Collidable_Head_17",
+      "Collidable_Head_19",
+      "Collidable_Head_2",
+      "Collidable_Head_20",
+      "Collidable_Head_22",
+      "Collidable_Head_24",
+      "Collidable_Head_25",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_5_1006",
+      "Collidable_Head_6",
+      "Collidable_Head_6_1006",
+      "Collidable_Head_8",
+      "Collidable_Head_9",
+      "Collidable_Neck",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Armor_1006_Lower.bphcl": {
+    "cloth": [
+      "SimulationMesh_Leg_Mant",
+      "SimulationMesh_Leg_Mant_B",
+      "SimulationMesh_Leg_Stone_A",
+      "SimulationMesh_Leg_Stone_C",
+      "SimulationMesh_Leg_Stone_B",
+      "SimulationMesh_Leg_Stone_D"
+    ],
+    "collidables": [
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_2_L",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_2_R",
+      "Link:Collidable_Leg_1_R_2",
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_L_2",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Leg_2_R_2"
+    ]
+  },
+  "Armor_1006_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Skirt_1006",
+      "SimulationMesh_Body_String_A",
+      "SimulationMesh_Body_String_B",
+      "SimulationMesh_Waist_Stone",
+      "SimulationMesh_Waist_Cloth",
+      "SimulationMesh_Arm_Mant_A",
+      "SimulationMesh_Arm_Mant_B",
+      "SimulationMesh_Arm_Stone_A",
+      "SimulationMesh_Arm_Stone_C",
+      "SimulationMesh_Arm_Stone_B",
+      "SimulationMesh_Arm_Stone_D"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_1_Wide",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_L_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3",
+      "Link:Collidable_Waist_2",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Waist",
+      "Collidable_Waist_1"
+    ]
+  },
+  "Armor_1036_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Earring",
+      "SimulationMesh_Hairback",
+      "SimulationMesh_Hairside"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_1_Wide",
+      "Link:Collidable_Waist_1",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Neck_2",
+      "Collidable_Neck_3",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4"
+    ]
+  },
+  "Armor_1036_Lower.bphcl": {
+    "cloth": [
+      "SimulationMesh_Leg"
+    ],
+    "collidables": []
+  },
+  "Armor_1036_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Crotch",
+      "SimulationMesh_Necklace",
+      "SimulationMesh_Necklace_2",
+      "SimulationMesh_Rope",
+      "SimulationMesh_Skirt",
+      "SimulationMesh_Tail"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_1043_Lower.bphcl": {
+    "cloth": [
+      "SimulationMesh_LowerSkirt",
+      "SimulationMesh_String_L",
+      "SimulationMesh_String_R"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_2_L",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_2_R",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_1043_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_BackCloth",
+      "SimulationMesh_ShoulderCloth",
+      "SimulationMesh_Skirt_1",
+      "SimulationMesh_Sleeve",
+      "SimulationMesh_Sleeve_D"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Spine_2_3",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_1044_Lower.bphcl": {
+    "cloth": [
+      "SimulationMesh_String_L",
+      "SimulationMesh_String_R"
+    ],
+    "collidables": [
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_R",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R"
+    ]
+  },
+  "Armor_1046_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hood_1046"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_1051_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_2_1051",
+      "SimulationMesh_Hair_Back_1051",
+      "SimulationMesh_Hair_Back_D_1051",
+      "SimulationMesh_HelmLamp_1051"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Clavicle_R_1",
+      "Collidable_Head_1",
+      "Collidable_Head_11",
+      "Collidable_Head_13",
+      "Collidable_Head_14",
+      "Collidable_Head_17",
+      "Collidable_Head_19",
+      "Collidable_Head_2",
+      "Collidable_Head_20",
+      "Collidable_Head_24",
+      "Collidable_Head_25",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Neck",
+      "Collidable_Spine_2",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_1051_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_AL_1_L_1051",
+      "SimulationMesh_AL_1_R_1051",
+      "SimulationMesh_AL_2_L_1051",
+      "SimulationMesh_AL_2_R_1051",
+      "SimulationMesh_TopLamp_1051"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_1_Wide",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_R"
+    ]
+  },
+  "Armor_1061_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_2_1061",
+      "SimulationMesh_Hair_Back_1061",
+      "SimulationMesh_Hair_Back_D_1061",
+      "SimulationMesh_Acce_Back_1_1061",
+      "SimulationMesh_Acce_Back_2_1061",
+      "SimulationMesh_Acce_Front_1061",
+      "SimulationMesh_Acce_Side_1_1061",
+      "SimulationMesh_Acce_Side_2_1061",
+      "SimulationMesh_Acce_Side_3_1061",
+      "SimulationMesh_Earring_1_1061",
+      "SimulationMesh_Earring_2_1061",
+      "SimulationMesh_Earring_3_1061",
+      "SimulationMesh_Earring_4_1061",
+      "SimulationMesh_Horn_1061"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Clavicle_R_1",
+      "Collidable_Head_1",
+      "Collidable_Head_11",
+      "Collidable_Head_13",
+      "Collidable_Head_14",
+      "Collidable_Head_17",
+      "Collidable_Head_19",
+      "Collidable_Head_2",
+      "Collidable_Head_20",
+      "Collidable_Head_24",
+      "Collidable_Head_25",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Neck",
+      "Collidable_Spine_2",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_1061_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Maedare_1061",
+      "SimulationMesh_Necklace_1_1061",
+      "SimulationMesh_Necklace_2_1061",
+      "SimulationMesh_Outer_1061",
+      "SimulationMesh_Sleeve_L_1061",
+      "SimulationMesh_Sleeve_R_1061"
+    ],
+    "collidables": [
+      "Collidable_Leg_1_R",
+      "Collidable_Spine_3",
+      "Collidable_Waist",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_2_L",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_2_R",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_1066_Head.bphcl": {
+    "cloth": [
+      "Earring_1066_1_SimulationMesh",
+      "Earring_1066_2_SimulationMesh",
+      "Earring_1066_3_SimulationMesh",
+      "Earring_1066_4_SimulationMesh",
+      "Hair_2_1066_SimulationMesh",
+      "Hair_Acce_Back_1066_1_SimulationMesh",
+      "Hair_Acce_Back_1066_2_SimulationMesh",
+      "Hair_Acce_FC_1066_SimulationMesh",
+      "Hair_Acce_F_1066_SimulationMesh",
+      "Hair_Acce_Side_1_1066_SimulationMesh",
+      "Hair_Acce_Side_2_1066_SimulationMesh",
+      "Hair_Acce_Side_3_1066_SimulationMesh",
+      "Hair_Back_1066_SimulationMesh",
+      "Hair_Back_D_1066_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Clavicle_R_1",
+      "Collidable_Head_1",
+      "Collidable_Head_11",
+      "Collidable_Head_13",
+      "Collidable_Head_14",
+      "Collidable_Head_17",
+      "Collidable_Head_19",
+      "Collidable_Head_2",
+      "Collidable_Head_20",
+      "Collidable_Head_24",
+      "Collidable_Head_25",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Neck",
+      "Collidable_Spine_2",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_1066_Lower.bphcl": {
+    "cloth": [
+      "Hem_L_1066_SimulationMesh",
+      "Hem_R_1066_SimulationMesh",
+      "Reg_Ring_1066_1_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_L_2",
+      "Collidable_Leg_2_R"
+    ]
+  },
+  "Armor_1066_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Cape_1066_SimulationMesh",
+      "Maedare_1066_SimulationMesh",
+      "Necklace_1066_SimulationMesh",
+      "Outer_1066_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Spine_1",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_5",
+      "Collidable_Waist",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_2_L",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_2_R",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_1071_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Earring_1_1071",
+      "SimulationMesh_Earring_2_1071",
+      "SimulationMesh_Earring_3_1071",
+      "SimulationMesh_Earring_4_1071",
+      "SimulationMesh_Hair_2_1071",
+      "SimulationMesh_Hair_Acce_Back_1_1071",
+      "SimulationMesh_Hair_Acce_Back_2_1071",
+      "SimulationMesh_Hair_Acce_Side_1_1071",
+      "SimulationMesh_Hair_Acce_Side_2_1071",
+      "SimulationMesh_Hair_Acce_Side_3_1071",
+      "SimulationMesh_Hair_Back_1071",
+      "SimulationMesh_Hair_Back_D_1071",
+      "SimulationMesh_Head_Stone_1071"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Clavicle_R_1",
+      "Collidable_Head_1",
+      "Collidable_Head_11",
+      "Collidable_Head_13",
+      "Collidable_Head_14",
+      "Collidable_Head_17",
+      "Collidable_Head_19",
+      "Collidable_Head_2",
+      "Collidable_Head_20",
+      "Collidable_Head_24",
+      "Collidable_Head_25",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Neck",
+      "Collidable_Spine_2",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_1071_Lower.bphcl": {
+    "cloth": [
+      "SimulationMesh_Leg_1071"
+    ],
+    "collidables": [
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_2_L",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_2_R"
+    ]
+  },
+  "Armor_1071_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Necklace_B_1071",
+      "SimulationMesh_Necklace_A_1071",
+      "SimulationMesh_Dress_1071",
+      "SimulationMesh_SleeveCuffs_L_1071",
+      "SimulationMesh_SleeveCuffs_R_1071"
+    ],
+    "collidables": [
+      "Collidable_Spine_1",
+      "Collidable_Spine_2_1",
+      "Collidable_Waist",
+      "Collidable_Waist_1",
+      "Collidable_Waist_2",
+      "Collidable_Waist_3",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_2_L",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_2_R",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_1076_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Acs_1076",
+      "SimulationMesh_Earring_1076",
+      "SimulationMesh_Frill_Down_1076",
+      "SimulationMesh_Frill_Up_1076",
+      "SimulationMesh_Hair_1076",
+      "SimulationMesh_Hat_1076",
+      "SimulationMesh_Hat_B_1076"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_1_Wide"
+    ]
+  },
+  "Armor_1086_Head.bphcl": {
+    "cloth": [
+      "Agohimo_1086_SimulationMesh",
+      "HairLong_1086_SimulationMesh",
+      "HairSide_1086_SimulationMesh",
+      "HairTop_C_1086_SimulationMesh",
+      "HairTop_LR_1086_SimulationMesh",
+      "Hair_F_1086_SimulationMesh",
+      "Momi_1086_SimulationMesh",
+      "Tactile_1086_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Waist",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_1_Wide",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_2_L",
+      "Link:Collidable_Leg_1_L_1",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_2_R",
+      "Link:Collidable_Leg_1_R_3",
+      "Link:Collidable_Waist_2"
+    ]
+  },
+  "Armor_1086_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "ClothStomach_1086_SimulationMesh",
+      "ShoulderArmor_1086_SimulationMesh",
+      "Strap_1086_SimulationMesh",
+      "Tunic_1086_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_1_R_2"
+    ]
+  },
+  "Armor_1091_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_2_1091",
+      "SimulationMesh_Hair_Back",
+      "SimulationMesh_Hair_Back_D",
+      "SimulationMesh_Hair_Back_G",
+      "SimulationMesh_Wing_A_1091",
+      "SimulationMesh_Wing_B_1091"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Clavicle_R_1",
+      "Collidable_Head_1",
+      "Collidable_Head_11",
+      "Collidable_Head_12",
+      "Collidable_Head_13",
+      "Collidable_Head_14",
+      "Collidable_Head_17",
+      "Collidable_Head_19",
+      "Collidable_Head_2",
+      "Collidable_Head_20",
+      "Collidable_Head_22",
+      "Collidable_Head_24",
+      "Collidable_Head_25",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Neck",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Armor_1091_Lower.bphcl": {
+    "cloth": [
+      "SimulationMesh_Leg_1091"
+    ],
+    "collidables": []
+  },
+  "Armor_1091_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Crotch_1091",
+      "SimulationMesh_Necklace_1091",
+      "SimulationMesh_Necklace_2_1091",
+      "SimulationMesh_Rope_1091",
+      "SimulationMesh_Skirt_1091"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_1096_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_A_1096",
+      "SimulationMesh_Hair_B_1096",
+      "SimulationMesh_Hat_1096"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_Cap"
+    ]
+  },
+  "Armor_1096_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Skirt_1096"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_1106_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Belt_A_1106",
+      "SimulationMesh_Tunic_1106"
+    ],
+    "collidables": [
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_L_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_1_R_2"
+    ]
+  },
+  "Armor_1125_Head_A.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hairback_A_1125",
+      "SimulationMesh_Hairback_B_1125",
+      "SimulationMesh_Hairback_C_1125",
+      "SimulationMesh_Hairback_D_1125",
+      "SimulationMesh_Hairside_A_1125",
+      "SimulationMesh_Hairside_B_1125",
+      "SimulationMesh_Hairside_C_1125",
+      "SimulationMesh_Hairside_D_1125",
+      "SimulationMesh_Hairside_E_1125",
+      "SimulationMesh_Hairside_F_1125",
+      "SimulationMesh_Hairtop_1125",
+      "SimulationMesh_Mouth_1125",
+      "SimulationMesh_Nose_1125"
+    ],
+    "collidables": [
+      "Link_RaulSkin:Collidable_Spine_1",
+      "Link_RaulSkin:Collidable_Spine_2",
+      "Link_RaulSkin:Collidable_Clavicle_L",
+      "Link_RaulSkin:Collidable_Arm_1_L",
+      "Link_RaulSkin:Collidable_Clavicle_R",
+      "Link_RaulSkin:Collidable_Arm_1_R",
+      "Link_RaulSkin:Collidable_Neck",
+      "Link_RaulSkin:Collidable_Head_1",
+      "Link_RaulSkin:Collidable_Head_5",
+      "Link_RaulSkin:Collidable_Head_6",
+      "Link_RaulSkin:Collidable_Head_Cap",
+      "Link_RaulSkin:Collidable_Spine_2_1",
+      "Link_RaulSkin:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_1125_Head_B.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hairback_A_1125_B",
+      "SimulationMesh_Hairback_B_1125_B",
+      "SimulationMesh_Hairback_C_1125_B",
+      "SimulationMesh_Hairback_D_1125_B",
+      "SimulationMesh_Hairside_A_1125_B",
+      "SimulationMesh_Hairside_B_1125_B",
+      "SimulationMesh_Hairside_C_1125_B",
+      "SimulationMesh_Hairside_D_1125_B",
+      "SimulationMesh_Hairside_E_1125_B",
+      "SimulationMesh_Hairside_F_1125_B",
+      "SimulationMesh_Hairtop_1125_B",
+      "SimulationMesh_Mouth_1125_B",
+      "SimulationMesh_Nose_1125_B"
+    ],
+    "collidables": [
+      "Link_RaulSkin:Collidable_Spine_1",
+      "Link_RaulSkin:Collidable_Spine_2",
+      "Link_RaulSkin:Collidable_Clavicle_L",
+      "Link_RaulSkin:Collidable_Arm_1_L",
+      "Link_RaulSkin:Collidable_Clavicle_R",
+      "Link_RaulSkin:Collidable_Arm_1_R",
+      "Link_RaulSkin:Collidable_Neck",
+      "Link_RaulSkin:Collidable_Head_1",
+      "Link_RaulSkin:Collidable_Head_5",
+      "Link_RaulSkin:Collidable_Head_6",
+      "Link_RaulSkin:Collidable_Head_Cap",
+      "Link_RaulSkin:Collidable_Spine_2_1",
+      "Link_RaulSkin:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_1141_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_CollarB_1141",
+      "SimulationMesh_Collar_1141",
+      "SimulationMesh_Hood_1141"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_1141_Lower.bphcl": {
+    "cloth": [
+      "SimulationMesh_Shard_1141"
+    ],
+    "collidables": [
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_2_L",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_2_R"
+    ]
+  },
+  "Armor_1141_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Ornament_1141",
+      "SimulationMesh_Ribon_1141",
+      "SimulationMesh_Skirt_1141",
+      "SimulationMesh_Sleeve_L_1141",
+      "SimulationMesh_Sleeve_R_1141"
+    ],
+    "collidables": [
+      "Collidable_Hood",
+      "Collidable_Spine_Big",
+      "Collidable_Spine_Hold",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3",
+      "Link:Collidable_Spine_1_Wide",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_2_L",
+      "Link:Collidable_Leg_1_L_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_2_R",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_1152_Head_A.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_1_A_1152",
+      "SimulationMesh_Hair_2_A_1152",
+      "SimulationMesh_Hair_3_A_1152",
+      "SimulationMesh_Hair_B_A_1152",
+      "SimulationMesh_Hair_D_A_1152",
+      "SimulationMesh_Hair_E_A_1152",
+      "SimulationMesh_Hair_F_A_1152",
+      "SimulationMesh_Hair_G_A_1152",
+      "SimulationMesh_Hair_H_A_1152",
+      "SimulationMesh_Hair_I_A_1152",
+      "SimulationMesh_Hair_J_A_1152",
+      "SimulationMesh_Mant_A_1152"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2",
+      "Link:Collidable_Spine_1_Wide",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Waist_2",
+      "Collidable_Pod_A",
+      "Collidable_Pod_AA",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_1152_Head_B.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_1_B_1152",
+      "SimulationMesh_Hair_2_B_1152",
+      "SimulationMesh_Hair_3_B_1152",
+      "SimulationMesh_Hair_B_B_1152",
+      "SimulationMesh_Hair_D_B_1152",
+      "SimulationMesh_Hair_E_B_1152",
+      "SimulationMesh_Hair_F_B_1152",
+      "SimulationMesh_Hair_G_B_1152",
+      "SimulationMesh_Hair_H_B_1152",
+      "SimulationMesh_Hair_I_B_1152",
+      "SimulationMesh_Hair_J_B_1152",
+      "SimulationMesh_Mant_B_1152"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2",
+      "Link:Collidable_Spine_1_Wide",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Waist_2",
+      "Collidable_Pod_A",
+      "Collidable_Pod_AA",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_115_Head.bphcl": {
+    "cloth": [
+      "Hair_2_Havok",
+      "Hair_3_Havok",
+      "Hair_E_Havok",
+      "Hair_F_Havok",
+      "Hair_G_Havok",
+      "Hair_J_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_116_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Tunic_116_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_1_R_2"
+    ]
+  },
+  "Armor_1300_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_HairTop_1300",
+      "SimulationMesh_Earring_1300"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1"
+    ]
+  },
+  "Armor_160_Head.bphcl": {
+    "cloth": [
+      "Hair_A_160_Havok",
+      "Hair_B_160_Havok",
+      "Hat_160_Havok"
+    ],
+    "collidables": [
+      "Collidable_Neck",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_160_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Collar_160_Havok",
+      "Outer_160_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_172_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_2_172",
+      "SimulationMesh_Hair_3_172",
+      "SimulationMesh_Hair_B_172",
+      "SimulationMesh_Hair_D_172",
+      "SimulationMesh_Hair_F_172",
+      "SimulationMesh_Hair_G_172",
+      "SimulationMesh_Hair_H_172",
+      "SimulationMesh_Hair_I_172",
+      "SimulationMesh_Hair_J_172"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_173_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_2_173",
+      "SimulationMesh_MidonaPonytail_173",
+      "SimulationMesh_TopHair_173"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1"
+    ]
+  },
+  "Armor_174_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_174",
+      "SimulationMesh_Hood_174"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6"
+    ]
+  },
+  "Armor_174_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Clock_174"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Spine_2_3",
+      "Link:Collidable_Spine_1_Wide"
+    ]
+  },
+  "Armor_175_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Aromr_175",
+      "SimulationMesh_Sleeve_L_175",
+      "SimulationMesh_Sleeve_R_175"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_176_Head.bphcl": {
+    "cloth": [
+      "Add_Hair_A_Havok",
+      "Hair_2_Havok",
+      "Hair_B_Havok",
+      "Hair_D_Havok",
+      "Hair_E_Havok",
+      "Hair_F_Havok",
+      "Hair_H_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4"
+    ]
+  },
+  "Armor_177_Head_A.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_2_A_177",
+      "SimulationMesh_Hair_3_A_177",
+      "SimulationMesh_Hair_B_A_177",
+      "SimulationMesh_Hair_D_A_177",
+      "SimulationMesh_Hair_H_A_177",
+      "SimulationMesh_Muffler_A_A_177",
+      "SimulationMesh_Muffler_A_B_177",
+      "SimulationMesh_Rabbitears_A_L_177",
+      "SimulationMesh_Rabbitears_A_R_177"
+    ],
+    "collidables": [
+      "Collidable_Hair_3",
+      "Collidable_Head",
+      "Collidable_MaskNeck",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Spine_2_2",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_177_Head_B.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_2_B_177",
+      "SimulationMesh_Hair_3_B_177",
+      "SimulationMesh_Hair_B_B_177",
+      "SimulationMesh_Hair_D_B_177",
+      "SimulationMesh_Hair_H_B_177",
+      "SimulationMesh_Muffler_B_A_177",
+      "SimulationMesh_Muffler_B_B_177",
+      "SimulationMesh_Rabbitears_B_L_177",
+      "SimulationMesh_Rabbitears_B_R_177"
+    ],
+    "collidables": [
+      "Collidable_Hair_3",
+      "Collidable_Head",
+      "Collidable_MaskNeck",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Spine_2_2",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_179_Head.bphcl": {
+    "cloth": [
+      "Hair_1_179_Havok",
+      "Hair_2_179_Havok",
+      "Hair_3_179_Havok",
+      "Hair_B_179_Havok",
+      "Hair_D_179_Havok",
+      "Hat_179_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Armor_179_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Outer_179_Havok",
+      "Sode_179_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Spine_2_3",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_180_Head.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_1"
+    ]
+  },
+  "Armor_180_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "SimulationMesh_Mant"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3",
+      "Link:Collidable_Spine_Plane",
+      "Link:Collidable_Spine_1_Wide",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_181_Head.bphcl": {
+    "cloth": [
+      "Hair_Back_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_1"
+    ]
+  },
+  "Armor_182_Head.bphcl": {
+    "cloth": [
+      "Hair_2_Havok",
+      "Hair_Back_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_1"
+    ]
+  },
+  "Armor_183_Head.bphcl": {
+    "cloth": [
+      "Hair_2_Havok",
+      "Hair_Back_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_1"
+    ]
+  },
+  "Armor_184_Head.bphcl": {
+    "cloth": [
+      "Hair_2_184_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head"
+    ]
+  },
+  "Armor_200_Head.bphcl": {
+    "cloth": [
+      "Hair_A_200_Havok",
+      "Hair_B_200_Havok",
+      "Hat_200_Havok"
+    ],
+    "collidables": [
+      "Collidable_Neck",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_200_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Collar_200_Havok",
+      "Outer_200_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_205_Head.bphcl": {
+    "cloth": [
+      "Hair_A_Havok",
+      "Hair_B_Havok",
+      "Hair_C_Havok",
+      "Hair_D_Havok",
+      "Hat_205_Havok"
+    ],
+    "collidables": [
+      "Collidable_Neck",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1"
+    ]
+  },
+  "Armor_205_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Outer_205_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_210_Head.bphcl": {
+    "cloth": [
+      "Hair_A_Havok",
+      "Hair_B_Havok",
+      "Hair_C_Havok",
+      "Hair_D_Havok",
+      "Hair_E_Havok",
+      "Hair_F_Havok",
+      "Hair_G_Havok",
+      "Hair_H_Havok",
+      "Hair_I_Havok",
+      "Hair_J_Havok",
+      "Hat_200_Havok"
+    ],
+    "collidables": [
+      "Collidable_Neck",
+      "Collidable_Head_1_Armor_210",
+      "Collidable_Head_2_Armor_210",
+      "Collidable_Head_Armor_210",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1"
+    ]
+  },
+  "Armor_210_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Outer_210_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_215_Head.bphcl": {
+    "cloth": [
+      "Hair_1_Havok",
+      "Hair_2_Havok",
+      "Hair_B_Havok",
+      "Hair_C_Havok",
+      "Hair_E_Havok",
+      "Hair_F_Havok",
+      "Hair_H_Havok",
+      "Hat_200_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1"
+    ]
+  },
+  "Armor_215_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Outer_215_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_220_Head_A.bphcl": {
+    "cloth": [
+      "Hair_C_A_220_Havok",
+      "Hair_L_A_220_Havok",
+      "Hair_R_A_220_Havok",
+      "Stall_A_220_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Spine_2_1"
+    ]
+  },
+  "Armor_225_Head.bphcl": {
+    "cloth": [
+      "Hair_ABC_225_Havok",
+      "Hair_D_225_Havok",
+      "Hat_225_Havok"
+    ],
+    "collidables": [
+      "Collidable_Neck",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_225_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Crotch_Havok",
+      "Sleeve_225_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Spine_2_3",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L",
+      "Link:Collidable_Leg_1_R"
+    ]
+  },
+  "Armor_230_Head.bphcl": {
+    "cloth": [
+      "Hair_230_Havok",
+      "Hair_2_Havok",
+      "Hat_200_Havok"
+    ],
+    "collidables": [
+      "Collidable_Neck",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Arm_2_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Arm_2_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Head_6",
+      "Link:Collidable_Head_Cap",
+      "Link:Collidable_Head_Plane",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_230_RaulSkin_Upper.bphcl": {
+    "cloth": [
+      "Outer_230_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Waist_1",
+      "Link:Collidable_Leg_1_L_2",
+      "Link:Collidable_Leg_1_L_3",
+      "Link:Collidable_Leg_1_R_2",
+      "Link:Collidable_Leg_1_R_3"
+    ]
+  },
+  "Armor_999_Head.bphcl": {
+    "cloth": [
+      "Hair_1_Havok",
+      "Hair_2_SimulationMesh",
+      "Hair_B_Havok",
+      "Hair_Back_E_SimulationMesh",
+      "Hair_Back_F_SimulationMesh",
+      "Hair_D_Havok",
+      "Hair_E_Havok",
+      "Hair_F_Havok",
+      "Hair_G_Havok",
+      "Hair_H_Havok",
+      "Hair_I_Havok",
+      "Hair_J_Havok",
+      "Hair_Back_A_SimulationMesh",
+      "Hair_Back_D_SimulationMesh",
+      "Hair_Back_G_SimulationMesh",
+      "Hair_Back_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Clavicle_R_1",
+      "Collidable_Head_1",
+      "Collidable_Head_10",
+      "Collidable_Head_11",
+      "Collidable_Head_12",
+      "Collidable_Head_13",
+      "Collidable_Head_14",
+      "Collidable_Head_15",
+      "Collidable_Head_16",
+      "Collidable_Head_17",
+      "Collidable_Head_18",
+      "Collidable_Head_19",
+      "Collidable_Head_2",
+      "Collidable_Head_20",
+      "Collidable_Head_22",
+      "Collidable_Head_23",
+      "Collidable_Head_24",
+      "Collidable_Head_25",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Head_7",
+      "Collidable_Head_8",
+      "Collidable_Head_9",
+      "Collidable_Neck",
+      "Collidable_Spine_2",
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Clavicle_L",
+      "Link:Collidable_Arm_1_L",
+      "Link:Collidable_Clavicle_R",
+      "Link:Collidable_Arm_1_R",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_1",
+      "Link:Collidable_Spine_2_3"
+    ]
+  },
+  "Armor_Default_Head.bphcl": {
+    "cloth": [
+      "Link:Hair_1_Havok",
+      "Link:Hair_2_Havok",
+      "Link:Hair_3_Havok",
+      "Link:Hair_B_Havok",
+      "Link:Hair_D_Havok",
+      "Link:Hair_E_Havok",
+      "Link:Hair_F_Havok",
+      "Link:Hair_G_Havok",
+      "Link:Hair_H_Havok",
+      "Link:Hair_I_Havok",
+      "Link:Hair_J_Havok"
+    ],
+    "collidables": [
+      "Link:Collidable_Spine_1",
+      "Link:Collidable_Spine_2",
+      "Link:Collidable_Neck",
+      "Link:Collidable_Head",
+      "Link:Collidable_Head_1",
+      "Link:Collidable_Head_2",
+      "Link:Collidable_Head_3",
+      "Link:Collidable_Head_4",
+      "Link:Collidable_Head_5",
+      "Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Cow.bphcl": {
+    "cloth": [
+      "Bell_Havok",
+      "Cloth_Havok"
+    ],
+    "collidables": [
+      "Collidable_Ear_L",
+      "Collidable_Ear_R",
+      "Collidable_Head_A",
+      "Collidable_Head_B",
+      "Collidable_Head_C",
+      "Collidable_Neck_A"
+    ]
+  },
+  "Dm_Weapon_Sheath_166.bphcl": {
+    "cloth": [
+      "SimulationMesh_Cloth_A",
+      "SimulationMesh_Cloth_B",
+      "SimulationMesh_Cloth_C",
+      "SimulationMesh_Cloth_D"
+    ],
+    "collidables": [
+      "Collidable_Skl_Root",
+      "Collidable_Skl_Root_2"
+    ]
+  },
+  "Enemy_Bokoblin.bphcl": {
+    "cloth": [
+      "Apron_Havok",
+      "Ear_L_Havok",
+      "Ear_R_Havok",
+      "Necklace_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Spine_2",
+      "Collidable_Waist"
+    ]
+  },
+  "Enemy_Bokoblin_Boss_Horn_Sharp_Curse.bphcl": {
+    "cloth": [
+      "Enemy_Bokoblin_Boss:Apron_F_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_FL_Mesh",
+      "Enemy_Bokoblin_Boss:Ear_Mesh_R",
+      "Enemy_Bokoblin_Boss:Ear_Mesh_L",
+      "Enemy_Bokoblin_Boss:Apron_FR_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_Back_A_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_Back_B_Mesh",
+      "Enemy_Bokoblin_Boss:Knot_Mesh",
+      "Enemy_Bokoblin_Boss:Cloth_Mesh",
+      "Enemy_Bokoblin_Boss:Necklace_Mesh",
+      "Cloth_F_Havok",
+      "Cloth_L_Havok",
+      "Cloth_R_Havok"
+    ],
+    "collidables": [
+      "Collidable_Horn",
+      "Collidable_Horn_1",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_1_L",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_1_R",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_2_L",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_2_R",
+      "Enemy_Bokoblin_Boss:Collidable_Chin",
+      "Enemy_Bokoblin_Boss:Collidable_Chin_1",
+      "Enemy_Bokoblin_Boss:Collidable_Clavicle_L",
+      "Enemy_Bokoblin_Boss:Collidable_Clavicle_R",
+      "Enemy_Bokoblin_Boss:Collidable_Cloth_1_F",
+      "Enemy_Bokoblin_Boss:Collidable_Head",
+      "Enemy_Bokoblin_Boss:Collidable_Head_1",
+      "Enemy_Bokoblin_Boss:Collidable_Head_2",
+      "Enemy_Bokoblin_Boss:Collidable_Head_3",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_1_L",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_1_R",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_2_L",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_2_R",
+      "Enemy_Bokoblin_Boss:Collidable_Neck",
+      "Enemy_Bokoblin_Boss:Collidable_Spine_2",
+      "Enemy_Bokoblin_Boss:Collidable_Stomach",
+      "Enemy_Bokoblin_Boss:Collidable_Waist"
+    ]
+  },
+  "Enemy_Bokoblin_Boss_Horn_Sharp_Junior.bphcl": {
+    "cloth": [
+      "SimulationMesh_A_Horn",
+      "SimulationMesh_B_Horn",
+      "Enemy_Bokoblin_Boss:Apron_F_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_FL_Mesh",
+      "Enemy_Bokoblin_Boss:Ear_Mesh_R",
+      "Enemy_Bokoblin_Boss:Ear_Mesh_L",
+      "Enemy_Bokoblin_Boss:Apron_FR_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_Back_A_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_Back_B_Mesh",
+      "Enemy_Bokoblin_Boss:Knot_Mesh",
+      "Enemy_Bokoblin_Boss:Cloth_Mesh",
+      "Enemy_Bokoblin_Boss:Necklace_Mesh"
+    ],
+    "collidables": [
+      "Enemy_Bokoblin_Boss:Collidable_Arm_1_L",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_1_R",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_2_L",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_2_R",
+      "Enemy_Bokoblin_Boss:Collidable_Chin",
+      "Enemy_Bokoblin_Boss:Collidable_Chin_1",
+      "Enemy_Bokoblin_Boss:Collidable_Clavicle_L",
+      "Enemy_Bokoblin_Boss:Collidable_Clavicle_R",
+      "Enemy_Bokoblin_Boss:Collidable_Cloth_1_F",
+      "Enemy_Bokoblin_Boss:Collidable_Head",
+      "Enemy_Bokoblin_Boss:Collidable_Head_1",
+      "Enemy_Bokoblin_Boss:Collidable_Head_2",
+      "Enemy_Bokoblin_Boss:Collidable_Head_3",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_1_L",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_1_R",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_2_L",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_2_R",
+      "Enemy_Bokoblin_Boss:Collidable_Neck",
+      "Enemy_Bokoblin_Boss:Collidable_Spine_2",
+      "Enemy_Bokoblin_Boss:Collidable_Stomach",
+      "Enemy_Bokoblin_Boss:Collidable_Waist"
+    ]
+  },
+  "Enemy_Bokoblin_Boss_Horn_Sharp_Middle.bphcl": {
+    "cloth": [
+      "Cloth_Horn",
+      "Enemy_Bokoblin_Boss:Apron_F_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_FL_Mesh",
+      "Enemy_Bokoblin_Boss:Ear_Mesh_R",
+      "Enemy_Bokoblin_Boss:Ear_Mesh_L",
+      "Enemy_Bokoblin_Boss:Apron_FR_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_Back_A_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_Back_B_Mesh",
+      "Enemy_Bokoblin_Boss:Knot_Mesh",
+      "Enemy_Bokoblin_Boss:Cloth_Mesh",
+      "Enemy_Bokoblin_Boss:Necklace_Mesh"
+    ],
+    "collidables": [
+      "Enemy_Bokoblin_Boss:Collidable_Arm_1_L",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_1_R",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_2_L",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_2_R",
+      "Enemy_Bokoblin_Boss:Collidable_Chin",
+      "Enemy_Bokoblin_Boss:Collidable_Chin_1",
+      "Enemy_Bokoblin_Boss:Collidable_Clavicle_L",
+      "Enemy_Bokoblin_Boss:Collidable_Clavicle_R",
+      "Enemy_Bokoblin_Boss:Collidable_Cloth_1_F",
+      "Enemy_Bokoblin_Boss:Collidable_Head",
+      "Enemy_Bokoblin_Boss:Collidable_Head_1",
+      "Enemy_Bokoblin_Boss:Collidable_Head_2",
+      "Enemy_Bokoblin_Boss:Collidable_Head_3",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_1_L",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_1_R",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_2_L",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_2_R",
+      "Enemy_Bokoblin_Boss:Collidable_Neck",
+      "Enemy_Bokoblin_Boss:Collidable_Spine_2",
+      "Enemy_Bokoblin_Boss:Collidable_Stomach",
+      "Enemy_Bokoblin_Boss:Collidable_Waist"
+    ]
+  },
+  "Enemy_Bokoblin_Boss_Horn_Sharp_Senior.bphcl": {
+    "cloth": [
+      "Enemy_Bokoblin_Boss:Apron_F_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_FL_Mesh",
+      "Enemy_Bokoblin_Boss:Ear_Mesh_R",
+      "Enemy_Bokoblin_Boss:Ear_Mesh_L",
+      "Enemy_Bokoblin_Boss:Apron_FR_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_Back_A_Mesh",
+      "Enemy_Bokoblin_Boss:Apron_Back_B_Mesh",
+      "Enemy_Bokoblin_Boss:Knot_Mesh",
+      "Enemy_Bokoblin_Boss:Cloth_Mesh",
+      "Enemy_Bokoblin_Boss:Necklace_Mesh",
+      "Back_Cloth_R_Havok",
+      "Back_Cloth_L_Havok",
+      "Flont_Cloth_R_Havok",
+      "Flont_Cloth_L_Havok"
+    ],
+    "collidables": [
+      "Collidable_Horn",
+      "Collidable_Horn_1",
+      "Collidable_Horn_2",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_1_L",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_1_R",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_2_L",
+      "Enemy_Bokoblin_Boss:Collidable_Arm_2_R",
+      "Enemy_Bokoblin_Boss:Collidable_Chin",
+      "Enemy_Bokoblin_Boss:Collidable_Chin_1",
+      "Enemy_Bokoblin_Boss:Collidable_Clavicle_L",
+      "Enemy_Bokoblin_Boss:Collidable_Clavicle_R",
+      "Enemy_Bokoblin_Boss:Collidable_Cloth_1_F",
+      "Enemy_Bokoblin_Boss:Collidable_Head",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_1_L",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_1_R",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_2_L",
+      "Enemy_Bokoblin_Boss:Collidable_Leg_2_R",
+      "Enemy_Bokoblin_Boss:Collidable_Neck",
+      "Enemy_Bokoblin_Boss:Collidable_Spine_2",
+      "Enemy_Bokoblin_Boss:Collidable_Stomach",
+      "Enemy_Bokoblin_Boss:Collidable_Waist"
+    ]
+  },
+  "Enemy_Bokoblin_Boss_Pipe.bphcl": {
+    "cloth": [
+      "Havok_Model_Pipe"
+    ],
+    "collidables": []
+  },
+  "Enemy_Bokoblin_Horn_Sharp_Curse.bphcl": {
+    "cloth": [
+      "Bokoblin_Red:Ear_L_Havok",
+      "Bokoblin_Red:Ear_R_Havok",
+      "Bokoblin_Red:Apron_Havok",
+      "Bokoblin_Red:Necklace_Havok",
+      "Cloth_1"
+    ],
+    "collidables": [
+      "Bokoblin_Red:Collidable_Head",
+      "Bokoblin_Red:Collidable_Spine_2",
+      "Bokoblin_Red:Collidable_Waist"
+    ]
+  },
+  "Enemy_CaveMaster.bphcl": {
+    "cloth": [
+      "Nose",
+      "Hair_L",
+      "Hair_R"
+    ],
+    "collidables": [
+      "Collidable_Head"
+    ]
+  },
+  "Enemy_Chuchu.bphcl": {
+    "cloth": [
+      "Sim_Cloth"
+    ],
+    "collidables": [
+      "Collidable_Attack",
+      "Collidable_Ground_1"
+    ]
+  },
+  "Enemy_Chuchu_Large.bphcl": {
+    "cloth": [
+      "Sim_Cloth"
+    ],
+    "collidables": [
+      "Collidable_Attack",
+      "Collidable_Ground_1"
+    ]
+  },
+  "Enemy_Chuchu_Small.bphcl": {
+    "cloth": [
+      "Sim_Cloth"
+    ],
+    "collidables": [
+      "Collidable_Attack",
+      "Collidable_Ground_1"
+    ]
+  },
+  "Enemy_Dragon_Darkness.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_Front_A_L",
+      "SimulationMesh_Hair_Front_A_R",
+      "SimulationMesh_Hair_Front_B_L",
+      "SimulationMesh_Hair_Front_B_R",
+      "SimulationMesh_Hair_Middle_Top",
+      "SimulationMesh_Hair_Middle_Side",
+      "SimulationMesh_Hair_Middle_Under",
+      "SimulationMesh_Hair_Under",
+      "SimulationMesh_Hair_Top",
+      "SimulationMesh_Hair_Side",
+      "SimulationMesh_Hair_Top_B",
+      "SimulationMesh_Hair_Top_C",
+      "SimulationMesh_Hair_Under_B",
+      "SimulationMesh_Hair_Under_C",
+      "SimulationMesh_Hair_Back",
+      "SimulationMesh_Hair_Front_C_L",
+      "SimulationMesh_Hair_Front_C_R",
+      "SimulationMesh_Tail_Front_A",
+      "SimulationMesh_Tail_Front_B",
+      "SimulationMesh_Beard_A",
+      "SimulationMesh_Eyebrow_A",
+      "SimulationMesh_Eyebrow_B",
+      "SimulationMesh_Beard_B",
+      "SimulationMesh_Beard_C",
+      "SimulationMesh_Tail_Side_A",
+      "SimulationMesh_Tail_B"
+    ],
+    "collidables": [
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_3"
+    ]
+  },
+  "Enemy_Dragon_Light.bphcl": {
+    "cloth": [
+      "SimulationMesh_Face_Hair_A",
+      "SimulationMesh_Side_Hair",
+      "SimulationMesh_Front_Hair_A",
+      "SimulationMesh_Front_Hair_B",
+      "SimulationMesh_Back_Hair_A",
+      "SimulationMesh_Back_Hair_B",
+      "SimulationMesh_Back_Hair_C",
+      "SimulationMesh_Middle_Hair"
+    ],
+    "collidables": [
+      "Collidable_Ear_2_L",
+      "Collidable_Ear_2_R",
+      "Collidable_New_Head",
+      "Collidable_New_Spine_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Enemy_Giant.bphcl": {
+    "cloth": [
+      "Hair_Havok",
+      "Necklace_Havok",
+      "Cloth_Havok",
+      "Flab_Havok",
+      "Ear_L_Havok",
+      "Ear_R_Havok"
+    ],
+    "collidables": [
+      "Collidable_Center_2",
+      "Collidable_Flab_F",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Neck",
+      "Collidable_Player",
+      "Collidable_Player_Necklace",
+      "Collidable_Spine_1",
+      "Collidable_Waist"
+    ]
+  },
+  "Enemy_Giant_Horn_Hammer_Middle.bphcl": {
+    "cloth": [
+      "Enemy_Giant:Hair_Havok",
+      "Enemy_Giant:Necklace_Havok",
+      "Enemy_Giant:Cloth_Havok",
+      "Enemy_Giant:Flab_Havok",
+      "Enemy_Giant:Ear_L_Havok",
+      "Enemy_Giant:Ear_R_Havok",
+      "Cloth_1_B_Havok",
+      "Cloth_1_A_Havok",
+      "Cloth_1_C_Havok"
+    ],
+    "collidables": [
+      "Collidable_Horn",
+      "Enemy_Giant:Collidable_Center_2",
+      "Enemy_Giant:Collidable_Flab_F",
+      "Enemy_Giant:Collidable_Leg_1_L",
+      "Enemy_Giant:Collidable_Leg_1_R",
+      "Enemy_Giant:Collidable_Neck",
+      "Enemy_Giant:Collidable_Player",
+      "Enemy_Giant:Collidable_Player_Necklace",
+      "Enemy_Giant:Collidable_Spine_1",
+      "Enemy_Giant:Collidable_Waist"
+    ]
+  },
+  "Enemy_Golem_Fort_A.bphcl": {
+    "cloth": [
+      "SimulationMesh_Carpet",
+      "SimulationMesh_Cloth",
+      "SimulationMesh_Curtain",
+      "SimulationMesh_Fur",
+      "SimulationMesh_String"
+    ],
+    "collidables": [
+      "Collidable_Spine_1"
+    ]
+  },
+  "Enemy_Horablin.bphcl": {
+    "cloth": [
+      "Halr_L_Havok",
+      "Halr_R_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Neck",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Enemy_Kohga_Golem.bphcl": {
+    "cloth": [
+      "Cloth_Mesh",
+      "Lanp_Mesh"
+    ],
+    "collidables": [
+      "Collidable_Arm_9_L",
+      "Collidable_Arm_9_R",
+      "Collidable_Spine_3",
+      "Collidable_Spine_4"
+    ]
+  },
+  "Enemy_Lynel.bphcl": {
+    "cloth": [
+      "Armor_Havok",
+      "Beard_A_Havok",
+      "Hair_A_Havok",
+      "Hair_B_Havok",
+      "Hair_C_Havok",
+      "Hair_D_Havok",
+      "Hair_E_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Hair_C_1",
+      "Collidable_Hair_C_11",
+      "Collidable_Head",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_Man_Clavicle_L",
+      "Collidable_Man_Clavicle_R",
+      "Collidable_Man_Spine_2_1",
+      "Collidable_Spine_2",
+      "Collidable_Toe_1_BL",
+      "Collidable_Toe_1_BR",
+      "Collidable_Toe_2_BL",
+      "Collidable_Toe_2_BR",
+      "Collidable_Waist"
+    ]
+  },
+  "Enemy_Moriblin.bphcl": {
+    "cloth": [
+      "Cloth_A_Havok",
+      "Cloth_B_Havok",
+      "Cloth_C_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Neck_1",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Waist_1",
+      "Collidable_Waist_2"
+    ]
+  },
+  "Enemy_Sandworm.bphcl": {
+    "cloth": [
+      "Cloth_Stomach"
+    ],
+    "collidables": [
+      "Collidable_Attack",
+      "Collidable_Ground_1"
+    ]
+  },
+  "Enemy_Wizzrobe.bphcl": {
+    "cloth": [
+      "Cloth_A_Havok",
+      "Cloth_B_Havok",
+      "Cloth_C_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Waist"
+    ]
+  },
+  "Enemy_Zonau_Robot_Horn_Sharp_Dark.bphcl": {
+    "cloth": [
+      "Cloth_Horn"
+    ],
+    "collidables": [
+      "Collidable_Hone_1"
+    ]
+  },
+  "FldObj_FlagChallengeGoal_A_01.bphcl": {
+    "cloth": [
+      "FlagCloth_Havok"
+    ],
+    "collidables": [
+      "Collidable_Root_joint"
+    ]
+  },
+  "FldObj_FlagLarge_A.bphcl": {
+    "cloth": [
+      "FlagCloth_Havok"
+    ],
+    "collidables": [
+      "Collidable_joint1"
+    ]
+  },
+  "Ganondorf_Miasma_Parturition.bphcl": {
+    "cloth": [
+      "SimulationMesh_Obi_A",
+      "SimulationMesh_Obi_B",
+      "SimulationMesh_Pants_L",
+      "SimulationMesh_Pants_R",
+      "SimulationMesh_Jacket_00",
+      "SimulationMesh_Skirt",
+      "SimulationMesh_Hair_A",
+      "SimulationMesh_Hair_E",
+      "SimulationMesh_Hair_D_2",
+      "SimulationMesh_Hair_D_1",
+      "SimulationMesh_Hair_C_2",
+      "SimulationMesh_Hair_B",
+      "SimulationMesh_Hair_C_1",
+      "SimulationMesh_BackSide"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_L_1",
+      "Collidable_Arm_1_L_2",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_1_R_1",
+      "Collidable_Arm_1_R_2",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_L_2",
+      "Collidable_Leg_2_L_3",
+      "Collidable_Leg_2_L_4",
+      "Collidable_Leg_2_L_5",
+      "Collidable_Leg_2_L_6",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Leg_2_R_2",
+      "Collidable_Leg_2_R_3",
+      "Collidable_Leg_2_R_4",
+      "Collidable_Leg_2_R_5",
+      "Collidable_Leg_2_R_6",
+      "Collidable_Neck",
+      "Collidable_Skl_Root",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_1_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Spine_2_8",
+      "Collidable_Waist",
+      "Collidable_Waist_1",
+      "Collidable_Waist_10",
+      "Collidable_Waist_3",
+      "Collidable_Waist_5",
+      "Collidable_Waist_6",
+      "Collidable_Waist_7",
+      "Collidable_Waist_8",
+      "Collidable_Waist_9",
+      "Collidable_Wrist_L"
+    ]
+  },
+  "Goat_Cattle.bphcl": {
+    "cloth": [
+      "Bell_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Neck_1_1",
+      "Collidable_Neck_1_2"
+    ]
+  },
+  "Horse_Link_Body.bphcl": {
+    "cloth": [
+      "Body_Cloth"
+    ],
+    "collidables": []
+  },
+  "Horse_Link_Body_L.bphcl": {
+    "cloth": [
+      "Body_Cloth"
+    ],
+    "collidables": []
+  },
+  "Horse_Link_Harness_00.bphcl": {
+    "cloth": [
+      "SimulationMesh_Chain"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist"
+    ]
+  },
+  "Horse_Link_Mane.bphcl": {
+    "cloth": [
+      "FrontHair_Havok",
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_1",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Mane_00L_2.bphcl": {
+    "cloth": [
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Waist",
+      "Horse_Link_L_White:Collidable_Waist",
+      "Horse_Link_L_White:Collidable_Spine_1",
+      "Horse_Link_L_White:Collidable_Spine_2",
+      "Horse_Link_L_White:Collidable_Neck_1",
+      "Horse_Link_L_White:Collidable_Neck_2",
+      "Horse_Link_L_White:Collidable_Neck_3",
+      "Horse_Link_L_White:Collidable_Head",
+      "Horse_Link_L_White:Collidable_Spine_2_1"
+    ]
+  },
+  "Horse_Link_Mane_01.bphcl": {
+    "cloth": [
+      "FrontHair_Havok",
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_1",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Mane_01_Reduction.bphcl": {
+    "cloth": [
+      "FrontHair_Havok",
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Waist",
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_1",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Mane_02.bphcl": {
+    "cloth": [
+      "FrontHair_Havok",
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head"
+    ]
+  },
+  "Horse_Link_Mane_03.bphcl": {
+    "cloth": [
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_1",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Mane_04.bphcl": {
+    "cloth": [
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_1",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Mane_09.bphcl": {
+    "cloth": [
+      "FrontHair_Havok",
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_1",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Mane_L.bphcl": {
+    "cloth": [
+      "FrontHair_Havok",
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Waist",
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_1",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Mane_L_Reduction.bphcl": {
+    "cloth": [
+      "FrontHair_Havok",
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Waist",
+      "Horse_Link_L:Collidable_Waist",
+      "Horse_Link_L:Collidable_Spine_1",
+      "Horse_Link_L:Collidable_Spine_2",
+      "Horse_Link_L:Collidable_Neck_1",
+      "Horse_Link_L:Collidable_Neck_1_1",
+      "Horse_Link_L:Collidable_Neck_1_2",
+      "Horse_Link_L:Collidable_Neck_2",
+      "Horse_Link_L:Collidable_Neck_2_1",
+      "Horse_Link_L:Collidable_Neck_2_2",
+      "Horse_Link_L:Collidable_Neck_3",
+      "Horse_Link_L:Collidable_Head",
+      "Horse_Link_L:Collidable_Neck_3_1",
+      "Horse_Link_L:Collidable_Neck_3_2",
+      "Horse_Link_L:Collidable_Spine_2_1",
+      "Horse_Link_L:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Mane_Reduction.bphcl": {
+    "cloth": [
+      "FrontHair_Havok",
+      "Mane_Havok",
+      "Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Neck_1",
+      "Collidable_Waist",
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Reins_00.bphcl": {
+    "cloth": [
+      "Reins_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Reins_01.bphcl": {
+    "cloth": [
+      "Reins_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Reins_02.bphcl": {
+    "cloth": [
+      "Reins_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Reins_03.bphcl": {
+    "cloth": [
+      "Reins_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Reins_04.bphcl": {
+    "cloth": [
+      "Reins_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Reins_05.bphcl": {
+    "cloth": [
+      "Feather_Havok",
+      "Reins_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Reins_06.bphcl": {
+    "cloth": [
+      "Reins_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Reins_L.bphcl": {
+    "cloth": [
+      "Reins_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Neck_1",
+      "Horse_Link:Collidable_Neck_1_1",
+      "Horse_Link:Collidable_Neck_1_2",
+      "Horse_Link:Collidable_Neck_2",
+      "Horse_Link:Collidable_Neck_2_1",
+      "Horse_Link:Collidable_Neck_2_2",
+      "Horse_Link:Collidable_Neck_3",
+      "Horse_Link:Collidable_Head",
+      "Horse_Link:Collidable_Neck_3_1",
+      "Horse_Link:Collidable_Neck_3_2",
+      "Horse_Link:Collidable_Spine_2_1",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Saddle_01.bphcl": {
+    "cloth": [
+      "Bag_A_Havok",
+      "Bag_B_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1"
+    ]
+  },
+  "Horse_Link_Saddle_04.bphcl": {
+    "cloth": [
+      "Cloth_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2"
+    ]
+  },
+  "Horse_Link_Saddle_05.bphcl": {
+    "cloth": [
+      "Ribbon_A_Havok",
+      "Ribbon_B_Havok"
+    ],
+    "collidables": [
+      "Horse_Link:Collidable_Waist",
+      "Horse_Link:Collidable_Spine_1",
+      "Horse_Link:Collidable_Spine_2",
+      "Horse_Link:Collidable_Spine_2_2"
+    ]
+  },
+  "Horse_Link_Saddle_BackPack.bphcl": {
+    "cloth": [
+      "Basket_Havock",
+      "Flag_Havock"
+    ],
+    "collidables": [
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_"
+    ]
+  },
+  "Horse_Link_Saddle_BackPackAncient.bphcl": {
+    "cloth": [
+      "SimulationMesh_Basket",
+      "SimulationMesh_Lanthanum"
+    ],
+    "collidables": [
+      "Collidable_Spine_1"
+    ]
+  },
+  "Horse_Link_Saddle_BackPackSK.bphcl": {
+    "cloth": [
+      "Basket_Havock",
+      "Flag_Havock"
+    ],
+    "collidables": [
+      "Collidable_Spine_1",
+      "Collidable_Waist"
+    ]
+  },
+  "Horse_Link_Saddle_L.bphcl": {
+    "cloth": [
+      "Fur_Havok"
+    ],
+    "collidables": [
+      "Horse_Link_L:Collidable_Waist",
+      "Horse_Link_L:Collidable_Spine_1",
+      "Horse_Link_L:Collidable_Spine_2",
+      "Horse_Link_L:Collidable_Spine_2_2"
+    ]
+  },
+  "Item_Enemy_132.bphcl": {
+    "cloth": [
+      "SimulationMesh_Cloth"
+    ],
+    "collidables": [
+      "Body_A",
+      "Collidable_Horn",
+      "Collidable_Horn_1",
+      "Collidable_Horn_2",
+      "Pod_A",
+      "Shield_A"
+    ]
+  },
+  "Item_Enemy_133.bphcl": {
+    "cloth": [
+      "Back_Cloth_R_Havok",
+      "Back_Cloth_L_Havok",
+      "Flont_Cloth_R_Havok",
+      "Flont_Cloth_L_Havok"
+    ],
+    "collidables": [
+      "Body_A",
+      "Collidable_Horn",
+      "Collidable_Horn_0",
+      "Collidable_Horn_1",
+      "Collidable_Horn_2",
+      "Pod_A",
+      "Shield_A"
+    ]
+  },
+  "Item_Enemy_134.bphcl": {
+    "cloth": [
+      "Cloth_R_Havok",
+      "Cloth_L_Havok"
+    ],
+    "collidables": [
+      "Body_A",
+      "Collidable_Horn",
+      "Collidable_Horn_1",
+      "Collidable_Horn_2",
+      "Pod_A",
+      "Shield_A"
+    ]
+  },
+  "Item_Enemy_143.bphcl": {
+    "cloth": [
+      "Cloth_1_B_Havok",
+      "Cloth_1_A_Havok",
+      "Cloth_1_C_Havok"
+    ],
+    "collidables": [
+      "Collidable_Horn"
+    ]
+  },
+  "Item_Enemy_169.bphcl": {
+    "cloth": [
+      "SimulationMesh_Cloth"
+    ],
+    "collidables": [
+      "Collidable_Hone_1",
+      "Collidable_Hone_1_1"
+    ]
+  },
+  "Item_Enemy_214.bphcl": {
+    "cloth": [
+      "SimulationMesh_Enemy_214"
+    ],
+    "collidables": []
+  },
+  "Item_Enemy_64.bphcl": {
+    "cloth": [
+      "SimulationMesh_B_Horn",
+      "SimulationMesh_A_Horn"
+    ],
+    "collidables": [
+      "Body_A",
+      "Collidable_Horn",
+      "Collidable_Horn_1",
+      "Pod_A",
+      "Shield_A"
+    ]
+  },
+  "Item_Enemy_80.bphcl": {
+    "cloth": [
+      "SimulationMesh_Cloth_Sub",
+      "SimulationMesh_Cloth"
+    ],
+    "collidables": []
+  },
+  "Item_Parasail.bphcl": {
+    "cloth": [
+      "Havok_Tail_A_L",
+      "Havok_Tail_B_L",
+      "Havok_Tail_C_L",
+      "Havok_Tail_D_L",
+      "Havok_Tail_A_R",
+      "Havok_Tail_B_R",
+      "Havok_Tail_C_R",
+      "Havok_Tail_D_R",
+      "Havok_Tail_R",
+      "Havok_Tail_L"
+    ],
+    "collidables": [
+      "Collidable_Skl_Root",
+      "Collidable_Skl_Root_1",
+      "Collidable_Skl_Root_3",
+      "Collidable_Skl_Root_4",
+      "Collidable_Skl_Root_5",
+      "Collidable_Skl_Root_6",
+      "Collidable_Skl_Root_7",
+      "Collidable_Skl_Root_8"
+    ]
+  },
+  "Item_Plant_U.bphcl": {
+    "cloth": [
+      "SimulationMesh_Plant_U"
+    ],
+    "collidables": []
+  },
+  "Link.bphcl": {
+    "cloth": [
+      "Belt_A_Havok",
+      "Poach_A_Havok",
+      "Pod_C_Havok",
+      "Weapon_Swing"
+    ],
+    "collidables": [
+      "Collidable_Spine_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Waist_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_L_2",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_2",
+      "Collidable_Waist_2"
+    ]
+  },
+  "Npc_Fairy_Horse.bphcl": {
+    "cloth": [
+      "Cloth_Havok",
+      "Feather_Havok",
+      "Green_Havok",
+      "Hair_S_Havok",
+      "Head_Hair_Havok",
+      "Mane_Havok",
+      "Metal_Havok"
+    ],
+    "collidables": [
+      "Collidable_Mask",
+      "Collidable_Spine_2",
+      "Collidable_Spine_21",
+      "Collidable_Spine_2_1",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Fairy_Protection_000.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok",
+      "Hair_01_Havok",
+      "Hair_02_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Waist",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Fairy_Protection_001.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok",
+      "Hair_01_Havok",
+      "Hair_02_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Waist",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Fairy_Protection_002.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok",
+      "Hair_01_Havok",
+      "Hair_02_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Finger_B_1_R",
+      "Collidable_Finger_B_2_R",
+      "Collidable_Finger_B_3_R",
+      "Collidable_Finger_C_1_R",
+      "Collidable_Finger_C_2_R",
+      "Collidable_Finger_C_3_R",
+      "Collidable_Finger_D_1_R",
+      "Collidable_Finger_D_2_R",
+      "Collidable_Finger_D_3_R",
+      "Collidable_Finger_E_1_R",
+      "Collidable_Finger_E_2_R",
+      "Collidable_Finger_E_3_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Waist",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Fairy_Protection_003.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok",
+      "Hair_01_Havok",
+      "Hair_02_Havok",
+      "Hair_03_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Waist",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Ganondorf_Human.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_Center",
+      "SimulationMesh_Hair_L",
+      "SimulationMesh_Hair_Back",
+      "SimulationMesh_Acs_Body",
+      "SimulationMesh_Band",
+      "SimulationMesh_Jacket",
+      "SimulationMesh_Sleeve",
+      "SimulationMesh_Knot",
+      "SimulationMesh_Cloth_Back",
+      "SimulationMesh_Beard_Front",
+      "SimulationMesh_Beard",
+      "SimulationMesh_Earrings",
+      "SimulationMesh_Cloth_R",
+      "SimulationMesh_Eyebrow",
+      "SimulationMesh_Hair_Long",
+      "SimulationMesh_Skart",
+      "SimulationMesh_Hair_Top",
+      "SimulationMesh_Pendant"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_L_1",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Clavicle_R_2",
+      "Collidable_Head",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Head_7",
+      "Collidable_Head_8",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_L_2",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Waist",
+      "Collidable_Wrist_L"
+    ]
+  },
+  "Npc_Ganondorf_Human_Battle.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_Center",
+      "SimulationMesh_Hair_L",
+      "SimulationMesh_Hair_Back",
+      "SimulationMesh_Acs_Body",
+      "SimulationMesh_Band",
+      "SimulationMesh_Jacket",
+      "SimulationMesh_Sleeve",
+      "SimulationMesh_Knot",
+      "SimulationMesh_Cloth_Back",
+      "SimulationMesh_Beard_Front",
+      "SimulationMesh_Beard",
+      "SimulationMesh_Earrings",
+      "SimulationMesh_Cloth_R",
+      "SimulationMesh_Eyebrow",
+      "SimulationMesh_Hair_Long",
+      "SimulationMesh_Skart",
+      "SimulationMesh_Hair_Top",
+      "SimulationMesh_Pendant"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_L_1",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Clavicle_R_2",
+      "Collidable_Head",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Head_7",
+      "Collidable_Head_8",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_L_2",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Waist",
+      "Collidable_Wrist_L"
+    ]
+  },
+  "Npc_Ganondorf_Miasma.bphcl": {
+    "cloth": [
+      "SimulationMesh_Pants_L",
+      "SimulationMesh_Pants_R",
+      "SimulationMesh_Obi_A",
+      "SimulationMesh_Obi_B",
+      "SimulationMesh_BackSide",
+      "SimulationMesh_Eyebrow",
+      "SimulationMesh_Earrings",
+      "SimulationMesh_Beard",
+      "SimulationMesh_Beard_Front",
+      "SimulationMesh_Hair_L",
+      "SimulationMesh_Acs_Body",
+      "SimulationMesh_Pendant",
+      "SimulationMesh_Sleeve",
+      "SimulationMesh_Jacket_00",
+      "SimulationMesh_Skirt",
+      "SimulationMesh_Hair_C_A_Center",
+      "SimulationMesh_Hair_C_B_Center",
+      "SimulationMesh_Hair_Center",
+      "SimulationMesh_Hair_A",
+      "SimulationMesh_Hair_E",
+      "SimulationMesh_Hair_D_2",
+      "SimulationMesh_Hair_D_1",
+      "SimulationMesh_Hair_C_2",
+      "SimulationMesh_Hair_B",
+      "SimulationMesh_Hair_C_1"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_L_1",
+      "Collidable_Arm_1_L_2",
+      "Collidable_Arm_1_L_3",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_1_R_1",
+      "Collidable_Arm_1_R_2",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Hair_Long_All",
+      "Collidable_Head",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Head_7",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_L_2",
+      "Collidable_Leg_2_L_3",
+      "Collidable_Leg_2_L_4",
+      "Collidable_Leg_2_L_5",
+      "Collidable_Leg_2_L_6",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Leg_2_R_2",
+      "Collidable_Leg_2_R_3",
+      "Collidable_Leg_2_R_4",
+      "Collidable_Leg_2_R_5",
+      "Collidable_Leg_2_R_6",
+      "Collidable_Neck",
+      "Collidable_Skl_Root",
+      "Collidable_Skl_Root_1",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_12",
+      "Collidable_Spine_2_13",
+      "Collidable_Spine_2_14",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Spine_2_7",
+      "Collidable_Spine_2_8",
+      "Collidable_Spine_2_9",
+      "Collidable_Waist",
+      "Collidable_Waist_1",
+      "Collidable_Waist_10",
+      "Collidable_Waist_3",
+      "Collidable_Waist_5",
+      "Collidable_Waist_6",
+      "Collidable_Waist_7",
+      "Collidable_Waist_8",
+      "Collidable_Waist_9",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Ganondorf_Miasma_Battle.bphcl": {
+    "cloth": [
+      "SimulationMesh_Pants_L",
+      "SimulationMesh_Pants_R",
+      "SimulationMesh_Obi_A",
+      "SimulationMesh_Obi_B",
+      "SimulationMesh_BackSide",
+      "SimulationMesh_Eyebrow",
+      "SimulationMesh_Earrings",
+      "SimulationMesh_Beard",
+      "SimulationMesh_Beard_Front",
+      "SimulationMesh_Hair_L",
+      "SimulationMesh_Acs_Body",
+      "SimulationMesh_Pendant",
+      "SimulationMesh_Sleeve",
+      "SimulationMesh_Jacket_00",
+      "SimulationMesh_Skirt",
+      "SimulationMesh_Hair_C_A_Center",
+      "SimulationMesh_Hair_C_B_Center",
+      "SimulationMesh_Hair_Center",
+      "SimulationMesh_Hair_A",
+      "SimulationMesh_Hair_E",
+      "SimulationMesh_Hair_D_2",
+      "SimulationMesh_Hair_D_1",
+      "SimulationMesh_Hair_C_2",
+      "SimulationMesh_Hair_B",
+      "SimulationMesh_Hair_C_1"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_L_1",
+      "Collidable_Arm_1_L_2",
+      "Collidable_Arm_1_L_3",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_1_R_1",
+      "Collidable_Arm_1_R_2",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Hair_Long_All",
+      "Collidable_Head",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Head_7",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_L_2",
+      "Collidable_Leg_2_L_3",
+      "Collidable_Leg_2_L_4",
+      "Collidable_Leg_2_L_5",
+      "Collidable_Leg_2_L_6",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Leg_2_R_2",
+      "Collidable_Leg_2_R_3",
+      "Collidable_Leg_2_R_4",
+      "Collidable_Leg_2_R_5",
+      "Collidable_Leg_2_R_6",
+      "Collidable_Neck",
+      "Collidable_Skl_Root",
+      "Collidable_Skl_Root_1",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_1_2",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_12",
+      "Collidable_Spine_2_13",
+      "Collidable_Spine_2_14",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Spine_2_7",
+      "Collidable_Spine_2_8",
+      "Collidable_Spine_2_9",
+      "Collidable_Waist",
+      "Collidable_Waist_1",
+      "Collidable_Waist_10",
+      "Collidable_Waist_3",
+      "Collidable_Waist_5",
+      "Collidable_Waist_6",
+      "Collidable_Waist_7",
+      "Collidable_Waist_8",
+      "Collidable_Waist_9",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Ganondorf_Mummy.bphcl": {
+    "cloth": [
+      "SimulationMesh_AcsBreast",
+      "SimulationMesh_ArmRing_A",
+      "SimulationMesh_ArmRing_B",
+      "SimulationMesh_Back",
+      "SimulationMesh_Band",
+      "SimulationMesh_Earring",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Jacket",
+      "SimulationMesh_Leg_Ring",
+      "SimulationMesh_Necklace",
+      "SimulationMesh_Skirt"
+    ],
+    "collidables": [
+      "Collidable_Ankle_R",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_ArmRing_A_1",
+      "Collidable_ArmRing_A_2",
+      "Collidable_ArmRing_A_3",
+      "Collidable_ArmRing_A_4",
+      "Collidable_ArmRing_B_1",
+      "Collidable_ArmRing_B_2",
+      "Collidable_ArmRing_B_3",
+      "Collidable_ArmRing_B_4",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_4",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_4",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Toe_R",
+      "Collidable_Waist",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Ganondorf_Mummy_Battle.bphcl": {
+    "cloth": [
+      "SimulationMesh_Jacket",
+      "SimulationMesh_Band",
+      "SimulationMesh_Back",
+      "SimulationMesh_Necklace",
+      "SimulationMesh_Earring",
+      "SimulationMesh_Leg_Ring",
+      "SimulationMesh_ArmRing_A",
+      "SimulationMesh_ArmRing_B",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Skirt",
+      "SimulationMesh_AcsBreast"
+    ],
+    "collidables": [
+      "Collidable_Ankle_R",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_ArmRing_A_1",
+      "Collidable_ArmRing_A_2",
+      "Collidable_ArmRing_A_3",
+      "Collidable_ArmRing_A_4",
+      "Collidable_ArmRing_B_1",
+      "Collidable_ArmRing_B_2",
+      "Collidable_ArmRing_B_3",
+      "Collidable_ArmRing_B_4",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_4",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_4",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_Hair",
+      "Collidable_Spine_Hair_L",
+      "Collidable_Spine_Hair_R",
+      "Collidable_Toe_R",
+      "Collidable_Waist",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Gerudo_AncientSage.bphcl": {
+    "cloth": [
+      "SimulationMesh_Earring",
+      "SimulationMesh_Ring",
+      "SimulationMesh_Side_Hair",
+      "SimulationMesh_Back_Hair",
+      "SimulationMesh_Cloth",
+      "SimulationMesh_Necklace",
+      "SimulationMesh_Skirt"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_2",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_2",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Waist"
+    ]
+  },
+  "Npc_Gerudo_Champion.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5"
+    ]
+  },
+  "Npc_Gerudo_General.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_L_1",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_1_R_1",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_2",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_Gerudo_Jolien.bphcl": {
+    "cloth": [
+      "Accs_Havok",
+      "Accs_R_Havok",
+      "Earring_Havok",
+      "Hair_Havok",
+      "Skart_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_L_2",
+      "Collidable_Leg_1_L_3",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_1_R_2",
+      "Collidable_Leg_1_R_3",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_L_2",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Leg_2_R_2"
+    ]
+  },
+  "Npc_Gerudo_Queen_Young.bphcl": {
+    "cloth": [
+      "SimulationMesh_Acce_A",
+      "SimulationMesh_Acce_B",
+      "SimulationMesh_Earring",
+      "SimulationMesh_HairTop",
+      "SimulationMesh_Hair_Back_A",
+      "SimulationMesh_Hair_Back_B",
+      "SimulationMesh_HairSide",
+      "SimulationMesh_Skirt"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Head_7",
+      "Collidable_Head_8",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_1_R_2",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Waist"
+    ]
+  },
+  "Npc_Goron_AncientSage.bphcl": {
+    "cloth": [
+      "SimulationMesh_ArmFur",
+      "SimulationMesh_Cloth",
+      "SimulationMesh_Earring",
+      "SimulationMesh_Hair_Front",
+      "SimulationMesh_Mant_Back",
+      "SimulationMesh_Mant_Front",
+      "SimulationMesh_Seta"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_Fur_1_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Earring_2_L",
+      "Collidable_Earring_2_R",
+      "Collidable_Head",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_2",
+      "Collidable_Toe_L",
+      "Collidable_Toe_R",
+      "Collidable_Waist",
+      "Collidable_Waist_1"
+    ]
+  },
+  "Npc_Goron_Chef.bphcl": {
+    "cloth": [
+      "Hair_Havok",
+      "Hat_Havok",
+      "Scarf_Havok"
+    ],
+    "collidables": [
+      "Collidable_Spine_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_Goron_Darnia.bphcl": {
+    "cloth": [
+      "Hair_01_Havok",
+      "Hair_02_Havok"
+    ],
+    "collidables": [
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_Goron_Gourmet.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair",
+      "SimulationMesh_Necktie"
+    ],
+    "collidables": [
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_Goron_HeroDescendants_Sage.bphcl": {
+    "cloth": [
+      "SimulationMesh_Beard",
+      "SimulationMesh_Bib",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Hem",
+      "SimulationMesh_Knot",
+      "SimulationMesh_MiniHem",
+      "SimulationMesh_Rhombus",
+      "SimulationMesh_Ribon",
+      "SimulationMesh_SkirtB"
+    ],
+    "collidables": [
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2_1"
+    ]
+  },
+  "Npc_Goron_HeroDescendants_Sage_Reduction.bphcl": {
+    "cloth": [
+      "SimulationMesh_Beard",
+      "SimulationMesh_Bib",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Hem",
+      "SimulationMesh_Knot",
+      "SimulationMesh_MiniHem",
+      "SimulationMesh_Rhombus",
+      "SimulationMesh_Ribon",
+      "SimulationMesh_SkirtB"
+    ],
+    "collidables": [
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2_1"
+    ]
+  },
+  "Npc_Goron_Yunbo_Sage_Puppet.bphcl": {
+    "cloth": [
+      "SimulationMesh_Beard",
+      "SimulationMesh_Bib",
+      "SimulationMesh_Fur_A",
+      "SimulationMesh_Fur_B",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Jacket",
+      "SimulationMesh_Ribon",
+      "SimulationMesh_SkirtB"
+    ],
+    "collidables": [
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Hylia_Archaeologist.bphcl": {
+    "cloth": [
+      "SimulationMesh_Acce",
+      "SimulationMesh_Beard",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Hat",
+      "SimulationMesh_Necklace",
+      "SimulationMesh_Scarf",
+      "SimulationMesh_Skirt",
+      "SimulationMesh_Sleeve"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_R",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Waist",
+      "Collidable_Waist_1"
+    ]
+  },
+  "Npc_Hylia_Carpenter_000.bphcl": {
+    "cloth": [
+      "Bag_Havok",
+      "Hammer_Havok",
+      "Inotiduna_Havok",
+      "Neckless_Havok",
+      "Ring_Havok",
+      "Sasigane_Havok",
+      "Saw_Havok",
+      "Sbar_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hammer_1",
+      "Collidable_Head",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_4",
+      "Collidable_Waist_1",
+      "Collidable_Waist_2"
+    ]
+  },
+  "Npc_Hylia_Carpenter_001.bphcl": {
+    "cloth": [
+      "Bag_Havok",
+      "Hair_Havok",
+      "Hammer_Havok",
+      "Inotiduna_Havok",
+      "Memo_Havok",
+      "Sasigane_Havok",
+      "Saw_Havok",
+      "Sbar_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_1_R_2",
+      "Collidable_Waist_1",
+      "Collidable_Waist_2",
+      "Collidable_Waist_3"
+    ]
+  },
+  "Npc_Hylia_Conductor.bphcl": {
+    "cloth": [
+      "Beard_Havok",
+      "Hair_Havok",
+      "Mant_Havok",
+      "Ribbon_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Hut_1",
+      "Collidable_Hut_1_1",
+      "Collidable_Hut_1_10",
+      "Collidable_Hut_1_11",
+      "Collidable_Hut_1_12",
+      "Collidable_Hut_1_3",
+      "Collidable_Hut_1_4",
+      "Collidable_Hut_1_5",
+      "Collidable_Hut_1_6",
+      "Collidable_Hut_1_7",
+      "Collidable_Hut_1_8",
+      "Collidable_Hut_1_9",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_1_2",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_Hylia_Dyer_Trendy.bphcl": {
+    "cloth": [
+      "SimulationMesh_Earring",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Hat",
+      "SimulationMesh_Parka",
+      "SimulationMesh_Parka_LC",
+      "SimulationMesh_Scarf_B",
+      "SimulationMesh_Scarf_F"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Spine_2",
+      "Collidable_Waist",
+      "Collidable_Waist_1"
+    ]
+  },
+  "Npc_Hylia_Horn.bphcl": {
+    "cloth": [
+      "Cloth_Havok"
+    ],
+    "collidables": [
+      "Collidable_Ribbon_1",
+      "Collidable_Ribbon_1_1"
+    ]
+  },
+  "Npc_Hylia_Johnny.bphcl": {
+    "cloth": [
+      "BlueCloth_Havok",
+      "Kago_Havok",
+      "Katatsumuri_Havok",
+      "Lantern_Havok",
+      "Maedare_Havok",
+      "SackA_Havok",
+      "SackB_Havok",
+      "SackC_Havok",
+      "TableCloth_Havok",
+      "TsurizaoFlag_Havok"
+    ],
+    "collidables": [
+      "Collidable_BackPack_1",
+      "Collidable_BackPack_Root",
+      "Collidable_BackPack_Root_1",
+      "Collidable_BackPack_Root_2",
+      "Collidable_Head",
+      "Collidable_Kago_1",
+      "Collidable_Lamp_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_SackA_1",
+      "Collidable_SackB_1",
+      "Collidable_SackC_1"
+    ]
+  },
+  "Npc_Hylia_MercenarySoldier_Flag.bphcl": {
+    "cloth": [
+      "Flag_Havok"
+    ],
+    "collidables": [
+      "Collidable_Spear_Root"
+    ]
+  },
+  "Npc_Hylia_Newspaper.bphcl": {
+    "cloth": [
+      "Paper_Havok"
+    ],
+    "collidables": [
+      "Collidable_Paper_L",
+      "Collidable_Paper_R"
+    ]
+  },
+  "Npc_Korogu_Elder.bphcl": {
+    "cloth": [
+      "MushroomA_Habok",
+      "MushroomB_Havok",
+      "Tsuta_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_MushroomA_1"
+    ]
+  },
+  "Npc_Korogu_Minister.bphcl": {
+    "cloth": [
+      "Havok_Bag",
+      "Havok_Tree"
+    ],
+    "collidables": [
+      "Collidable_Bag_Cloth",
+      "Collidable_Head"
+    ]
+  },
+  "Npc_MamonoShop.bphcl": {
+    "cloth": [
+      "Beard_Havok",
+      "Cloth_C_02_Havok",
+      "Hair_Havok",
+      "Hood_Havok",
+      "Ring_Havok"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Ring_L",
+      "Collidable_Ring_R",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_NushiShop.bphcl": {
+    "cloth": [
+      "SimulationMesh_Acs",
+      "SimulationMesh_Beard",
+      "SimulationMesh_Cloth_C_02",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Hood",
+      "SimulationMesh_Ring"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Ring_L",
+      "Collidable_Ring_R",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_Raul.bphcl": {
+    "cloth": [
+      "SimulationMesh_Accs_Chest",
+      "SimulationMesh_Accs_Earrings_Namida",
+      "SimulationMesh_Accs_Waist",
+      "SimulationMesh_Cloth",
+      "SimulationMesh_Cloth_Waist",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Hairside",
+      "SimulationMesh_Halfup",
+      "SimulationMesh_SecretStone"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_L_2",
+      "Collidable_Arm_1_L_3",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_1_R_1",
+      "Collidable_Arm_1_R_2",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Hair_1",
+      "Collidable_Head",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_L_2",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_1_R_2",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Spine_2_5",
+      "Collidable_Spine_2_6",
+      "Collidable_Spine_2_7",
+      "Collidable_Spine_2_8",
+      "Collidable_Spine_2_9",
+      "Collidable_Waist",
+      "Collidable_Waistfrontcloth_1_JT",
+      "Collidable_Waistfrontcloth_1_JT_1",
+      "Collidable_Waistfrontcloth_2_JT",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R",
+      "Collidable_Wrist_R_1"
+    ]
+  },
+  "Npc_Raumi.bphcl": {
+    "cloth": [
+      "SimulationMesh_MaskRing",
+      "SimulationMesh_Pendant",
+      "SimulationMesh_HairSide",
+      "SimulationMesh_HairFront_A",
+      "SimulationMesh_HairFront_B",
+      "SimulationMesh_Hagoromo",
+      "SimulationMesh_WaistCloth",
+      "SimulationMesh_Stone",
+      "SimulationMesh_Hair",
+      "SimulationMesh_HairBack",
+      "SimulationMesh_Skirt",
+      "SimulationMesh_Ear"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Cloth_Top_3_L",
+      "Collidable_Cloth_Top_3_R",
+      "Collidable_Cloth_Top_4_L",
+      "Collidable_Cloth_Top_4_R",
+      "Collidable_Cloth_Top_5_L",
+      "Collidable_Cloth_Top_5_R",
+      "Collidable_Cloth_Top_6_L",
+      "Collidable_Cloth_Top_6_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_L_2",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_1_R_2",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Waist",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_RaumiGolem_Sage.bphcl": {
+    "cloth": [
+      "Earring_SimulationMesh",
+      "Feathers_B_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Jaw_L",
+      "Collidable_Jaw_R"
+    ]
+  },
+  "Npc_Rito_AncientSage.bphcl": {
+    "cloth": [
+      "SimulationMesh_Cloth_Front",
+      "SimulationMesh_Earring",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Mant_Back",
+      "SimulationMesh_Mant_Front",
+      "SimulationMesh_Nose_Earring",
+      "SimulationMesh_SecretStone"
+    ],
+    "collidables": [
+      "Collidable_Acce",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Clavicle_R_1",
+      "Collidable_Head",
+      "Collidable_Head_10",
+      "Collidable_Head_11",
+      "Collidable_Head_12",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Head_7",
+      "Collidable_Head_8",
+      "Collidable_Head_9",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Waist",
+      "Collidable_Waist_1",
+      "Collidable_Waist_2",
+      "Collidable_Waist_3",
+      "Collidable_Waist_4",
+      "Collidable_Waist_5",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R",
+      "Collidable_Wrist_R_1"
+    ]
+  },
+  "Npc_Rito_Hearts_Health.bphcl": {
+    "cloth": [
+      "SimulationMesh_Earhair",
+      "SimulationMesh_Hair",
+      "SimulationMesh_Sidehair"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_Rito_Mayer.bphcl": {
+    "cloth": [
+      "Cloths_Havok",
+      "Frontbeard_Havok",
+      "Mustache_L_Havok",
+      "Sidebeard_L_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Spine_1"
+    ]
+  },
+  "Npc_Rito_Moto_Young.bphcl": {
+    "cloth": [
+      "SimulationMesh_Acs",
+      "SimulationMesh_Cloth",
+      "SimulationMesh_Fronthair",
+      "SimulationMesh_Hairacs",
+      "SimulationMesh_Ponytail",
+      "SimulationMesh_Ribon",
+      "SimulationMesh_SecretStone",
+      "SimulationMesh_Sidehair_1",
+      "SimulationMesh_Sidehair_2"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Head_2",
+      "Collidable_Head_7",
+      "Collidable_Leg_2_L",
+      "Collidable_Neck",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Spine_2_5"
+    ]
+  },
+  "Npc_Rito_Postman.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair",
+      "SimulationMesh_HatSide",
+      "SimulationMesh_MapPaper",
+      "SimulationMesh_OpenMouthSupp",
+      "SimulationMesh_Ponytail"
+    ],
+    "collidables": [
+      "Collidable_Head_2",
+      "Collidable_Head_5",
+      "Collidable_Leg_1_L",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Neck_2",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Waist"
+    ]
+  },
+  "Npc_Rito_Saki.bphcl": {
+    "cloth": [
+      "Hair_Havok",
+      "Hairside_Havok",
+      "Knot_Havok"
+    ],
+    "collidables": [
+      "Collidable_Cheek_U_L",
+      "Collidable_Cheek_U_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Neck_2",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_Rito_Teba.bphcl": {
+    "cloth": [
+      "Earhair_Havok",
+      "Hair_Front_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_L_1",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_Scientist_M_000.bphcl": {
+    "cloth": [
+      "Clothes_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Backpack_1",
+      "Collidable_Backpack_2",
+      "Collidable_Backpack_3",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Waist",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Scientist_W_Lady.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair",
+      "SimulationMesh_Hair_Front",
+      "SimulationMesh_Hair_Side",
+      "SimulationMesh_Ribbon",
+      "SimulationMesh_Rope",
+      "SimulationMesh_Skirt"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_Skart_Assist_L",
+      "Collidable_Skart_Assist_R",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_L",
+      "Collidable_Spine_1_R",
+      "Collidable_Spine_2",
+      "Collidable_Waist"
+    ]
+  },
+  "Npc_Shiekah_Artist.bphcl": {
+    "cloth": [
+      "Hair_Havok",
+      "Tool_A_Havok",
+      "Tool_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_BackPack_Root_1",
+      "Collidable_BackPack_Root_2",
+      "Collidable_Spine_1"
+    ]
+  },
+  "Npc_Shiekah_Cane.bphcl": {
+    "cloth": [
+      "SimulationMesh_Ring_A",
+      "SimulationMesh_Ring_B",
+      "SimulationMesh_Ring_C",
+      "SimulationMesh_Ring_D"
+    ],
+    "collidables": [
+      "Collidable_Ring",
+      "Collidable_Ring_A",
+      "Collidable_Ring_B",
+      "Collidable_Ring_C",
+      "Collidable_Ring_D"
+    ]
+  },
+  "Npc_Shiekah_Heir_Mayor.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_02",
+      "SimulationMesh_Hair_Side",
+      "SimulationMesh_Metal"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Hat",
+      "Collidable_Head",
+      "Collidable_Spine_2",
+      "Collidable_Spine_3"
+    ]
+  },
+  "Npc_Shiekah_Impa_Wanderer.bphcl": {
+    "cloth": [
+      "SimulationMesh_Curtain"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Hat",
+      "Collidable_Spine_2"
+    ]
+  },
+  "Npc_Sonia.bphcl": {
+    "cloth": [
+      "SimulationMesh_Apron",
+      "SimulationMesh_ApronAcs_1",
+      "SimulationMesh_ApronAcs_2",
+      "SimulationMesh_BackHair_A",
+      "SimulationMesh_BackHair_B",
+      "SimulationMesh_Earrings",
+      "SimulationMesh_FrontHair",
+      "SimulationMesh_HairAcs",
+      "SimulationMesh_Leaf",
+      "SimulationMesh_Necklace",
+      "SimulationMesh_SideHair",
+      "SimulationMesh_Skirt"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Apron_1",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_L_1",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_1_R_1",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Ear_L",
+      "Collidable_Ear_R",
+      "Collidable_Earring_1_L",
+      "Collidable_Earring_1_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_L_2",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Leg_2_R_2",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Skirt_1_Center_Back",
+      "Collidable_Skirt_1_Center_Back_L",
+      "Collidable_Skirt_1_Center_Back_R",
+      "Collidable_Skirt_2_Center_Back",
+      "Collidable_Skirt_2_Center_Back_L",
+      "Collidable_Skirt_2_Center_Back_R",
+      "Collidable_Skirt_3_Center_Back",
+      "Collidable_Skirt_3_Center_Back_L",
+      "Collidable_Skirt_3_Center_Back_R",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Spine_2_5",
+      "Collidable_Spine_2_6",
+      "Collidable_Spine_2_7",
+      "Collidable_Spine_2_8",
+      "Collidable_Waist",
+      "Collidable_Waist_1",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Npc_Zelda_AncientHyrule.bphcl": {
+    "cloth": [
+      "SimulationMesh_Apron",
+      "SimulationMesh_Hair_Side",
+      "SimulationMesh_Earring",
+      "SimulationMesh_Necklace",
+      "SimulationMesh_HeadAcs",
+      "SimulationMesh_ApronAcs",
+      "SimulationMesh_ChestAcs",
+      "SimulationMesh_Hair_B_1_1",
+      "SimulationMesh_Hair_B_1_2",
+      "SimulationMesh_Hair_B_2",
+      "SimulationMesh_Skirt"
+    ],
+    "collidables": [
+      "Collidable_Ankle_L",
+      "Collidable_Ankle_R",
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Breast",
+      "Collidable_Clavicle_Assist_L",
+      "Collidable_Clavicle_Assist_R",
+      "Collidable_Clavicle_L_",
+      "Collidable_Clavicle_R_",
+      "Collidable_Ear_L",
+      "Collidable_Ear_L_1",
+      "Collidable_Ear_R",
+      "Collidable_Ear_R_1",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Head_7",
+      "Collidable_Head_8",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_L_1",
+      "Collidable_Leg_2_L_2",
+      "Collidable_Leg_2_L_3",
+      "Collidable_Leg_2_L_4",
+      "Collidable_Leg_2_R",
+      "Collidable_Leg_2_R_1",
+      "Collidable_Leg_2_R_2",
+      "Collidable_Leg_2_R_3",
+      "Collidable_Leg_2_R_4",
+      "Collidable_Neck",
+      "Collidable_Neck_",
+      "Collidable_Obi_1",
+      "Collidable_Skirt_1_Center_Front",
+      "Collidable_Skirt_1_Center_Front_L",
+      "Collidable_Skirt_1_Center_Front_R",
+      "Collidable_Skirt_1_L",
+      "Collidable_Skirt_1_R",
+      "Collidable_Skirt_3_Center_Front",
+      "Collidable_Skirt_3_Center_Front_L",
+      "Collidable_Skirt_3_Center_Front_R",
+      "Collidable_Skirt_4_Center_Front",
+      "Collidable_Skirt_4_Center_Front_L",
+      "Collidable_Skirt_4_Center_Front_R",
+      "Collidable_Skirt_5_Center_Front",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Spine_2_5",
+      "Collidable_Waist_1"
+    ]
+  },
+  "Npc_Zelda_Search_Improve.bphcl": {
+    "cloth": [
+      "SimulationMesh_Rope_1",
+      "SimulationMesh_Pod_C",
+      "SimulationMesh_Bag",
+      "SimulationMesh_Hair_Side",
+      "SimulationMesh_Sleeve",
+      "SimulationMesh_Arm_Sleeve",
+      "SimulationMesh_Mant",
+      "SimulationMesh_Mant_F",
+      "SimulationMesh_Hair_B_1_1",
+      "SimulationMesh_Hair_B_1_2",
+      "SimulationMesh_Hair_B_2"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_L_1",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_1_R_1",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Bag_1_",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Ear_L",
+      "Collidable_Ear_L_1",
+      "Collidable_Ear_R",
+      "Collidable_Ear_R_1",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_6",
+      "Collidable_Head_7",
+      "Collidable_Head_8",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_2",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Waist",
+      "Collidable_Waist_2",
+      "Collidable_Waist_3",
+      "Collidable_Waist_4"
+    ]
+  },
+  "Npc_ZonauGolem_Servant_A.bphcl": {
+    "cloth": [
+      "SimulationMesh_Earring",
+      "SimulationMesh_Ring"
+    ],
+    "collidables": [
+      "Collidable_Body_1"
+    ]
+  },
+  "Npc_Zora_AncientSage.bphcl": {
+    "cloth": [
+      "SimulationMesh_Arm_Fin_R",
+      "SimulationMesh_Ear",
+      "SimulationMesh_Earring",
+      "SimulationMesh_Head_Fin",
+      "SimulationMesh_Leg_Fin",
+      "SimulationMesh_Mant_Back",
+      "SimulationMesh_Mant_Front",
+      "SimulationMesh_Nose_Earring"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_L_1",
+      "Collidable_Arm_2_R",
+      "Collidable_Arm_2_R_1",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_1_L",
+      "Collidable_Head_1_R",
+      "Collidable_Head_6",
+      "Collidable_Head_7",
+      "Collidable_Head_8",
+      "Collidable_Head_L",
+      "Collidable_Head_R",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_1_2",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Waist",
+      "Collidable_Waist_1"
+    ]
+  },
+  "Npc_Zora_King_Retirement.bphcl": {
+    "cloth": [
+      "SimulationMesh_Arm_Fin_L",
+      "SimulationMesh_Arm_Fin_R",
+      "SimulationMesh_Ear",
+      "SimulationMesh_EriHire",
+      "SimulationMesh_Head_Fin",
+      "SimulationMesh_Head_FinTail",
+      "SimulationMesh_Leg_Fin",
+      "SimulationMesh_Scarf"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_1_2",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_6",
+      "Collidable_Spine_2_7",
+      "Collidable_Waist_1",
+      "Collidable_Waist_2"
+    ]
+  },
+  "Npc_Zora_Priest.bphcl": {
+    "cloth": [
+      "Arm_Fin_L_Havok",
+      "Arm_Fin_R_Havok",
+      "Ear_Havok",
+      "Forehead_Havok",
+      "Head_Fin_Havok",
+      "Himo_Havok",
+      "Leg_Fin_Havok",
+      "Necklace_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L_1",
+      "Collidable_Arm_1_L_2",
+      "Collidable_Arm_1_R_1",
+      "Collidable_Arm_1_R_3",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2"
+    ]
+  },
+  "Npc_Zora_Prince_Sage.bphcl": {
+    "cloth": [
+      "SimulationMesh_Pendant",
+      "SimulationMesh_Glove",
+      "SimulationMesh_Head_Fin",
+      "SimulationMesh_Arm_Fin",
+      "SimulationMesh_Ear",
+      "SimulationMesh_Cords_A",
+      "SimulationMesh_Cords_B",
+      "SimulationMesh_Cords_C",
+      "SimulationMesh_Scarf",
+      "SimulationMesh_Leg_Fin",
+      "SimulationMesh_Fur"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L_1",
+      "Collidable_Arm_1_L_2",
+      "Collidable_Arm_1_R_1",
+      "Collidable_Arm_1_R_2",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Neck",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_1_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2",
+      "Collidable_Spine_2_3",
+      "Collidable_Spine_2_4",
+      "Collidable_Waist"
+    ]
+  },
+  "Npc_Zora_Princess.bphcl": {
+    "cloth": [
+      "SimulationMesh_Arm_Fin",
+      "SimulationMesh_String_Head",
+      "SimulationMesh_Leg_Fin",
+      "SimulationMesh_Hip_Acc",
+      "SimulationMesh_Scarf_A",
+      "SimulationMesh_Ear",
+      "SimulationMesh_Rope_A",
+      "SimulationMesh_Horn",
+      "SimulationMesh_Bust_Acc",
+      "SimulationMesh_Head_Fin"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_L_1",
+      "Collidable_Arm_2_R",
+      "Collidable_Arm_2_R_1",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Leg_2_L",
+      "Collidable_Leg_2_R",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Spine_1",
+      "Collidable_Spine_1_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_4",
+      "Collidable_Spine_2_6",
+      "Collidable_Spine_2_7",
+      "Collidable_Spine_2_8",
+      "Collidable_Waist",
+      "Collidable_Waist_1",
+      "Collidable_Waist_2",
+      "Collidable_Waist_3",
+      "Collidable_Waist_4",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Obj_ClapperRope_A_01.bphcl": {
+    "cloth": [
+      "pPlane5",
+      "pPlane1",
+      "pPlane2",
+      "pPlane3",
+      "pPlane4"
+    ],
+    "collidables": []
+  },
+  "Obj_MessageBottle.bphcl": {
+    "cloth": [
+      "Strap_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Strap_Root",
+      "Collidable_Strap_Root_1"
+    ]
+  },
+  "Obj_MessageBottle_Small.bphcl": {
+    "cloth": [
+      "Strap_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Strap_Root",
+      "Collidable_Strap_Root_1"
+    ]
+  },
+  "Shield_042.bphcl": {
+    "cloth": [
+      "Faeather_Havok"
+    ],
+    "collidables": [
+      "Collidable_Ground",
+      "Collidable_Shield_Top_A",
+      "Collidable_Shield_Top_B"
+    ]
+  },
+  "SkyObj_Plant_RopeTreasureIvy_A_01.bphcl": {
+    "cloth": [
+      "Sim",
+      "Sim1"
+    ],
+    "collidables": [
+      "Collidable_Skl_Root",
+      "Collidable_Skl_Root_1",
+      "Collidable_Skl_Root_2",
+      "Collidable_Skl_Root_3",
+      "Collidable_Skl_Root_4",
+      "Collidable_Skl_Root_5",
+      "Collidable_Skl_Root_6",
+      "Collidable_Skl_Root_7"
+    ]
+  },
+  "Sunazarashi_Chief.bphcl": {
+    "cloth": [
+      "Bundle_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head_1",
+      "Collidable_Head_4",
+      "Collidable_Neck_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "TwnObj_HyruleCastleWallFlag_A_01.bphcl": {
+    "cloth": [
+      "FlagCloth_Havok"
+    ],
+    "collidables": [
+      "Collidable_jointC_1"
+    ]
+  },
+  "UMii_Gerudo_BodyC_W_000.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Neck_1"
+    ]
+  },
+  "UMii_Gerudo_BodyC_W_001.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head_1",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Neck_1"
+    ]
+  },
+  "UMii_Gerudo_BodyC_Y_000.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Neck"
+    ]
+  },
+  "UMii_Gerudo_BodyS_W_000.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5",
+      "Collidable_Head_6",
+      "Collidable_Neck_1"
+    ]
+  },
+  "UMii_Gerudo_Hair_C_000_W_000.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Root_1"
+    ]
+  },
+  "UMii_Gerudo_Hair_C_000_W_001.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Root_1"
+    ]
+  },
+  "UMii_Gerudo_Hair_C_001_W_000.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Head_5",
+      "Collidable_Neck"
+    ]
+  },
+  "UMii_Gerudo_Hair_C_001_W_001.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Head_5",
+      "Collidable_Neck"
+    ]
+  },
+  "UMii_Gerudo_Hair_C_002_W_000.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Root_3"
+    ]
+  },
+  "UMii_Gerudo_Hair_C_002_W_001.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Root_3"
+    ]
+  },
+  "UMii_Gerudo_Hair_C_003_W_000.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Root_3"
+    ]
+  },
+  "UMii_Gerudo_Hair_C_003_W_001.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Root_3"
+    ]
+  },
+  "UMii_Gerudo_Hair_C_004_W_000.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Head_5",
+      "Collidable_Hair_Head_6",
+      "Collidable_Hair_Root_1",
+      "Collidable_Hair_Root_2",
+      "Collidable_Hair_Root_3"
+    ]
+  },
+  "UMii_Gerudo_Hair_C_005_W_000.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_B_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Head_5",
+      "Collidable_Hair_Root_3"
+    ]
+  },
+  "UMii_Gerudo_Hair_GT_000.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok",
+      "HairBangs_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Gerudo_Hair_GT_001.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok",
+      "HairBands_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head",
+      "Collidable_Hair_Head_1"
+    ]
+  },
+  "UMii_Gerudo_Hair_GT_003.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Ribbon_Havok",
+      "Hair_Havok",
+      "Sidehair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head",
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Root"
+    ]
+  },
+  "UMii_Gerudo_Hair_G_004.bphcl": {
+    "cloth": [
+      "Earring_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Root_1"
+    ]
+  },
+  "UMii_Goron_BackPack_C_000.bphcl": {
+    "cloth": [
+      "Bag_Havok",
+      "Lanthanum_Havok",
+      "Rope_Havok"
+    ],
+    "collidables": [
+      "Collidable_BackPack_Spine_2",
+      "Collidable_BackPack_Spine_2_1",
+      "Collidable_Body_1",
+      "Collidable_Body_1_1"
+    ]
+  },
+  "UMii_Goron_BodyC_X_000.bphcl": {
+    "cloth": [
+      "Hige_Havok"
+    ],
+    "collidables": [
+      "Collidable_Spine_1",
+      "Collidable_Spine_11",
+      "Collidable_Spine_2",
+      "Collidable_Spine_21",
+      "Collidable_Spine_22"
+    ]
+  },
+  "UMii_Hylia_Hair_BT_002_Teen.bphcl": {
+    "cloth": [
+      "SimulationMesh_B"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_BT_003_Teen.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_BT_004_Teen.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair_BT"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_Hair_BT_005_Teen.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hair"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_Hair_B_003_C1.bphcl": {
+    "cloth": [
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_C_000_W1.bphcl": {
+    "cloth": [
+      "Hair_Back_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1",
+      "Collidable_Col_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_004_M1.bphcl": {
+    "cloth": [
+      "Hair_B_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_004_W1.bphcl": {
+    "cloth": [
+      "Hair_B_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_006_W1.bphcl": {
+    "cloth": [
+      "Hair_B_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Head_3"
+    ]
+  },
+  "UMii_Hylia_Hair_C_012_M1.bphcl": {
+    "cloth": [
+      "Hair_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Root_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_015_M1.bphcl": {
+    "cloth": [
+      "HairA_S_Havok",
+      "HairB_S_Havok",
+      "Hair_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_015_W1.bphcl": {
+    "cloth": [
+      "HairA_S_Havok",
+      "HairB_S_Havok",
+      "Hair_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_027_M4.bphcl": {
+    "cloth": [
+      "Hair_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_C_027_M5.bphcl": {
+    "cloth": [
+      "Hair_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_C_027_W0.bphcl": {
+    "cloth": [
+      "Hair_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_C_027_W1.bphcl": {
+    "cloth": [
+      "Hair_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_C_027_W4.bphcl": {
+    "cloth": [
+      "Hair_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_C_029_W1.bphcl": {
+    "cloth": [
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_C_029_W4.bphcl": {
+    "cloth": [
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_C_046_W2.bphcl": {
+    "cloth": [
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_C_052_M1.bphcl": {
+    "cloth": [
+      "Hair_F_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_052_W4.bphcl": {
+    "cloth": [
+      "Hair_F_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_077_Old.bphcl": {
+    "cloth": [
+      "Hair_Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_077_W1.bphcl": {
+    "cloth": [
+      "Hair_Tail_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_078_W1.bphcl": {
+    "cloth": [
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_082_M1.bphcl": {
+    "cloth": [
+      "Hair_B_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2",
+      "Collidable_Hair_Head_3",
+      "Collidable_Hair_Head_4",
+      "Collidable_Hair_Root"
+    ]
+  },
+  "UMii_Hylia_Hair_C_088_M0.bphcl": {
+    "cloth": [
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head"
+    ]
+  },
+  "UMii_Hylia_Hair_C_097_M0.bphcl": {
+    "cloth": [
+      "Hair_F_A_Havok",
+      "Hair_F_B_Havok",
+      "Hair_Tail_Havok"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_Hair_C_097_M1.bphcl": {
+    "cloth": [
+      "Hair_F_A_Havok",
+      "Hair_F_B_Havok",
+      "Hair_Tail_Havok"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_Hair_C_097_M4.bphcl": {
+    "cloth": [
+      "Hair_F_A_Havok",
+      "Hair_F_B_Havok",
+      "Hair_Tail_Havok"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_Hair_C_104_W1.bphcl": {
+    "cloth": [
+      "Hair_F_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_109_M0.bphcl": {
+    "cloth": [
+      "Hair_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_109_W1.bphcl": {
+    "cloth": [
+      "Hair_B_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_116_M0.bphcl": {
+    "cloth": [
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1",
+      "Collidable_Col_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_116_M1.bphcl": {
+    "cloth": [
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1",
+      "Collidable_Col_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_116_W4.bphcl": {
+    "cloth": [
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1",
+      "Collidable_Col_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_123_M1.bphcl": {
+    "cloth": [
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_123_W1.bphcl": {
+    "cloth": [
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_130_M1.bphcl": {
+    "cloth": [
+      "Hair_B_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_130_M3.bphcl": {
+    "cloth": [
+      "Hair_B_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_130_M4.bphcl": {
+    "cloth": [
+      "Hair_B_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_130_W1.bphcl": {
+    "cloth": [
+      "Hair_B_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_130_W4.bphcl": {
+    "cloth": [
+      "Hair_B_Havok",
+      "Hair_S_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hair_Head_1",
+      "Collidable_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_132_M1.bphcl": {
+    "cloth": [
+      "HairA_Havok",
+      "HairB_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_132_M4.bphcl": {
+    "cloth": [
+      "HairA_Havok",
+      "HairB_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_140_M1.bphcl": {
+    "cloth": [
+      "HairA_Havok",
+      "HairB_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1",
+      "Collidable_Col_Hair_Root_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_140_W1.bphcl": {
+    "cloth": [
+      "HairA_Havok",
+      "HairB_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1",
+      "Collidable_Col_Hair_Root_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_141_M0.bphcl": {
+    "cloth": [
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1",
+      "Collidable_Col_Hair_Head_2"
+    ]
+  },
+  "UMii_Hylia_Hair_C_143_M1.bphcl": {
+    "cloth": [
+      "HairA_Havok",
+      "HairB_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_Hair_C_143_W1.bphcl": {
+    "cloth": [
+      "HairA_Havok",
+      "HairB_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hair_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatC_C_001_M1.bphcl": {
+    "cloth": [
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Hat_Head"
+    ]
+  },
+  "UMii_Hylia_HatC_C_010_M0.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_010_M1.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_010_M4.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_010_W1.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_011_M1.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_011_W0.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_011_W1.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_011_W2.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_011_W4.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_011_W5.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_012_M1.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_012_M2.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_012_W4.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_013_M1.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_014_W2.bphcl": {
+    "cloth": [
+      "SimulationMesh_Acs"
+    ],
+    "collidables": [
+      "Collidable_Hat_Head"
+    ]
+  },
+  "UMii_Hylia_HatC_C_019_M0.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatC_C_019_M1.bphcl": {
+    "cloth": [
+      "SimulationMesh_Hat"
+    ],
+    "collidables": []
+  },
+  "UMii_Hylia_HatN_BT_000_Teen.bphcl": {
+    "cloth": [
+      "Fur_SimulationMesh",
+      "Hair_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_B_000_C1.bphcl": {
+    "cloth": [
+      "Far_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_GT_000_Teen.bphcl": {
+    "cloth": [
+      "Fur_SimulationMesh",
+      "Hair_SimulationMesh"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_G_000_C1.bphcl": {
+    "cloth": [
+      "Far_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_M_000_C0.bphcl": {
+    "cloth": [
+      "Fur_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_M_000_C1.bphcl": {
+    "cloth": [
+      "Fur_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_M_000_C2.bphcl": {
+    "cloth": [
+      "Fur_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_M_000_C3.bphcl": {
+    "cloth": [
+      "Fur_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_M_000_C4.bphcl": {
+    "cloth": [
+      "Fur_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_W_000_C0.bphcl": {
+    "cloth": [
+      "Far_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_W_000_C1.bphcl": {
+    "cloth": [
+      "Far_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_W_000_C2.bphcl": {
+    "cloth": [
+      "Far_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_W_000_C4.bphcl": {
+    "cloth": [
+      "Far_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_X_000_Old.bphcl": {
+    "cloth": [
+      "Far_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatN_Y_000_Old.bphcl": {
+    "cloth": [
+      "Far_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Col_Hat_Head_1"
+    ]
+  },
+  "UMii_Hylia_HatSK_GT_001_Teen.bphcl": {
+    "cloth": [
+      "Hair_Havok"
+    ],
+    "collidables": []
+  },
+  "UMii_Rito_BodyC_GT_000.bphcl": {
+    "cloth": [
+      "SimulationMesh_EarAccessories",
+      "SimulationMesh_HairBack",
+      "SimulationMesh_HairTop",
+      "SimulationMesh_Ribon"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Waist"
+    ]
+  },
+  "UMii_Rito_BodyC_G_000.bphcl": {
+    "cloth": [
+      "Hair_01_C_Havok",
+      "Hair_01_F_Havok",
+      "Hair_01_LR_Havok",
+      "Hair_02_Havok",
+      "Hair_03_Havok"
+    ],
+    "collidables": [
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Head_4",
+      "Collidable_Head_5"
+    ]
+  },
+  "UMii_Rito_BodyC_M_000.bphcl": {
+    "cloth": [
+      "Earhair_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "UMii_Rito_BodyC_M_001.bphcl": {
+    "cloth": [
+      "Earhair_Havok",
+      "Hair_Havok"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "UMii_Rito_BodyC_W_000.bphcl": {
+    "cloth": [
+      "Hair_1_Havok",
+      "Hair_2_Havok",
+      "Hairside_Havok"
+    ],
+    "collidables": [
+      "Collidable_Clavicle_L",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Head_2",
+      "Collidable_Head_3",
+      "Collidable_Neck",
+      "Collidable_Neck_1",
+      "Collidable_Spine_2"
+    ]
+  },
+  "UMii_Zora_BodyC_B_000.bphcl": {
+    "cloth": [
+      "Arm_Fin_L_Havok",
+      "Arm_Fin_R_Havok",
+      "Ear_Havok",
+      "Head_Fin_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2"
+    ]
+  },
+  "UMii_Zora_BodyC_G_000.bphcl": {
+    "cloth": [
+      "Arm_Fin_L_Havok",
+      "Arm_Fin_R_Havok",
+      "Ear_Havok",
+      "Head_Fin_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_R",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Spine_2_1",
+      "Collidable_Spine_2_2"
+    ]
+  },
+  "UMii_Zora_BodyC_M_000.bphcl": {
+    "cloth": [
+      "Arm_Fin_R_Havok",
+      "Ear_Havok",
+      "Head_Fin_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_L_1",
+      "Collidable_Arm_2_R",
+      "Collidable_Arm_2_R_1",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_R",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Waist",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "UMii_Zora_BodyC_W_000.bphcl": {
+    "cloth": [
+      "Arm_Fin_R_Havok",
+      "Ear_Havok",
+      "Head_Fin_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_L_1",
+      "Collidable_Arm_2_R",
+      "Collidable_Arm_2_R_1",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Waist",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "UMii_Zora_BodyC_X_000.bphcl": {
+    "cloth": [
+      "Arm_Fin_R_Havok",
+      "Ear_Havok",
+      "Head_Fin_Havok",
+      "Leg_Fin_Havok",
+      "Scarf_Havok"
+    ],
+    "collidables": [
+      "Collidable_Arm_1_L",
+      "Collidable_Arm_1_R",
+      "Collidable_Arm_2_L",
+      "Collidable_Arm_2_L_1",
+      "Collidable_Arm_2_R",
+      "Collidable_Arm_2_R_1",
+      "Collidable_Clavicle_L",
+      "Collidable_Clavicle_R",
+      "Collidable_Head",
+      "Collidable_Head_1",
+      "Collidable_Leg_1_L",
+      "Collidable_Leg_1_L_1",
+      "Collidable_Leg_1_R",
+      "Collidable_Leg_1_R_1",
+      "Collidable_Neck",
+      "Collidable_Spine_1",
+      "Collidable_Spine_2",
+      "Collidable_Spine_2_1",
+      "Collidable_Waist",
+      "Collidable_Wrist_L",
+      "Collidable_Wrist_R"
+    ]
+  },
+  "Weapon_Bow_028.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok"
+    ],
+    "collidables": [
+      "Collidable_Bow_L_2",
+      "Collidable_Ground"
+    ]
+  },
+  "Weapon_Bow_040.bphcl": {
+    "cloth": [
+      "Cloth_040_Havok"
+    ],
+    "collidables": [
+      "Collidable_Ground"
+    ]
+  },
+  "Weapon_Bow_101.bphcl": {
+    "cloth": [
+      "SimulationMesh_Acs"
+    ],
+    "collidables": [
+      "Collidable_Bow_Root",
+      "Collidable_Bow_Root_1"
+    ]
+  },
+  "Weapon_Lsheath_060.bphcl": {
+    "cloth": [
+      "Long_Havok"
+    ],
+    "collidables": [
+      "Collidable_Lsheath_Root",
+      "Collidable_Lsheath_Root2",
+      "Pod_A"
+    ]
+  },
+  "Weapon_Lsword_164.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok",
+      "Cloth_02_Havok"
+    ],
+    "collidables": [
+      "Collidable_Lsword_Center",
+      "Collidable_Parts_1_U",
+      "Pod_B"
+    ]
+  },
+  "Weapon_Lsword_166.bphcl": {
+    "cloth": [
+      "SimulationMesh_Cloth_A"
+    ],
+    "collidables": [
+      "Collidable_Skl_Root"
+    ]
+  },
+  "Weapon_Sheath_070_Broken.bphcl": {
+    "cloth": [
+      "SimulationMesh_Himo"
+    ],
+    "collidables": [
+      "Body_A",
+      "Pod_A"
+    ]
+  },
+  "Weapon_Sheath_152.bphcl": {
+    "cloth": [
+      "SimulationMesh_Sheath_1",
+      "SimulationMesh_Sheath_2",
+      "SimulationMesh_Sheath_3"
+    ],
+    "collidables": [
+      "Collidable_Sheath_Top"
+    ]
+  },
+  "Weapon_Sheath_166.bphcl": {
+    "cloth": [
+      "SimulationMesh_Cloth_A",
+      "SimulationMesh_Cloth_B",
+      "SimulationMesh_Cloth_C",
+      "SimulationMesh_Cloth_D"
+    ],
+    "collidables": [
+      "Body_A",
+      "Collidable_Skl_Root",
+      "Collidable_Skl_Root_2",
+      "Pod_A"
+    ]
+  },
+  "Weapon_Shield_017.bphcl": {
+    "cloth": [
+      "Cloth_AB",
+      "Cloth_CD"
+    ],
+    "collidables": []
+  },
+  "Weapon_Shield_103.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok"
+    ],
+    "collidables": []
+  },
+  "Weapon_Spear_024.bphcl": {
+    "cloth": [
+      "Cloth_02_Havok",
+      "Cloth_01_Havok"
+    ],
+    "collidables": [
+      "Collidable_Ground"
+    ]
+  },
+  "Weapon_Spear_032.bphcl": {
+    "cloth": [
+      "Feather_Havok"
+    ],
+    "collidables": [
+      "Collidable_Ground"
+    ]
+  },
+  "Weapon_Spear_036.bphcl": {
+    "cloth": [
+      "Himo_Cloth_Havok",
+      "Mop_Cloth_Havok"
+    ],
+    "collidables": [
+      "Collidable_Cloth_Root",
+      "Collidable_Ground",
+      "Collidable_Himocloth_01",
+      "Collidable_Mop_1"
+    ]
+  },
+  "Weapon_Spear_038.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok"
+    ],
+    "collidables": [
+      "Collidable_Ground"
+    ]
+  },
+  "Weapon_Spear_050.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok"
+    ],
+    "collidables": []
+  },
+  "Weapon_Spear_150.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok"
+    ],
+    "collidables": []
+  },
+  "Weapon_Spear_164.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok",
+      "Cloth_02_Havok"
+    ],
+    "collidables": [
+      "Collidable_Spear_Center",
+      "Collidable_Spear_Center_1"
+    ]
+  },
+  "Weapon_Spear_166.bphcl": {
+    "cloth": [
+      "SimulationMesh_Parts_01"
+    ],
+    "collidables": [
+      "Collidable_Cloth_01",
+      "Collidable_Cloth_01_1"
+    ]
+  },
+  "Weapon_Sword_022.bphcl": {
+    "cloth": [
+      "Havok_Himo_Cloth"
+    ],
+    "collidables": [
+      "Collidable_Himocloth_01"
+    ]
+  },
+  "Weapon_Sword_024.bphcl": {
+    "cloth": [
+      "Havok_Himo_Cloth"
+    ],
+    "collidables": [
+      "Collidable_Himocloth_01",
+      "Collidable_Himocloth_03"
+    ]
+  },
+  "Weapon_Sword_044.bphcl": {
+    "cloth": [
+      "Leaf_Havok"
+    ],
+    "collidables": []
+  },
+  "Weapon_Sword_164.bphcl": {
+    "cloth": [
+      "Cloth_01_Havok",
+      "Cloth_02_Havok"
+    ],
+    "collidables": [
+      "Collidable_Sword_Center",
+      "Collidable_Sword_Center_1",
+      "Pod_B"
+    ]
+  }
+}

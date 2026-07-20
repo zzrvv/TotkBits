@@ -23,3 +23,7 @@ HKCL
   20. Add read-only HKCL YAML preview UI. DONE!
   21. Update disk, archive, and nested-archive documents with rebuilt HKCL/BPHCL bytes. PARTIAL: validated byte commit and archive propagation implemented; HKCL graph serialization still required.
   22. Validate roundtrips, pointer integrity, conversion behavior, and archive save/reopen across HKCL, BPHCL, and BPHHB corpora. PARTIAL: parser/raw-byte and archive roundtrips, conversion preflights, and rebuilt BPHCL pointer/archive validation are covered; rebuilt HKCL roundtrips await the HKCL serializer from milestone 21.
+
+
+Look at the repo W:\coding\TotkBits\tmp\MeshCodec . Add code changes: user needs to be able to build the dll file 
+with 3 functions: meshcodec_decompress (take char* and int len bytes as args, decompress them,  return char* and int len), meshcodec_compress (take char* and int len bytes as args, compress them,  return char* and int len), meshcodec_free (free char* and any other relevant pointers). Create MANUAL.MD file - explain which parts of cmake are used to conduct building dll and explain additional code used to expose relevant functions. Explain in MANUAL.MD building prerequisities and dependencies and commands needed to build dll. Then build the dll and test it on meshcodec compressed files in W:\coding\TotkBits\tmp\mcpk

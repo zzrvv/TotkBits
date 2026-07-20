@@ -98,7 +98,10 @@ def repo_init():
     print(f"[+] Copying compressed json files")
 
     # Copy zlib compressed json files
-    for file in (cwd_path / "src-tauri/misc").glob("*.bin"):
+    json_dir = (cwd_path / "src-tauri/misc")
+    files = list(json_dir.glob("*.bin"))
+    files +=list(json_dir.glob("*.json"))
+    for file in files:
         if not file.is_file():
             continue
         destfile = cwd_path / "src-tauri/bin" / file.name
