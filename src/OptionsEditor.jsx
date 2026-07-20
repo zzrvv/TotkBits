@@ -3,7 +3,8 @@ import { invoke } from './DocumentState';
 import { useEditorContext } from "./StateManager";
 
 const fields = [
-    { key: "romfs", label: "TOTK RomFS path", type: "path", required: true },
+    { key: "romfs", label: "TOTK RomFS path", type: "path" },
+    { key: "Stop asking for romfs path", label: "Stop asking for a RomFS path", type: "boolean" },
     { key: "BOTW WIIU path (optional)", label: "BOTW Wii U path", type: "path" },
     { key: "font size", label: "Editor font size", type: "number", min: 8, max: 72 },
     { key: "Context menu font size", label: "Context-menu font size", type: "number", min: 8, max: 40 },

@@ -92,6 +92,7 @@ def repo_init():
     if bin_path_p.exists() and bin_path_p.is_dir():
         shutil.rmtree(bin_path)
     bin_path_p.mkdir(parents=True, exist_ok=True)
+    (CWD / "tmp").mkdir(parents=True, exist_ok=True)
 
     print(f"[+] Copying compressed json files")
 
@@ -101,7 +102,6 @@ def repo_init():
         if not destfile.exists():
             print(f"Copying: {file.name}")
             shutil.copyfile(file, destfile)
-    print(f"[+] Removing unused exe files")
 
     # Copy directories
     dirs_to_copy = {}

@@ -11,6 +11,7 @@ use std::io::BufReader;
 use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 //use roead::byml::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -44,6 +45,8 @@ pub struct TotkConfig {
     #[serde(skip)]
     pub config_path: String,
     pub botw_romfs_path: String,
+    pub stop_asking_for_romfs: bool,
+    pub last_romfs_prompt: u64,
 }
 
 impl Default for TotkConfig {
@@ -68,6 +71,8 @@ impl Default for TotkConfig {
             ],
             config_path: String::new(),
             botw_romfs_path: String::new(),
+            stop_asking_for_romfs: false,
+            last_romfs_prompt: 0,
         }
     }
 }
@@ -111,9 +116,11 @@ impl TotkConfig {
             conf_json = toml::from_str(&conf_str).unwrap_or_default();
         }
         conf.update_from_json_data(conf_json);
-        if !Self::check_for_zsdic(&conf.romfs) {
+        if !Self::check_for_zsdic(&conf.romfs) && conf.should_ask_for_romfs() {
             //unable to find romfs path, get it from NX editor or user input
-            conf.update_romfs_path()?; //throws error if not found
+            // A missing/cancelled path is a supported degraded mode. Remember the
+            // prompt time even when the user cancels so it is not repeated on each start.
+            conf.update_romfs_path().unwrap_or_default();
         }
 
         conf.save()?;
@@ -164,6 +171,15 @@ impl TotkConfig {
         self.rotation_deg = get_bool(&json_data, "Rotation in degrees", self.rotation_deg);
         self.romfs = get_string(&json_data, "romfs");
         self.botw_romfs_path = get_string(&json_data, "BOTW WIIU path (optional)");
+        self.stop_asking_for_romfs = get_bool(
+            &json_data,
+            "Stop asking for romfs path",
+            self.stop_asking_for_romfs,
+        );
+        self.last_romfs_prompt = json_data
+            .get("Last romfs path prompt")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(self.last_romfs_prompt);
 
         self.yaml_max_inl = self
             .yaml_max_inl
@@ -185,6 +201,8 @@ impl TotkConfig {
             "Prompt on close all": self.close_all_prompt,
             "Rotation in degrees": self.rotation_deg,
             "BOTW WIIU path (optional)": self.botw_romfs_path,
+            "Stop asking for romfs path": self.stop_asking_for_romfs,
+            "Last romfs path prompt": self.last_romfs_prompt,
         }))
     }
 
@@ -253,7 +271,11 @@ impl TotkConfig {
     }
 
     pub fn update_romfs_path(&mut self) -> io::Result<()> {
-        if self.update_romfs_from_NX().is_err() && self.update_romfs_from_input().is_err() {
+        if self.update_romfs_from_NX().is_ok() {
+            return Ok(());
+        }
+        self.last_romfs_prompt = Self::unix_time_now();
+        if self.update_romfs_from_input().is_err() {
             Err(io::Error::new(
                 io::ErrorKind::NotFound,
                 "Unable to get romfs path from NX editor or user input",
@@ -261,6 +283,19 @@ impl TotkConfig {
         } else {
             Ok(())
         }
+    }
+
+    fn unix_time_now() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    }
+
+    fn should_ask_for_romfs(&self) -> bool {
+        const SIX_HOURS_SECONDS: u64 = 6 * 60 * 60;
+        !self.stop_asking_for_romfs
+            && Self::unix_time_now().saturating_sub(self.last_romfs_prompt) >= SIX_HOURS_SECONDS
     }
 
     pub fn check_for_zsdic<P: AsRef<Path>>(romfs_path: P) -> bool {
