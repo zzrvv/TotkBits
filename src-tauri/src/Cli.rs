@@ -49,7 +49,7 @@ impl CliCommand {
                 | "extract_archive"
                 | "dir_to_archive"
                 | "decompress"
-                | "bphcl_validate"
+                // | "bphcl_validate"
                 | "compress" // | "msbt_dump"
                              // | "msbt_verify"
                              // | "rstb_validate"
@@ -110,7 +110,7 @@ impl CliCommand {
             "extract_archive" => self.extract_archive(),
             "dir_to_archive" => self.dir_to_archive(),
             "decompress" => self.decompress(),
-            "bphcl_validate" => self.bphcl_validate(),
+            // "bphcl_validate" => self.bphcl_validate(),
             "compress" => self.compress(),
             // "msbt_dump" => self.msbt_dump(),
             // "msbt_verify" => self.msbt_verify(),
