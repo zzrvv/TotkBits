@@ -1,29 +1,25 @@
-Milestones:
-
-  1. Port Havok TYPE-table parsing and rebuilding from PhysicsTool.     DONE!
-  2. Port ITEM graph closure collection and PTCH pointer relocation.    DONE!
-  3. Port DATA-section rebuilding and reference-array replacement.      DONE!
-  4. Port skeleton parsing and cloth/skeleton pairing.                  DONE!
-  5. Port AAMP cloth/collidable registration merging.                   DONE!
-  6. Implement complete-cloth graph merging with duplicate-name         DONE!
-     skipping.
-
-  7. Design and implement standalone Collidable merging—PhysicsTool
-     currently only imports colliders as part of a complete cloth
-     graph.                                                             DONE!
-
-  8. Add backend APIs to enumerate opened BPHCL documents and           DONE! 
-     selectable nodes.
-
-  9. Add Win32 validation message when fewer than two BPHCL documents   DONE!
-     are open.
-
-  10. Add the Tools → Physics merge selection subview.                  DONE!
-  11. Update disk/archive/nested-archive documents with merged bytes.   DONE!
-  12. Validate merged files across the corpus, including reparsing,
-     pointer integrity, and archive save/reopen tests.
-
-  The main blocker is that TotkBits currently preserves BPHCL bytes
-  but does not rebuild TAG0/TYPE/ITEM/PTCH/DATA sections.
-  PhysicsTool’s merge depends on all of those systems and has no
-  standalone Collidable merge implementation.
+HKCL                                                                                                                                                                                                                                                                                                
+  Milestones:                                                                                                                                                                                                                                                                                               
+                                                                                                                                                                                                                                                                                                            
+  1. Port HKCL binary model and header/section parsing from                DONE! PhysicsTool.                                                                                                                                                                                                                                    
+  2. Port HKCL TYPE, ITEM, PTCH, and DATA graph parsing.                                                                                                                                                                                                                                                    
+  3. Port HKCL skeleton, cloth, particle, constraint, and collidable parsing.                                                                                                                                                                                                                               
+  4. Add HKCL graph validation and corpus-based parser tests.                                                                                                                                                                                                                                               
+  5. Add read-only HKCL YAML serialization and document-tree leaves.                                                                                                                                                                                                                                        
+  6. Register .hkcl opening for disk, archive, and nested-archive documents.                                                                                                                                                                                                                                
+  7. Add backend APIs to enumerate opened HKCL documents and selectable nodes.                                                                                                                                                                                                                              
+  8. Port BPHHB header, bone hierarchy, transforms, and metadata parsing.                                                                                                                                                                                                                                   
+  9. Add BPHHB validation and corpus-based parser tests.                                                                                                                                                                                                                                                    
+  10. Register .bphhb opening and read-only document inspection.                                                                                                                                                                                                                                            
+  11. Define a format-neutral physics graph covering HKCL and BPHCL.                                                                                                                                                                                                                                        
+  12. Port PhysicsTool’s HKCL-to-BPHCL compatibility and conversion rules.                                                                                                                                                                                                                                  
+  13. Port PhysicsTool’s BPHCL-to-HKCL compatibility and conversion rules.                                                                                                                                                                                                                                  
+  14. Implement same-format HKCL complete-cloth and standalone-collidable merging.                                                                                                                                                                                                                          
+  15. Implement cross-format HKCL → BPHCL merging.                                                                                                                                                                                                                                                          
+  16. Implement cross-format BPHCL → HKCL merging.                                                                                                                                                                                                                                                          
+  17. Add BPHHB-assisted skeleton/bone mapping where required.                                                                                                                                                                                                                                              
+  18. Extend backend merge APIs with source/target format selection and validation.                                                                                                                                                                                                                         
+  19. Extend Tools → Physics Merge to support HKCL and BPHCL targets and sources.                                                                                                                                                                                                                           
+  20. Add read-only HKCL YAML preview UI.                                                                                                                                                                                                                                                                   
+  21. Update disk, archive, and nested-archive documents with rebuilt HKCL/BPHCL bytes.                                                                                                                                                                                                                     
+  22. Validate roundtrips, pointer integrity, conversion behavior, and archive save/reopen across HKCL, BPHCL, and BPHHB corpora.       

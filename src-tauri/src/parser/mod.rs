@@ -3,6 +3,7 @@ pub mod asb;
 pub mod binary;
 pub mod bphcl;
 pub mod evfl;
+pub mod hkcl;
 pub mod msbt;
 pub mod ptcl;
 pub mod rstb;
