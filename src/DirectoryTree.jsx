@@ -78,7 +78,7 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) =>
         <input
           className='inputtext'
           type="text"
-          placeholder="Type here to filter SARC files"
+          placeholder="Type here to filter files"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ width: '100%', padding: '5px' }}

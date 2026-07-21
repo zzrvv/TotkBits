@@ -858,6 +858,44 @@ impl DocumentState {
         data.read_only = true;
         Some(data)
     }
+
+    pub fn open_amta_node(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        path: String,
+    ) -> Result<SendData, String> {
+        let mut documents = self.documents();
+        let parent = documents
+            .get(parent_id)
+            .ok_or_else(|| "parent document is not open".to_owned())?;
+        let bytes = parent
+            .archive
+            .as_ref()
+            .and_then(|archive| archive.get(&path))
+            .ok_or_else(|| format!("archive entry not found: {path}"))?;
+        let amta = crate::parser::amta::AmtaFile::parse(bytes)?;
+        let yaml = serde_yaml::to_string(&amta).map_err(|error| error.to_string())?;
+        let file_name = path
+            .replace('\\', "/")
+            .rsplit('/')
+            .next()
+            .filter(|name| !name.is_empty())
+            .unwrap_or("metadata.amta")
+            .to_owned();
+
+        documents.entry(child_id.to_owned()).or_default();
+        let mut data = SendData::default();
+        data.text = yaml;
+        data.tab = "YAML".into();
+        data.lang = "yaml".into();
+        data.path = crate::Settings::Pathlib::new(&file_name);
+        data.file_label = format!("{file_name} [AMTA] [ReadOnly]");
+        data.file_metadata = "[AMTA] [ReadOnly]".into();
+        data.status_text = format!("Opened read-only AMTA metadata: {path}");
+        data.read_only = true;
+        Ok(data)
+    }
     fn documents(&self) -> std::sync::MutexGuard<'_, HashMap<String, TotkBitsApp<'static>>> {
         match self.documents.lock() {
             Ok(documents) => documents,

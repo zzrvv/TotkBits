@@ -50,6 +50,7 @@ pub struct ArchiveDocument {
     pub path: String,
     pub added: BTreeSet<String>,
     pub modified: BTreeSet<String>,
+    pub zstd_zs: bool,
 }
 
 impl ArchiveDocument {
@@ -59,11 +60,35 @@ impl ArchiveDocument {
             path: path.to_string_lossy().replace('\\', "/"),
             added: BTreeSet::new(),
             modified: BTreeSet::new(),
+            zstd_zs: false,
         })
     }
     pub fn open(path: &Path) -> ArchiveResult<Option<Self>> {
-        let bytes =
+        Self::open_impl(path, None)
+    }
+    pub fn open_with_zstd(
+        path: &Path,
+        zstd: &crate::Zstd::TotkZstd<'_>,
+    ) -> ArchiveResult<Option<Self>> {
+        Self::open_impl(path, Some(zstd))
+    }
+    fn open_impl(
+        path: &Path,
+        zstd: Option<&crate::Zstd::TotkZstd<'_>>,
+    ) -> ArchiveResult<Option<Self>> {
+        let source =
             fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        let decompressed;
+        let zstd_zs = source.starts_with(b"\x28\xB5\x2F\xFD") && zstd.is_some();
+        let bytes = if zstd_zs {
+            let decoder = zstd.ok_or("zs decompressor is unavailable")?;
+            decompressed = decoder
+                .try_decompress_using(&source, crate::Zstd::ZstdDictionary::Zs)
+                .map_err(|e| format!("failed to decompress BARS with zs dictionary: {e}"))?;
+            decompressed.as_slice()
+        } else {
+            source.as_slice()
+        };
         let archive = match detect_archive_magic(&bytes) {
             Some(ArchiveMagic::Zip) => RootArchive::Zip(Zip::ZipFile::from_bytes(&bytes)?),
             Some(ArchiveMagic::SevenZip) => {
@@ -78,6 +103,7 @@ impl ArchiveDocument {
             path: path.to_string_lossy().replace('\\', "/"),
             added: BTreeSet::new(),
             modified: BTreeSet::new(),
+            zstd_zs,
         }))
     }
     pub fn paths(&self) -> Vec<String> {
@@ -160,6 +186,20 @@ impl ArchiveDocument {
         self.archive.to_bytes()
     }
     pub fn save_atomic(&mut self, destination: &Path) -> ArchiveResult<()> {
+        self.save_atomic_impl(destination, None)
+    }
+    pub fn save_atomic_with_zstd(
+        &mut self,
+        destination: &Path,
+        zstd: &crate::Zstd::TotkZstd<'_>,
+    ) -> ArchiveResult<()> {
+        self.save_atomic_impl(destination, Some(zstd))
+    }
+    fn save_atomic_impl(
+        &mut self,
+        destination: &Path,
+        zstd: Option<&crate::Zstd::TotkZstd<'_>>,
+    ) -> ArchiveResult<()> {
         if let RootArchive::Folder(folder) = &self.archive {
             folder.save_to_directory(destination)?;
             self.path = destination.to_string_lossy().replace('\\', "/");
@@ -167,7 +207,14 @@ impl ArchiveDocument {
             self.modified.clear();
             return Ok(());
         }
-        let bytes = self.to_bytes()?;
+        let raw = self.to_bytes()?;
+        let bytes = if self.zstd_zs {
+            zstd.ok_or("zs compressor is unavailable")?
+                .compress_with_dictionary(&raw, crate::Zstd::ZstdDictionary::Zs)
+                .map_err(|error| format!("failed to compress BARS with zs dictionary: {error}"))?
+        } else {
+            raw
+        };
         let parent = destination.parent().unwrap_or_else(|| Path::new("."));
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         let tmp = parent.join(format!(
@@ -329,6 +376,37 @@ mod tests {
         assert!(validate_entry_path("safe/file.txt").is_ok());
     }
 
+    #[test]
+    fn opens_zstd_compressed_bars() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bars/Assassin_Senior.bars");
+        let raw = fs::read(source).expect("failed to read BARS fixture");
+        let app = crate::TotkApp::TotkBitsApp::default();
+        let compressed = app
+            .zstd
+            .compress_with_dictionary(&raw, crate::Zstd::ZstdDictionary::Zs)
+            .expect("failed to compress BARS fixture with zs dictionary");
+        let path =
+            std::env::temp_dir().join(format!("totkbits-zstd-bars-{}.bars.zs", std::process::id()));
+        fs::write(&path, compressed).expect("failed to write compressed BARS fixture");
+        let mut document = ArchiveDocument::open_with_zstd(&path, &app.zstd)
+            .expect("compressed BARS open failed")
+            .expect("compressed BARS was not recognized");
+        assert!(matches!(document.archive, RootArchive::Bars(_)));
+        assert!(!document.paths().is_empty());
+        assert!(document.zstd_zs);
+        document
+            .save_atomic_with_zstd(&path, &app.zstd)
+            .expect("failed to save zs-compressed BARS");
+        let saved = fs::read(&path).expect("failed to read saved BARS");
+        assert!(saved.starts_with(b"\x28\xB5\x2F\xFD"));
+        let decoded = app
+            .zstd
+            .try_decompress_using(&saved, crate::Zstd::ZstdDictionary::Zs)
+            .expect("saved BARS is not valid zs compression");
+        assert!(decoded.starts_with(b"BARS"));
+        let _ = fs::remove_file(path);
+    }
+
     fn document_roundtrip(extension: &str, archive: RootArchive) {
         let path = std::env::temp_dir().join(format!(
             "totkbits-archive-document-{}-{}.{}",
@@ -341,6 +419,7 @@ mod tests {
             path: path.to_string_lossy().into_owned(),
             added: BTreeSet::new(),
             modified: BTreeSet::new(),
+            zstd_zs: false,
         };
         document
             .set("folder/original.txt", b"before".to_vec())

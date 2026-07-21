@@ -315,10 +315,6 @@ const ButtonsDisplay = () => {
             event.preventDefault();
           }
           break;
-        case 'w': // Ctrl+W
-          event.preventDefault();
-          window.dispatchEvent(new CustomEvent('totkbits:close-active-document'));
-          break;
         // case 'c': // Ctrl+C
         //   event.preventDefault();
         //   if (activeTabRef.current === 'SARC') {

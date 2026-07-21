@@ -610,9 +610,27 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
         .or_else(|| AinbFile::open_ainb(&file_name, zstd.clone()))
         .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
         .or_else(|| MsbtFile::open_mstb(file_name))
-        .or_else(|| crate::file_format::Model3D::bfres::BfresFile::open(file_name))
-        .or_else(|| crate::parser::fbx::FbxFile::open(file_name))
-        .or_else(|| crate::file_format::Image::ImageDocument::open(file_name))
+        .or_else(|| {
+            // Experimental 3D viewers are intentionally disabled in release builds.
+            #[cfg(debug_assertions)]
+            return crate::file_format::Model3D::bfres::BfresFile::open(file_name);
+            #[cfg(not(debug_assertions))]
+            None
+        })
+        .or_else(|| {
+            // Experimental 3D viewers are intentionally disabled in release builds.
+            #[cfg(debug_assertions)]
+            return crate::parser::fbx::FbxFile::open(file_name);
+            #[cfg(not(debug_assertions))]
+            None
+        })
+        .or_else(|| {
+            // Experimental image viewers are intentionally disabled in release builds.
+            #[cfg(debug_assertions)]
+            return crate::file_format::Image::ImageDocument::open(file_name);
+            #[cfg(not(debug_assertions))]
+            None
+        })
         .or_else(|| crate::file_format::bphcl::BphclFile::open(file_name))
         .or_else(|| crate::file_format::hkcl::HkclFile::open(file_name))
         .or_else(|| crate::file_format::bphhb::BphhbFile::open(file_name))

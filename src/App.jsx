@@ -23,6 +23,7 @@ import  OptionsEditor  from './OptionsEditor';
 import DocumentTabs from './DocumentTabs';
 import PhysicsMerge from './PhysicsMerge';
 import Bfres3DView from './Bfres3DView';
+import AmtaView from './AmtaView';
 import ImageView from './ImageView';
 import AudioView from './AudioView';
 
@@ -33,11 +34,25 @@ function App() {
   const { documents } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
   const [comparingFile, setComparingFile] = React.useState('');
   const [audioProcessing, setAudioProcessing] = React.useState('');
+  const [loadingModel, setLoadingModel] = React.useState('');
 
   useEffect(() => {
     const receive = (event) => setAudioProcessing(event.detail || '');
     window.addEventListener('totkbits:audio-processing', receive);
     return () => window.removeEventListener('totkbits:audio-processing', receive);
+  }, []);
+
+  useEffect(() => {
+    const operations = new Map();
+    const receive = (event) => {
+      const { id, label, done } = event.detail || {};
+      if (!id) return;
+      if (done) operations.delete(id);
+      else operations.set(id, label || 'Loading model…');
+      setLoadingModel(Array.from(operations.values()).at(-1) || '');
+    };
+    window.addEventListener('totkbits:model-loading', receive);
+    return () => window.removeEventListener('totkbits:model-loading', receive);
   }, []);
 
 
@@ -221,6 +236,14 @@ function App() {
           </div>
         </div>
       )}
+      {!parsingFile && loadingModel && (
+        <div className="parsing-overlay" role="status" aria-live="polite" aria-busy="true">
+          <div className="parsing-content">
+            <div className="loading-swirl" aria-hidden="true"></div>
+            <div>{loadingModel}</div>
+          </div>
+        </div>
+      )}
       {audioProcessing && (
         <div className="parsing-overlay" role="status" aria-live="polite">
           <div className="parsing-content">
@@ -261,7 +284,7 @@ function App() {
         setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
       </SearchTextInSarcPrompt>
 
-      {activeTab !== '3D' && activeTab !== 'IMAGE' && activeTab !== 'AUDIO' && <ButtonsDisplay
+      {activeTab !== '3D' && activeTab !== 'IMAGE' && activeTab !== 'AUDIO' && activeTab !== 'AMTA' && <ButtonsDisplay
         editorRef={editorRef}
         updateEditorContent={updateEditorContent}
         setStatusText={setStatusText}
@@ -294,6 +317,7 @@ function App() {
       <Bfres3DView activeTab={activeTab} setStatusText={setStatusText} />
       <ImageView activeTab={activeTab} setStatusText={setStatusText} />
       <AudioView activeTab={activeTab} setActiveTab={setActiveTab} setStatusText={setStatusText} setpaths={setpaths} />
+      <AmtaView activeTab={activeTab} setActiveTab={setActiveTab} />
       
 
       {activeTab === 'YAML' && readOnly && <div className="physics-yaml-preview-banner" role="status">

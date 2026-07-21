@@ -99,6 +99,9 @@ pub fn encode_replacement_to_limit(
         return Err("replacement audio has no samples".into());
     }
 
+    let minimum_samples = ((original_samples as u64 * 8_000)
+        .div_ceil(adapted.sample_rate.max(1) as u64))
+    .clamp(1, original_samples as u64) as usize;
     let mut sample_count = original_samples;
     loop {
         let candidate = if sample_count == original_samples {
@@ -110,14 +113,14 @@ pub fn encode_replacement_to_limit(
         if encoded.len() <= maximum_size {
             return Ok(encoded);
         }
-        if sample_count == 1 {
+        if sample_count <= minimum_samples {
             return Err(format!(
-                "the replacement cannot fit in the original {maximum_size}-byte allocation"
+                "the replacement cannot fit in the original {maximum_size}-byte allocation without trimming or using an unsupported sample rate"
             ));
         }
         let ratio = maximum_size as f64 / encoded.len() as f64;
-        let next =
-            ((sample_count as f64 * ratio * 0.98).floor() as usize).clamp(1, sample_count - 1);
+        let next = ((sample_count as f64 * ratio * 0.98).floor() as usize)
+            .clamp(minimum_samples, sample_count - 1);
         sample_count = next;
     }
 }
@@ -147,11 +150,9 @@ fn resample(audio: &DecodedAudio, output_samples: usize) -> Result<DecodedAudio,
         }
         channels.push(output);
     }
-    // Browsers reject WAV files with extremely low sample rates. Keep fitted
-    // previews inside the broadly supported range while preserving duration.
     let sample_rate = ((audio.sample_rate as u64 * output_samples as u64)
         .div_ceil(input_samples as u64))
-    .clamp(8_000, u32::MAX as u64) as u32;
+    .clamp(1, u32::MAX as u64) as u32;
     Ok(DecodedAudio {
         channels,
         sample_rate,

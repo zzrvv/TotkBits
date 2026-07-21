@@ -111,7 +111,8 @@ const allocateChildDocument = (args, parentDocumentId) => {
 export const invoke = async (command, args = {}) => {
     if (!documentCommands.has(command)) return tauriInvoke(command, args);
     const isOpen = command === 'open_file_struct' || command === 'open_file_from_path' || command === 'open_folder_struct';
-    const isChildOpen = command === 'edit_internal_file' || command === 'edit_nested_sarc_file' || command === 'open_bphcl_leaf';
+    const isChildOpen = command === 'edit_internal_file' || command === 'edit_nested_sarc_file'
+        || command === 'open_bphcl_leaf' || command === 'open_amta_node';
     const isComparison = command === 'compare_files'
         || command === 'compare_internal_file_with_vanila'
         || (command === 'mutate_nested_archive' && args?.action === 'compare');
@@ -125,6 +126,13 @@ export const invoke = async (command, args = {}) => {
     const documentId = isComparison ? sourceDocumentId
         : isOpen ? allocateOpenDocument(command, args)
             : isChildOpen ? allocateChildDocument(args, parentDocumentId) : activeDocumentId;
+    const openOperationId = isOpen ? `open:${documentId}:${crypto.randomUUID()}` : null;
+    if (openOperationId) {
+        const name = args?.path?.replace(/\\/g, '/').split('/').pop();
+        window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+            detail: { id: openOperationId, label: name ? `Opening ${name}…` : 'Opening file…' },
+        }));
+    }
 
     // Fast parsers (notably plain text and small YAML-backed formats) can return
     // before React has attached Monaco to the newly allocated document. Wait for
@@ -171,6 +179,10 @@ export const invoke = async (command, args = {}) => {
             updateTitle(comparisonDocumentId, title, true);
             activateDocument(comparisonDocumentId);
         }
+        if (command === 'save_as_click' && result?.tab !== 'ERROR' && result?.path?.full_path) {
+            updateTitle(documentId, result.path.name || 'BARS', true);
+            updateFullPath(documentId, result.path.full_path);
+        }
         if (command === 'close_all_opened_files') {
             const oldDocuments = documents;
             documents = [createDocument()];
@@ -187,6 +199,11 @@ export const invoke = async (command, args = {}) => {
         }
         throw error;
     } finally {
+        if (openOperationId) {
+            window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+                detail: { id: openOperationId, done: true },
+            }));
+        }
         if (isComparison) {
             window.dispatchEvent(new CustomEvent('totkbits:comparing', { detail: '' }));
         }

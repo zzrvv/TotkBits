@@ -175,8 +175,18 @@ export default function DocumentTabs() {
                 void handleClose({ stopPropagation: () => { } }, activeDocumentId);
             }
         };
+        const handleCloseShortcut = (event) => {
+            if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'w') return;
+            event.preventDefault();
+            event.stopPropagation();
+            handleCloseActiveDocument();
+        };
         window.addEventListener('totkbits:close-active-document', handleCloseActiveDocument);
-        return () => window.removeEventListener('totkbits:close-active-document', handleCloseActiveDocument);
+        window.addEventListener('keydown', handleCloseShortcut, true);
+        return () => {
+            window.removeEventListener('totkbits:close-active-document', handleCloseActiveDocument);
+            window.removeEventListener('keydown', handleCloseShortcut, true);
+        };
     }, [activeDocumentId]);
 
     const handleSwitchToParent = (event) => {

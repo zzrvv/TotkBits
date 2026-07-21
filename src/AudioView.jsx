@@ -25,32 +25,14 @@ const AudioView = ({ activeTab, setActiveTab, setStatusText, setpaths }) => {
         window.dispatchEvent(new CustomEvent('totkbits:audio-processing', { detail: 'Encoding replacement audio…' }));
         setStatusText('Encoding WAV/MP3 replacement…');
         try {
-            let result = await invoke('replace_bfwav_node', { path: preview.path, sourcePath });
-            if (result.increased) {
-                const fit = window.confirm(
-                    `The encoded audio increased from ${result.old_size.toLocaleString()} to ${result.new_size.toLocaleString()} bytes.\n\nCompress it to fit the original size? This lowers the sample rate and audio quality.`,
-                );
-                if (fit) {
-                    window.dispatchEvent(new CustomEvent('totkbits:audio-processing', { detail: 'Compressing replacement to fit…' }));
-                    result = await invoke('replace_bfwav_node', {
-                        path: preview.path,
-                        sourcePath,
-                        fitToOriginal: true,
-                        maximumSize: result.old_size,
-                    });
-                } else {
-                    window.alert(`Warning: the internal audio is now ${result.new_size.toLocaleString()} bytes.`);
-                }
-            }
+            await invoke('replace_bfwav_node', { path: preview.path, sourcePath });
             const next = await invoke('open_bfwav_node', { path: preview.path });
             setPreview(next);
             setpaths((current) => ({
                 ...current,
                 modded_paths: [...new Set([...(current.modded_paths || []), preview.path])],
             }));
-            setStatusText(result.compressed
-                ? `Replaced ${preview.path}; compressed to ${result.new_size.toLocaleString()} bytes at ${result.sample_rate.toLocaleString()} Hz`
-                : `Replaced ${preview.path}`);
+            setStatusText(`Replaced ${preview.path}`);
         } catch (error) {
             setStatusText(`Audio replacement failed: ${error}`);
         } finally {
@@ -68,6 +50,26 @@ const AudioView = ({ activeTab, setActiveTab, setStatusText, setpaths }) => {
             setStatusText(output ? `Exported audio: ${output}` : 'Audio export cancelled');
         } catch (error) {
             setStatusText(`Audio export failed: ${error}`);
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const saveBars = async (saveAs = false) => {
+        setBusy(true);
+        setStatusText(saveAs ? 'Saving BARS as…' : 'Saving BARS…');
+        try {
+            const content = await invoke(saveAs ? 'save_as_click' : 'save_file_struct', {
+                saveData: { tab: 'SARC', text: '' },
+            });
+            if (!content) {
+                setStatusText(saveAs ? 'Save As cancelled' : 'BARS was not saved');
+                return;
+            }
+            if (content.sarc_paths?.paths?.length) setpaths(content.sarc_paths);
+            setStatusText(content.status_text || (saveAs ? 'Saved BARS copy' : 'Saved BARS'));
+        } catch (error) {
+            setStatusText(`BARS save failed: ${error}`);
         } finally {
             setBusy(false);
         }
@@ -96,6 +98,8 @@ const AudioView = ({ activeTab, setActiveTab, setStatusText, setpaths }) => {
                     <button type="button" disabled={busy} onClick={replace}>Replace WAV/MP3</button>
                     <button type="button" disabled={busy} onClick={() => exportAudio('wav')}>Export WAV</button>
                     <button type="button" disabled={busy} onClick={() => exportAudio('mp3')}>Export MP3</button>
+                    <button type="button" disabled={busy} onClick={() => saveBars(false)}>Save BARS</button>
+                    <button type="button" disabled={busy} onClick={() => saveBars(true)}>Save BARS As…</button>
                 </div>
             </div>
         </> : <p>Select a BFWAV or BWAV node.</p>}

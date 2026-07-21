@@ -311,6 +311,22 @@ impl<'a> TotkZstd<'_> {
         ))
     }
 
+    pub fn try_decompress_using(
+        &self,
+        data: &[u8],
+        dictionary: ZstdDictionary,
+    ) -> Result<Vec<u8>, io::Error> {
+        let dict = match dictionary {
+            ZstdDictionary::Zs => self.decompressor.zs.as_deref(),
+            ZstdDictionary::Pack => self.decompressor.packzs.as_deref(),
+            ZstdDictionary::Empty => Some(self.decompressor.empty.as_ref()),
+            ZstdDictionary::Bcett => self.decompressor.bcett.as_deref(),
+            ZstdDictionary::Yaz0 => return Self::decompress_yaz0(data),
+        }
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "dictionary is unavailable"))?;
+        self.decompressor.decompress(data, dict)
+    }
+
     pub fn compress_with_dictionary(
         &self,
         data: &[u8],

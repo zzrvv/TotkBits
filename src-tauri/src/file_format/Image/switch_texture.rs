@@ -1,10 +1,81 @@
 use image::{ImageBuffer, RgbaImage};
 use image_dds::{ImageFormat, Surface};
 use std::io;
+use std::num::NonZeroUsize;
 use tegra_swizzle::{
     surface::{deswizzle_surface, swizzled_surface_size, BlockDim},
     BlockHeight,
 };
+
+pub fn decode_astc(
+    width: u32,
+    height: u32,
+    swizzled: &[u8],
+    block_width: usize,
+    block_height: usize,
+    block_height_log2: u8,
+) -> io::Result<RgbaImage> {
+    let mut block_dim = BlockDim::uncompressed();
+    block_dim.width = NonZeroUsize::new(block_width)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ASTC block width is zero"))?;
+    block_dim.height = NonZeroUsize::new(block_height)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "ASTC block height is zero"))?;
+    let tegra_block_height = BlockHeight::new(1usize << block_height_log2)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid Tegra block height"))?;
+    let expected = swizzled_surface_size(
+        width as usize,
+        height as usize,
+        1,
+        block_dim,
+        Some(tegra_block_height),
+        16,
+        1,
+        1,
+    );
+    let mut padded = Vec::new();
+    let input = if swizzled.len() < expected {
+        padded.extend_from_slice(swizzled);
+        padded.resize(expected, 0);
+        padded.as_slice()
+    } else {
+        swizzled
+    };
+    let linear = deswizzle_surface(
+        width as usize,
+        height as usize,
+        1,
+        input,
+        block_dim,
+        Some(tegra_block_height),
+        16,
+        1,
+        1,
+    )
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+    let mut pixels = vec![0u32; width as usize * height as usize];
+    texture2ddecoder::decode_astc(
+        &linear,
+        width as usize,
+        height as usize,
+        block_width,
+        block_height,
+        &mut pixels,
+    )
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let rgba = pixels
+        .into_iter()
+        .flat_map(|pixel| {
+            let [blue, green, red, alpha] = pixel.to_le_bytes();
+            [red, green, blue, alpha]
+        })
+        .collect();
+    ImageBuffer::from_raw(width, height, rgba).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "decoded ASTC dimensions do not match",
+        )
+    })
+}
 
 pub fn decode(
     width: u32,
@@ -86,31 +157,36 @@ pub fn decode(
 pub fn format_from_bntx(value: u32) -> io::Result<ImageFormat> {
     let srgb = value & 0xff == 6;
     match value >> 8 {
-        0x0b => Ok(ImageFormat::R8Unorm),
-        0x0d => Ok(ImageFormat::Rg8Unorm),
-        0x1a => Ok(if srgb {
+        0x02 => Ok(ImageFormat::R8Unorm),
+        0x09 => Ok(ImageFormat::Rg8Unorm),
+        0x0b => Ok(if srgb {
             ImageFormat::Rgba8UnormSrgb
         } else {
             ImageFormat::Rgba8Unorm
         }),
-        0x1f => Ok(if srgb {
+        0x0c => Ok(if srgb {
+            ImageFormat::Bgra8UnormSrgb
+        } else {
+            ImageFormat::Bgra8Unorm
+        }),
+        0x1a => Ok(if srgb {
             ImageFormat::BC1RgbaUnormSrgb
         } else {
             ImageFormat::BC1RgbaUnorm
         }),
-        0x20 => Ok(if srgb {
+        0x1b => Ok(if srgb {
             ImageFormat::BC2RgbaUnormSrgb
         } else {
             ImageFormat::BC2RgbaUnorm
         }),
-        0x21 => Ok(if srgb {
+        0x1c => Ok(if srgb {
             ImageFormat::BC3RgbaUnormSrgb
         } else {
             ImageFormat::BC3RgbaUnorm
         }),
-        0x22 => Ok(ImageFormat::BC4RUnorm),
-        0x23 => Ok(ImageFormat::BC5RgUnorm),
-        0x2d => Ok(if srgb {
+        0x1d => Ok(ImageFormat::BC4RUnorm),
+        0x1e => Ok(ImageFormat::BC5RgUnorm),
+        0x20 => Ok(if srgb {
             ImageFormat::BC7RgbaUnormSrgb
         } else {
             ImageFormat::BC7RgbaUnorm
@@ -119,6 +195,26 @@ pub fn format_from_bntx(value: u32) -> io::Result<ImageFormat> {
             io::ErrorKind::Unsupported,
             format!("unsupported BNTX format 0x{value:X}"),
         )),
+    }
+}
+
+pub fn astc_block_from_bntx(value: u32) -> Option<(usize, usize)> {
+    match value >> 8 {
+        0x2d => Some((4, 4)),
+        0x2e => Some((5, 4)),
+        0x2f => Some((5, 5)),
+        0x30 => Some((6, 5)),
+        0x31 => Some((6, 6)),
+        0x32 => Some((8, 5)),
+        0x33 => Some((8, 6)),
+        0x34 => Some((8, 8)),
+        0x35 => Some((10, 5)),
+        0x36 => Some((10, 6)),
+        0x37 => Some((10, 8)),
+        0x38 => Some((10, 10)),
+        0x39 => Some((12, 10)),
+        0x3a => Some((12, 12)),
+        _ => None,
     }
 }
 
@@ -151,12 +247,36 @@ pub fn apply_component_selectors(image: &mut RgbaImage, selectors: [u8; 4]) {
         let source = pixel.0;
         for (target, selector) in selectors.into_iter().enumerate() {
             pixel.0[target] = match selector {
-                0..=3 => source[selector as usize],
-                4 => 0,
-                5 => 255,
+                0 => 0,
+                1 => 255,
+                2..=5 => source[(selector - 2) as usize],
                 _ => source[target],
             };
         }
+    }
+}
+
+#[cfg(test)]
+mod component_selector_tests {
+    use super::*;
+
+    #[test]
+    fn applies_nintendo_channel_selector_values() {
+        let mut image = RgbaImage::from_pixel(1, 1, image::Rgba([10, 20, 30, 40]));
+        apply_component_selectors(&mut image, [2, 3, 4, 5]);
+        assert_eq!(image.get_pixel(0, 0).0, [10, 20, 30, 40]);
+        apply_component_selectors(&mut image, [0, 1, 2, 5]);
+        assert_eq!(image.get_pixel(0, 0).0, [0, 255, 10, 40]);
+    }
+
+    #[test]
+    fn maps_bntx_astc_and_bc7_formats_without_overlap() {
+        assert_eq!(astc_block_from_bntx(0x2d06), Some((4, 4)));
+        assert!(format_from_bntx(0x2d06).is_err());
+        assert_eq!(
+            format_from_bntx(0x2006).expect("BC7 sRGB should be supported"),
+            ImageFormat::BC7RgbaUnormSrgb
+        );
     }
 }
 

@@ -24,6 +24,7 @@ pub struct CliCommand {
     file_type: String,
     input: PathBuf,
     output: PathBuf,
+    replacement_folder: Option<PathBuf>,
 }
 
 impl CliCommand {
@@ -48,15 +49,17 @@ impl CliCommand {
                 | "dir_to_archive"
                 | "decompress"
                 | "compress"
+                | "replace_bars_from_folder"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
         if !is_public_operation || arguments.len() != expected_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
                 input: PathBuf::new(),
                 output: PathBuf::new(),
+                replacement_folder: None,
             });
         }
         let cwd = env::current_dir().ok()?;
@@ -74,6 +77,15 @@ impl CliCommand {
                 file_type: String::new(),
                 input: absolute(&arguments[3]),
                 output: absolute(&arguments[4]),
+                replacement_folder: None,
+            })
+        } else if operation == "replace_bars_from_folder" {
+            Some(Self {
+                operation,
+                file_type: "bars".into(),
+                input: absolute(&arguments[3]),
+                replacement_folder: Some(absolute(&arguments[4])),
+                output: absolute(&arguments[5]),
             })
         } else {
             Some(Self {
@@ -81,6 +93,7 @@ impl CliCommand {
                 file_type: arguments[3].to_string_lossy().to_ascii_lowercase(),
                 input: absolute(&arguments[4]),
                 output: absolute(&arguments[5]),
+                replacement_folder: None,
             })
         }
     }
@@ -96,6 +109,7 @@ impl CliCommand {
             "dir_to_archive" => self.dir_to_archive(),
             "decompress" => self.decompress(),
             "compress" => self.compress(),
+            "replace_bars_from_folder" => self.replace_bars_from_folder(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -192,6 +206,103 @@ impl CliCommand {
         }
         .map_err(|e| format!("failed to compress input: {e}"))?;
         write_output(&self.output, &compressed)
+    }
+
+    fn replace_bars_from_folder(&self) -> Result<(), String> {
+        use std::collections::HashMap;
+
+        let folder = self
+            .replacement_folder
+            .as_deref()
+            .ok_or("missing audio replacement folder")?;
+        let zstd = self.zstd()?;
+        let mut archive =
+            crate::file_format::Archive::ArchiveDocument::open_with_zstd(&self.input, &zstd)?
+                .ok_or_else(|| format!("input is not a BARS archive: {}", self.input.display()))?;
+        if !matches!(
+            archive.archive,
+            crate::file_format::Archive::RootArchive::Bars(_)
+        ) {
+            return Err(format!(
+                "input is not a BARS archive: {}",
+                self.input.display()
+            ));
+        }
+
+        if !folder.is_dir() {
+            return Err(format!(
+                "audio replacement folder does not exist: {}",
+                folder.display()
+            ));
+        }
+        let mut sources = HashMap::new();
+        for item in fs::read_dir(folder).map_err(|error| error.to_string())? {
+            let path = item.map_err(|error| error.to_string())?.path();
+            let extension = path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default();
+            if !extension.eq_ignore_ascii_case("wav") && !extension.eq_ignore_ascii_case("mp3") {
+                continue;
+            }
+            if let Some(stem) = path.file_stem().and_then(|value| value.to_str()) {
+                sources.entry(stem.to_ascii_lowercase()).or_insert(path);
+            }
+        }
+        let targets: Vec<_> = archive
+            .archive
+            .entries()
+            .keys()
+            .filter(|path| {
+                path.starts_with("Audio/") && (path.ends_with(".bfwav") || path.ends_with(".bwav"))
+            })
+            .cloned()
+            .collect();
+        let mut replaced = 0usize;
+        let mut skipped = 0usize;
+        let mut failures = Vec::new();
+        let mut oversized = 0usize;
+        for target in targets {
+            let stem = Path::new(&target)
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let Some(source_path) = sources.get(&stem) else {
+                skipped += 1;
+                continue;
+            };
+            let original = archive
+                .get(&target)
+                .ok_or_else(|| format!("archive entry disappeared: {target}"))?
+                .to_vec();
+            let replacement = crate::file_format::Audio::Bfwav::decode_source(source_path)
+                .and_then(|source| {
+                    crate::file_format::Audio::encode_replacement(&original, &source)
+                });
+            match replacement {
+                Ok(bytes) => {
+                    if bytes.len() > original.len() {
+                        oversized += 1;
+                    }
+                    archive.set(&target, bytes)?;
+                    replaced += 1;
+                }
+                Err(error) => failures.push(format!("{target}: {error}")),
+            }
+        }
+        archive.save_atomic_with_zstd(&self.output, &zstd)?;
+        println!(
+            "Replaced {} audio file(s); skipped {}; failed {}; oversized {}",
+            replaced,
+            skipped,
+            failures.len(),
+            oversized
+        );
+        for failure in failures {
+            eprintln!("{failure}");
+        }
+        Ok(())
     }
 }
 

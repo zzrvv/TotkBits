@@ -49,6 +49,7 @@ pub struct BarsFolderReplacement {
     pub replaced: Vec<String>,
     pub skipped: Vec<String>,
     pub failed: Vec<String>,
+    pub oversized: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -65,6 +66,7 @@ struct BfresResolvedTexture {
 pub fn inspect_bfres(
     path: String,
 ) -> Result<crate::file_format::Model3D::bfres::BfresFile, String> {
+    require_experimental_visuals()?;
     crate::file_format::Model3D::bfres::BfresFile::from_path(path)
         .map_err(|error| error.to_string())
 }
@@ -75,6 +77,7 @@ pub fn inspect_3d_model(
     documentId: String,
     path: String,
 ) -> Result<serde_json::Value, String> {
+    require_experimental_visuals()?;
     let data = std::fs::read(&path).map_err(|error| error.to_string())?;
     if data.starts_with(b"Kaydara FBX Binary") {
         serde_json::to_value(
@@ -121,18 +124,32 @@ fn resolve_bfres_textures(
         .iter()
         .flat_map(|material| material.texture_slots.iter().map(|slot| slot.name.as_str()))
         .collect();
+    let files: HashMap<String, std::path::PathBuf> = std::fs::read_dir(&root)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let path = entry.path();
+            if !path.is_file() {
+                return None;
+            }
+            let file_name = path.file_name()?.to_str()?.to_ascii_lowercase();
+            let logical_name = file_name
+                .strip_suffix(".txtg.zs")
+                .or_else(|| file_name.strip_suffix(".txtg"))?;
+            Some((logical_name.to_owned(), path))
+        })
+        .collect();
     let mut textures = Vec::with_capacity(names.len());
     for name in names {
-        let file_name = if name.to_ascii_lowercase().ends_with(".txtg") {
-            name.to_owned()
-        } else {
-            format!("{name}.txtg")
-        };
-        let path = root.join(file_name);
-        if !path.is_file() {
+        let lowercase_name = name.to_ascii_lowercase();
+        let logical_name = lowercase_name
+            .strip_suffix(".txtg")
+            .unwrap_or(&lowercase_name);
+        let Some(path) = files.get(logical_name) else {
             continue;
-        }
-        let Ok(rendered) = crate::file_format::Image::ImageDocument::render_path(&path) else {
+        };
+        let Ok(rendered) = crate::file_format::Image::ImageDocument::render_path(path) else {
             continue;
         };
         textures.push(BfresResolvedTexture {
@@ -154,6 +171,7 @@ pub fn render_image(
     array_index: Option<u32>,
     mip_index: Option<u32>,
 ) -> Result<crate::file_format::Image::RenderedImage, String> {
+    require_experimental_visuals()?;
     crate::file_format::Image::ImageDocument::render_path_selection(
         path,
         texture_index.unwrap_or(0),
@@ -165,6 +183,7 @@ pub fn render_image(
 
 #[tauri::command]
 pub fn export_image_png(source: String, output: String) -> Result<(), String> {
+    require_experimental_visuals()?;
     crate::file_format::Image::ImageDocument::export_png(source, output)
         .map_err(|error| error.to_string())
 }
@@ -176,8 +195,17 @@ pub fn replace_dds_image(
     ddsType: String,
     mipCount: u32,
 ) -> Result<(), String> {
+    require_experimental_visuals()?;
     crate::file_format::Image::ImageDocument::replace_dds(target, png, &ddsType, mipCount)
         .map_err(|error| error.to_string())
+}
+
+fn require_experimental_visuals() -> Result<(), String> {
+    if cfg!(debug_assertions) {
+        Ok(())
+    } else {
+        Err("Experimental 3D and image features are disabled in release builds".into())
+    }
 }
 
 #[tauri::command]
@@ -394,19 +422,12 @@ pub fn replace_bfwav_node(
     documentId: String,
     path: String,
     sourcePath: String,
-    fitToOriginal: Option<bool>,
-    maximumSize: Option<usize>,
 ) -> Result<BfwavReplacement, String> {
     with_document_mut!(
         app_handle,
         documentId,
         app,
-        app.replace_bfwav_node(
-            &path,
-            Path::new(&sourcePath),
-            fitToOriginal.unwrap_or(false),
-            maximumSize,
-        )
+        app.replace_bfwav_node(&path, Path::new(&sourcePath), false, None, false)
     )
 }
 
@@ -415,10 +436,9 @@ pub fn replace_bars_audio_from_folder(
     app_handle: tauri::AppHandle,
     documentId: String,
     folderPath: String,
-    fitToOriginal: Option<bool>,
 ) -> Result<BarsFolderReplacement, String> {
     with_document_mut!(app_handle, documentId, app, {
-        app.replace_bars_audio_from_folder(Path::new(&folderPath), fitToOriginal.unwrap_or(false))
+        app.replace_bars_audio_from_folder(Path::new(&folderPath), false, false)
     })
 }
 
@@ -426,17 +446,12 @@ pub fn replace_bars_audio_from_folder(
 pub fn open_amta_node(
     app_handle: tauri::AppHandle,
     documentId: String,
+    parentDocumentId: String,
     path: String,
-) -> Result<serde_json::Value, String> {
-    with_document!(app_handle, documentId, app, {
-        let bytes = app
-            .archive
-            .as_ref()
-            .and_then(|archive| archive.get(&path))
-            .ok_or_else(|| format!("archive entry not found: {path}"))?;
-        serde_json::to_value(crate::parser::amta::AmtaFile::parse(bytes)?)
-            .map_err(|error| error.to_string())
-    })
+) -> Result<SendData, String> {
+    app_handle
+        .state::<DocumentState>()
+        .open_amta_node(&parentDocumentId, &documentId, path)
 }
 
 #[tauri::command]

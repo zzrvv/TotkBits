@@ -88,6 +88,7 @@ pub struct BfresMesh {
     pub positions: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
     pub uv0: Vec<[f32; 2]>,
+    pub uv_maps: Vec<Vec<[f32; 2]>>,
     pub colors: Vec<[f32; 4]>,
     pub bone_indices: Vec<[u16; 4]>,
     pub bone_weights: Vec<[f32; 4]>,
@@ -129,7 +130,10 @@ impl BfresFile {
         let has_supported_extension = path.extension().is_some_and(|extension| {
             extension.eq_ignore_ascii_case("bfres") || extension.eq_ignore_ascii_case("mc")
         });
-        if !has_supported_extension && !source.starts_with(b"FRES") && !source.starts_with(b"MCPK")
+        if !has_supported_extension
+            && !source.starts_with(b"FRES")
+            && !source.starts_with(b"MCPK")
+            && !source.starts_with(b"\x28\xB5\x2F\xFD")
         {
             return None;
         }
@@ -165,6 +169,19 @@ impl BfresFile {
                 return Err(BfresError::new(
                     0,
                     "MCPK payload is not a BFRES file (missing FRES signature)",
+                ));
+            }
+            return Self::from_bytes(&decompressed);
+        }
+        if !data.starts_with(b"FRES") {
+            let decompressed =
+                zstd::stream::decode_all(std::io::Cursor::new(data)).map_err(|error| {
+                    BfresError::new(0, format!("Zstandard decompression failed: {error}"))
+                })?;
+            if !decompressed.starts_with(b"FRES") {
+                return Err(BfresError::new(
+                    0,
+                    "Zstandard payload is not a BFRES file (missing FRES signature)",
                 ));
             }
             return Self::from_bytes(&decompressed);
@@ -435,6 +452,16 @@ fn parse_shape(
         .into_iter()
         .map(|v| [v[0], v[1]])
         .collect();
+    let uv_maps: Vec<Vec<[f32; 2]>> = (0..8)
+        .filter_map(|index| decode_attribute(stream, data, &format!("_u{index}")).ok())
+        .map(|values| {
+            values
+                .into_iter()
+                .map(|value| [value[0], value[1]])
+                .collect()
+        })
+        .filter(|values: &Vec<[f32; 2]>| values.len() == positions.len())
+        .collect();
     let colors = decode_attribute(stream, data, "_c0").unwrap_or_default();
 
     // BFRES _i attributes contain skeleton matrix indices. MatrixToBone maps
@@ -550,6 +577,7 @@ fn parse_shape(
             positions: positions.clone(),
             normals: normals.clone(),
             uv0: uv0.clone(),
+            uv_maps: uv_maps.clone(),
             colors: colors.clone(),
             bone_indices: bone_indices.clone(),
             bone_weights: bone_weights.clone(),
@@ -828,6 +856,19 @@ mod tests {
             parsed += 1;
         }
         assert!(parsed >= 4, "MCPK corpus is unexpectedly incomplete");
+    }
+
+    #[test]
+    fn decompresses_zstandard_before_parsing_bfres() {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bfres/Animal_Bull.Bull.bfres");
+        if !path.is_file() {
+            return;
+        }
+        let source = fs::read(path).unwrap();
+        let compressed = zstd::stream::encode_all(std::io::Cursor::new(source), 1).unwrap();
+        let bfres = BfresFile::from_bytes(&compressed).unwrap();
+        assert!(!bfres.sections.is_empty());
     }
 
     #[test]

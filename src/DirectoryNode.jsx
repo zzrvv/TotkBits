@@ -265,12 +265,13 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
       }
       if (/\.amta$/i.test(fullPath)) {
         setStatusText('Parsing AMTA metadata…');
-        invoke('open_amta_node', { path: fullPath }).then((metadata) => {
-          setLabelTextDisplay((current) => ({ ...current, yaml: `${fullPath} [AMTA]` }));
-          updateEditorContent(JSON.stringify(metadata, null, 2), 'json');
+        invoke('open_amta_node', { path: fullPath }).then((content) => {
+          if (!content) return;
+          setLabelTextDisplay((previous) => ({ ...previous, yaml: content.file_label }));
+          updateEditorContent(content.text, 'yaml');
           setReadOnly(true);
           setActiveTab('YAML');
-          setStatusText(`Opened AMTA metadata: ${fullPath}`);
+          setStatusText(content.status_text);
         }).catch((error) => setStatusText(`AMTA error: ${error}`));
         return;
       }
@@ -302,21 +303,12 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
         try {
           window.dispatchEvent(new CustomEvent('totkbits:audio-processing', { detail: 'Encoding replacement audio…' }));
           setStatusText('Encoding replacement audio…');
-          let result = await invoke('replace_bfwav_node', { path: fullPath, sourcePath });
-          if (result.increased) {
-            const fit = window.confirm(`The encoded audio increased from ${result.old_size.toLocaleString()} to ${result.new_size.toLocaleString()} bytes.\n\nCompress it to fit the original size? This lowers the sample rate and audio quality.`);
-            if (fit) {
-              window.dispatchEvent(new CustomEvent('totkbits:audio-processing', { detail: 'Compressing replacement to fit…' }));
-              result = await invoke('replace_bfwav_node', { path: fullPath, sourcePath, fitToOriginal: true, maximumSize: result.old_size });
-            } else {
-              window.alert(`Warning: the internal audio is now ${result.new_size.toLocaleString()} bytes.`);
-            }
-          }
+          await invoke('replace_bfwav_node', { path: fullPath, sourcePath });
           setpaths((current) => ({ ...current, modded_paths: [...new Set([...(current.modded_paths || []), fullPath])] }));
           const preview = await invoke('open_bfwav_node', { path: fullPath });
           window.dispatchEvent(new CustomEvent('totkbits:audio-preview', { detail: preview }));
           setActiveTab('AUDIO');
-          setStatusText(result.compressed ? `Replaced ${fullPath}; compressed to ${result.new_size.toLocaleString()} bytes at ${result.sample_rate.toLocaleString()} Hz` : `Replaced ${fullPath}`);
+          setStatusText(`Replaced ${fullPath}`);
         } catch (error) { setStatusText(`Audio replacement failed: ${error}`); }
         finally { window.dispatchEvent(new CustomEvent('totkbits:audio-processing')); }
       });
@@ -341,11 +333,10 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     closeContextMenu();
     const folderPath = await invoke('open_dir_dialog');
     if (!folderPath) return;
-    const fitToOriginal = window.confirm('Compress oversized replacements to fit their original allocations?');
     setStatusText('Matching and encoding audio replacements…');
     window.dispatchEvent(new CustomEvent('totkbits:audio-processing', { detail: 'Replacing BARS audio from folder…' }));
     try {
-      const result = await invoke('replace_bars_audio_from_folder', { folderPath, fitToOriginal });
+      const result = await invoke('replace_bars_audio_from_folder', { folderPath });
       setpaths((current) => ({ ...current, modded_paths: [...new Set([...(current.modded_paths || []), ...result.replaced])] }));
       const failure = result.failed.length ? `; ${result.failed.length} failed` : '';
       setStatusText(`Replaced ${result.replaced.length} matching audio files; ${result.skipped.length} unmatched${failure}`);

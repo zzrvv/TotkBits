@@ -571,3 +571,10 @@ body {
   .audio-view audio { flex-basis: 300px; }
   .audio-details { width: 100%; }
 }
+.amta-view { position: fixed; inset: calc(var(--menu-bar-h) + var(--document-tabs-h)) 0 var(--status-bar-h); z-index: 20; min-width: 0; min-height: 0; overflow: auto; padding: 14px; background: #171c23; color: #dce3ea; }
+.amta-view > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #35404c; }
+.amta-view > header strong, .amta-view > header small { display: block; }.amta-view > header small { margin-top: 3px; color: #8593a1; }
+.amta-view > header button { width: 30px; height: 30px; font-size: 20px; }
+.amta-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 0 0 14px; }
+.amta-summary > div { padding: 10px; border: 1px solid #303b47; background: #1e252d; }.amta-summary dt { color: #8392a1; font-size: 11px; }.amta-summary dd { margin: 4px 0 0; }
+.amta-chunks { display: grid; gap: 7px; }.amta-chunks details { border: 1px solid #303b47; background: #1c232b; }.amta-chunks summary { display: flex; justify-content: space-between; padding: 9px 11px; cursor: pointer; }.amta-chunks summary span { color: #81909e; }.amta-chunks ul, .amta-chunks p { margin: 0; padding: 9px 28px; border-top: 1px solid #303b47; }

@@ -129,6 +129,7 @@ impl<'a> TotkBitsApp<'a> {
         source: &Path,
         fit_to_original: bool,
         maximum_size: Option<usize>,
+        dry_run: bool,
     ) -> Result<crate::TauriCommands::BfwavReplacement, String> {
         let archive = self.archive.as_mut().ok_or("no archive is open")?;
         let original = archive
@@ -156,7 +157,9 @@ impl<'a> TotkBitsApp<'a> {
         };
         let new_size = encoded.len();
         let sample_rate = Audio::decode(&encoded)?.sample_rate;
-        archive.set(path, encoded)?;
+        if !dry_run {
+            archive.set(path, encoded)?;
+        }
         Ok(crate::TauriCommands::BfwavReplacement {
             old_size,
             new_size,
@@ -170,6 +173,7 @@ impl<'a> TotkBitsApp<'a> {
         &mut self,
         folder: &Path,
         fit_to_original: bool,
+        dry_run: bool,
     ) -> Result<crate::TauriCommands::BarsFolderReplacement, String> {
         use std::collections::HashMap;
         if !folder.is_dir() {
@@ -208,6 +212,7 @@ impl<'a> TotkBitsApp<'a> {
             replaced: Vec::new(),
             skipped: Vec::new(),
             failed: Vec::new(),
+            oversized: Vec::new(),
         };
         for target in targets {
             let stem = Path::new(&target)
@@ -224,8 +229,13 @@ impl<'a> TotkBitsApp<'a> {
                 .as_ref()
                 .and_then(|archive| archive.get(&target))
                 .map(<[u8]>::len);
-            match self.replace_bfwav_node(&target, source, fit_to_original, maximum) {
-                Ok(_) => result.replaced.push(target),
+            match self.replace_bfwav_node(&target, source, fit_to_original, maximum, dry_run) {
+                Ok(replacement) => {
+                    if replacement.increased {
+                        result.oversized.push(target.clone());
+                    }
+                    result.replaced.push(target)
+                }
                 Err(error) => result.failed.push(format!("{target}: {error}")),
             }
         }
@@ -1150,14 +1160,18 @@ impl<'a> TotkBitsApp<'a> {
                         return Some(result);
                     }
                     if let Some(archive) = &mut self.archive {
-                        return Some(match archive.save_atomic(Path::new(&dest_file)) {
-                            Ok(()) => self.archive_send_data(format!("Saved archive {dest_file}")),
-                            Err(error) => {
-                                let mut d = self.archive_send_data(format!("Error: {error}"));
-                                d.tab = "ERROR".into();
-                                d
-                            }
-                        });
+                        return Some(
+                            match archive.save_atomic_with_zstd(Path::new(&dest_file), &self.zstd) {
+                                Ok(()) => {
+                                    self.archive_send_data(format!("Saved archive {dest_file}"))
+                                }
+                                Err(error) => {
+                                    let mut d = self.archive_send_data(format!("Error: {error}"));
+                                    d.tab = "ERROR".into();
+                                    d
+                                }
+                            },
+                        );
                     }
                     let mut is_reload = false;
                     if let Some(pack) = &mut self.pack {
@@ -1393,15 +1407,19 @@ impl<'a> TotkBitsApp<'a> {
                 }
                 if let Some(archive) = &mut self.archive {
                     let destination = PathBuf::from(&archive.path);
-                    return Some(match archive.save_atomic(&destination) {
-                        Ok(()) => self
-                            .archive_send_data(format!("Saved archive {}", destination.display())),
-                        Err(error) => {
-                            let mut d = self.archive_send_data(format!("Error: {error}"));
-                            d.tab = "ERROR".into();
-                            d
-                        }
-                    });
+                    return Some(
+                        match archive.save_atomic_with_zstd(&destination, &self.zstd) {
+                            Ok(()) => self.archive_send_data(format!(
+                                "Saved archive {}",
+                                destination.display()
+                            )),
+                            Err(error) => {
+                                let mut d = self.archive_send_data(format!("Error: {error}"));
+                                d.tab = "ERROR".into();
+                                d
+                            }
+                        },
+                    );
                 }
                 if let Some(pack) = &mut self.pack {
                     if let Some(opened) = &mut pack.opened {
@@ -1897,7 +1915,7 @@ impl<'a> TotkBitsApp<'a> {
                 data.set_file_metadata(TotkFileType::Sarc, dictionary);
                 return Some(data);
             }
-            match ArchiveDocument::open(Path::new(&file_name)) {
+            match ArchiveDocument::open_with_zstd(Path::new(&file_name), &self.zstd) {
                 Ok(Some(archive)) => {
                     let is_bars = matches!(archive.archive, RootArchive::Bars(_));
                     self.pack = None;
@@ -1906,10 +1924,10 @@ impl<'a> TotkBitsApp<'a> {
                     self.archive = Some(archive);
                     let mut data = self.archive_send_data(format!("Opened archive {file_name}"));
                     if is_bars {
-                        data.file_metadata = match dictionary.as_ref() {
-                            Some(ZstdDictionary::Yaz0) => "[Bars] [Yaz0]".into(),
-                            Some(dictionary) => format!("[Bars] [ZSTD: {dictionary:?}]"),
-                            None => "[Bars]".into(),
+                        data.file_metadata = if self.archive.as_ref().is_some_and(|v| v.zstd_zs) {
+                            "[Bars] [ZSTD: Zs]".into()
+                        } else {
+                            "[Bars]".into()
                         };
                     } else {
                         data.set_file_metadata(TotkFileType::Sarc, dictionary);

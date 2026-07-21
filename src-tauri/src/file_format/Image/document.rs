@@ -93,30 +93,50 @@ impl ImageDocument {
             let end = offset
                 .saturating_add(texture.image_size as usize)
                 .min(data.len());
-            let image_format = super::switch_texture::format_from_bntx(texture.format)?;
-            let mut image = super::switch_texture::decode(
-                texture.width,
-                texture.height,
-                image_format,
-                data.get(offset..end).ok_or_else(|| {
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        "BNTX image offset is outside the file",
-                    )
-                })?,
-                texture.block_height_log2,
-                texture.tile_mode == 1,
-            )?;
+            let surface_data = data.get(offset..end).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "BNTX image offset is outside the file",
+                )
+            })?;
+            let (mut image, format_name) = if let Some((block_width, block_height)) =
+                super::switch_texture::astc_block_from_bntx(texture.format)
+            {
+                (
+                    super::switch_texture::decode_astc(
+                        texture.width,
+                        texture.height,
+                        surface_data,
+                        block_width,
+                        block_height,
+                        texture.block_height_log2,
+                    )?,
+                    format!("ASTC_{block_width}x{block_height}"),
+                )
+            } else {
+                let image_format = super::switch_texture::format_from_bntx(texture.format)?;
+                (
+                    super::switch_texture::decode(
+                        texture.width,
+                        texture.height,
+                        image_format,
+                        surface_data,
+                        texture.block_height_log2,
+                        texture.tile_mode == 1,
+                    )?,
+                    format!("{image_format:?}"),
+                )
+            };
             super::switch_texture::apply_component_selectors(&mut image, texture.channel_types);
             (
                 image,
                 "BNTX".into(),
                 u32::from(texture.mip_count),
-                Some(format!("{image_format:?}")),
+                Some(format_name),
             )
         } else if data.get(4..8) == Some(b"6PK0") {
             let txtg = crate::parser::textogo::TexToGoFile::parse(&data).map_err(invalid)?;
-            let image_format = super::switch_texture::format_from_textogo(txtg.header.format)?;
+            let image_format = super::switch_texture::format_from_textogo(txtg.header.format);
             entries.push(ImageEntry {
                 name: path
                     .file_stem()
@@ -138,18 +158,49 @@ impl ImageDocument {
                 })?;
             let log2 =
                 super::switch_texture::inferred_block_height_log2(u32::from(txtg.header.height), 4);
+            let (image, format_name) = match txtg.header.format {
+                0x101 | 0x109 => (
+                    super::switch_texture::decode_astc(
+                        u32::from(txtg.header.width),
+                        u32::from(txtg.header.height),
+                        &surface.data,
+                        4,
+                        4,
+                        log2,
+                    )?,
+                    "ASTC 4x4".to_owned(),
+                ),
+                0x102 | 0x105 => (
+                    super::switch_texture::decode_astc(
+                        u32::from(txtg.header.width),
+                        u32::from(txtg.header.height),
+                        &surface.data,
+                        8,
+                        8,
+                        log2,
+                    )?,
+                    "ASTC 8x8".to_owned(),
+                ),
+                _ => {
+                    let image_format = image_format?;
+                    (
+                        super::switch_texture::decode(
+                            u32::from(txtg.header.width),
+                            u32::from(txtg.header.height),
+                            image_format,
+                            &surface.data,
+                            log2,
+                            false,
+                        )?,
+                        format!("{image_format:?}"),
+                    )
+                }
+            };
             (
-                super::switch_texture::decode(
-                    u32::from(txtg.header.width),
-                    u32::from(txtg.header.height),
-                    image_format,
-                    &surface.data,
-                    log2,
-                    false,
-                )?,
+                image,
                 "TexToGo".into(),
                 u32::from(txtg.header.mip_count),
-                Some(format!("{image_format:?}")),
+                Some(format_name),
             )
         } else if data.starts_with(b"DDS ") {
             let header = super::dds::DdsHeader::parse(&data)?;
@@ -271,11 +322,34 @@ mod tests {
     use super::*;
     #[test]
     fn renders_bntx_sample() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/tex/Animal_Insect_A.bntx");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
+        let path = root.join("tex/Animal_Insect_A.bntx");
         let rendered = ImageDocument::render_path(path).unwrap();
         assert_eq!(
             (rendered.width, rendered.height, rendered.format.as_str()),
             (256, 256, "BNTX")
+        );
+        assert_eq!(rendered.dds_type.as_deref(), Some("ASTC_4x4"));
+
+        let encoded = rendered.data_url.split_once(',').unwrap().1;
+        let actual_png = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .unwrap();
+        let actual = image::load_from_memory(&actual_png).unwrap().to_rgba8();
+        let expected = image::open(root.join("_ss/Animal_Insect_A.png"))
+            .unwrap()
+            .to_rgba8();
+        assert_eq!(actual.dimensions(), expected.dimensions());
+        let total_error: u64 = actual
+            .as_raw()
+            .iter()
+            .zip(expected.as_raw())
+            .map(|(actual, expected)| u64::from(actual.abs_diff(*expected)))
+            .sum();
+        let mean_error = total_error as f64 / actual.as_raw().len() as f64;
+        assert!(
+            mean_error < 2.0,
+            "rendered BNTX differs from the reference PNG (mean channel error {mean_error:.3})"
         );
     }
     #[test]

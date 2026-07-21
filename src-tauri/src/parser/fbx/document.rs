@@ -179,6 +179,7 @@ fn mesh_dom(handle: fbxcel_dom::v7400::object::geometry::MeshHandle<'_>) -> io::
         positions,
         normals,
         uv0: Vec::new(),
+        uv_maps: Vec::new(),
         colors: Vec::new(),
         bone_indices: Vec::new(),
         bone_weights: Vec::new(),
