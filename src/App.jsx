@@ -24,6 +24,7 @@ import DocumentTabs from './DocumentTabs';
 import PhysicsMerge from './PhysicsMerge';
 import Bfres3DView from './Bfres3DView';
 import ImageView from './ImageView';
+import AudioView from './AudioView';
 
 
 let triggered = false
@@ -31,6 +32,13 @@ let triggered = false
 function App() {
   const { documents } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
   const [comparingFile, setComparingFile] = React.useState('');
+  const [audioProcessing, setAudioProcessing] = React.useState('');
+
+  useEffect(() => {
+    const receive = (event) => setAudioProcessing(event.detail || '');
+    window.addEventListener('totkbits:audio-processing', receive);
+    return () => window.removeEventListener('totkbits:audio-processing', receive);
+  }, []);
 
 
 
@@ -213,6 +221,14 @@ function App() {
           </div>
         </div>
       )}
+      {audioProcessing && (
+        <div className="parsing-overlay" role="status" aria-live="polite">
+          <div className="parsing-content">
+            <div className="loading-swirl" aria-hidden="true"></div>
+            <div>{audioProcessing}</div>
+          </div>
+        </div>
+      )}
       {comparingFile && (
         <div className="parsing-overlay" role="status" aria-live="polite">
           <div className="parsing-content">
@@ -245,7 +261,7 @@ function App() {
         setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
       </SearchTextInSarcPrompt>
 
-      {activeTab !== '3D' && activeTab !== 'IMAGE' && <ButtonsDisplay
+      {activeTab !== '3D' && activeTab !== 'IMAGE' && activeTab !== 'AUDIO' && <ButtonsDisplay
         editorRef={editorRef}
         updateEditorContent={updateEditorContent}
         setStatusText={setStatusText}
@@ -277,6 +293,7 @@ function App() {
       <PhysicsMerge activeTab={activeTab} setActiveTab={setActiveTab} returnTab={physicsMergeReturnTab} setStatusText={setStatusText} setpaths={setpaths} documentSnapshots={documentSnapshots} />
       <Bfres3DView activeTab={activeTab} setStatusText={setStatusText} />
       <ImageView activeTab={activeTab} setStatusText={setStatusText} />
+      <AudioView activeTab={activeTab} setActiveTab={setActiveTab} setStatusText={setStatusText} setpaths={setpaths} />
       
 
       {activeTab === 'YAML' && readOnly && <div className="physics-yaml-preview-banner" role="status">

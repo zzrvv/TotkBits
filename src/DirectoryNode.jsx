@@ -254,6 +254,26 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   const handleOpenInternalSarcFile = () => {
     closeContextMenu();
     if (isFile) {
+      if (/\.(?:bfwav|bwav)$/i.test(fullPath)) {
+        setStatusText('Decoding audio…');
+        invoke('open_bfwav_node', { path: fullPath }).then((preview) => {
+          window.dispatchEvent(new CustomEvent('totkbits:audio-preview', { detail: preview }));
+          setActiveTab('AUDIO');
+          setStatusText(`Opened audio: ${fullPath}`);
+        }).catch((error) => setStatusText(`Audio error: ${error}`));
+        return;
+      }
+      if (/\.amta$/i.test(fullPath)) {
+        setStatusText('Parsing AMTA metadata…');
+        invoke('open_amta_node', { path: fullPath }).then((metadata) => {
+          setLabelTextDisplay((current) => ({ ...current, yaml: `${fullPath} [AMTA]` }));
+          updateEditorContent(JSON.stringify(metadata, null, 2), 'json');
+          setReadOnly(true);
+          setActiveTab('YAML');
+          setStatusText(`Opened AMTA metadata: ${fullPath}`);
+        }).catch((error) => setStatusText(`AMTA error: ${error}`));
+        return;
+      }
       if (sarcPaths.read_only) openBphclLeaf(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, setReadOnly);
       else editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
     }
@@ -276,6 +296,32 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   };
   const handleReplaceInternalSarcFile = () => {
     closeContextMenu();
+    if (/\.(?:bfwav|bwav)$/i.test(fullPath)) {
+      invoke('open_audio_file_dialog').then(async (sourcePath) => {
+        if (!sourcePath) return;
+        try {
+          window.dispatchEvent(new CustomEvent('totkbits:audio-processing', { detail: 'Encoding replacement audio…' }));
+          setStatusText('Encoding replacement audio…');
+          let result = await invoke('replace_bfwav_node', { path: fullPath, sourcePath });
+          if (result.increased) {
+            const fit = window.confirm(`The encoded audio increased from ${result.old_size.toLocaleString()} to ${result.new_size.toLocaleString()} bytes.\n\nCompress it to fit the original size? This lowers the sample rate and audio quality.`);
+            if (fit) {
+              window.dispatchEvent(new CustomEvent('totkbits:audio-processing', { detail: 'Compressing replacement to fit…' }));
+              result = await invoke('replace_bfwav_node', { path: fullPath, sourcePath, fitToOriginal: true, maximumSize: result.old_size });
+            } else {
+              window.alert(`Warning: the internal audio is now ${result.new_size.toLocaleString()} bytes.`);
+            }
+          }
+          setpaths((current) => ({ ...current, modded_paths: [...new Set([...(current.modded_paths || []), fullPath])] }));
+          const preview = await invoke('open_bfwav_node', { path: fullPath });
+          window.dispatchEvent(new CustomEvent('totkbits:audio-preview', { detail: preview }));
+          setActiveTab('AUDIO');
+          setStatusText(result.compressed ? `Replaced ${fullPath}; compressed to ${result.new_size.toLocaleString()} bytes at ${result.sample_rate.toLocaleString()} Hz` : `Replaced ${fullPath}`);
+        } catch (error) { setStatusText(`Audio replacement failed: ${error}`); }
+        finally { window.dispatchEvent(new CustomEvent('totkbits:audio-processing')); }
+      });
+      return;
+    }
     replaceInternalFileClick(fullPath, setStatusText, setpaths);
   };
   const handleAddInternalSarcFileToDir = () => {
@@ -289,6 +335,26 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   const handleAddEmptyByml = () => {
     closeContextMenu();
     addEmptyByml(fullPath, setStatusText, setpaths);
+  };
+
+  const handleReplaceBarsFromFolder = async () => {
+    closeContextMenu();
+    const folderPath = await invoke('open_dir_dialog');
+    if (!folderPath) return;
+    const fitToOriginal = window.confirm('Compress oversized replacements to fit their original allocations?');
+    setStatusText('Matching and encoding audio replacements…');
+    window.dispatchEvent(new CustomEvent('totkbits:audio-processing', { detail: 'Replacing BARS audio from folder…' }));
+    try {
+      const result = await invoke('replace_bars_audio_from_folder', { folderPath, fitToOriginal });
+      setpaths((current) => ({ ...current, modded_paths: [...new Set([...(current.modded_paths || []), ...result.replaced])] }));
+      const failure = result.failed.length ? `; ${result.failed.length} failed` : '';
+      setStatusText(`Replaced ${result.replaced.length} matching audio files; ${result.skipped.length} unmatched${failure}`);
+      if (result.failed.length) window.alert(result.failed.join('\n'));
+    } catch (error) {
+      setStatusText(`Folder replacement failed: ${error}`);
+    } finally {
+      window.dispatchEvent(new CustomEvent('totkbits:audio-processing'));
+    }
   };
 
   const handleRenameInternalSarcFile = () => {
@@ -382,6 +448,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     { label: 'Expand archive', method: async () => { closeContextMenu(); if (await expandNestedSarc(fullPath, setStatusText, setpaths, setPathsFilters)) setExpanded(true); }, icon: 'dir_opened.png', shortcut: '' },
     { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '' },
   ] : [
+    ...(fullPath.toLowerCase() === 'audio' ? [{ label: 'Replace audio from folder', method: handleReplaceBarsFromFolder, icon: 'context_menu/replace.png', shortcut: '' }] : []),
     { label: 'Add file', method: handleAddInternalSarcFileToDir, icon: 'context_menu/add_file.png', shortcut: '' },
     { label: 'Add folder', method: handleAddFilesFromDirRecursively, icon: 'context_menu/add_dir.png', shortcut: '' },
     { label: 'Extract', method: handleExtractInternalSarcFolder, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E' },

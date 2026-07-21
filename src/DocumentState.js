@@ -12,6 +12,8 @@ const documentCommands = new Set([
     'expand_nested_sarc', 'edit_nested_sarc_file', 'open_bphcl_leaf', 'extract_nested_sarc_file',
     'remove_bphcl_node',
     'mutate_nested_archive',
+    'open_bfwav_node', 'replace_bfwav_node', 'replace_bars_audio_from_folder', 'export_bfwav_node', 'open_amta_node',
+    'inspect_3d_model',
 ]);
 
 const createDocument = (title = 'Untitled') => ({

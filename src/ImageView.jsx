@@ -16,13 +16,16 @@ export default function ImageView({ activeTab, setStatusText }) {
     const [ddsType, setDdsType] = useState('BC7');
     const [mipCount, setMipCount] = useState(1);
     const [revision, setRevision] = useState(0);
+    const [textureIndex, setTextureIndex] = useState(0);
+
+    useEffect(() => { setTextureIndex(0); }, [document?.fullPath]);
 
     useEffect(() => {
         if (activeTab !== 'IMAGE' || !document?.fullPath) return;
         let cancelled = false;
         setImage(null);
         setError('');
-        invoke('render_image', { path: document.fullPath }).then((result) => {
+        invoke('render_image', { path: document.fullPath, textureIndex, arrayIndex: 0, mipIndex: 0 }).then((result) => {
             if (cancelled) return;
             setImage(result);
             if (result.format === 'DDS') setMipCount(result.mipCount || 1);
@@ -30,7 +33,7 @@ export default function ImageView({ activeTab, setStatusText }) {
             if (!cancelled) setError(String(reason));
         });
         return () => { cancelled = true; };
-    }, [activeTab, document?.fullPath, revision]);
+    }, [activeTab, document?.fullPath, revision, textureIndex]);
 
     if (activeTab !== 'IMAGE') return null;
     const exportPng = async () => {
@@ -65,7 +68,8 @@ export default function ImageView({ activeTab, setStatusText }) {
         </header>
         {showTree && <nav className="image-tree" aria-label="Image contents">
             <header>Image contents</header>
-            <button type="button" className={selectedNode === 'image' ? 'selected' : ''} onClick={() => setSelectedNode('image')}>{fileName}</button>
+            <strong>{fileName}</strong>
+            {(image?.entries?.length ? image.entries : [{ name: fileName }]).map((entry, index) => <button type="button" key={`${entry.name}-${index}`} className={textureIndex === index ? 'selected' : ''} onClick={() => { setTextureIndex(index); setSelectedNode('image'); }}>{entry.name}</button>)}
         </nav>}
         <section className="image-canvas" onWheel={(event) => { if (event.ctrlKey) { event.preventDefault(); changeZoom(event.deltaY < 0 ? 0.1 : -0.1); } }}>
             {!image && !error && <span>Decoding image…</span>}
@@ -75,6 +79,7 @@ export default function ImageView({ activeTab, setStatusText }) {
         <aside className="image-options">
             <header><strong>{fileName}</strong><small>{image?.format || 'Image'}</small></header>
             {image && <dl><dt>Width</dt><dd>{image.width}</dd><dt>Height</dt><dd>{image.height}</dd><dt>Mip count</dt><dd>{image.mipCount}</dd>{image.ddsType && <><dt>DDS type</dt><dd>{image.ddsType}</dd></>}</dl>}
+            {image?.entries?.[textureIndex] && <dl><dt>Array count</dt><dd>{image.entries[textureIndex].arrayCount}</dd><dt>Surface format</dt><dd>{image.entries[textureIndex].format}</dd></dl>}
             {image?.format === 'DDS' && selectedNode === 'image' && <section>
                 <h3>Replace from PNG</h3>
                 <label>DDS type<select value={ddsType} onChange={(event) => setDdsType(event.target.value)}><option>BC1</option><option>BC3</option><option>BC5</option><option>BC7</option><option>RGBA8</option></select></label>

@@ -7,9 +7,8 @@ use crate::{
     TotkApp::InternalFile,
     Zstd::TotkZstd,
 };
-//USELESS as of now, doesnt work
-#[derive(Debug)]
-enum CompareDecision {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CompareDecision {
     FilesFromDisk,
     RegularFileWithOriginal,
     InternalFileWithFileFromDisk,
@@ -38,9 +37,9 @@ pub fn str_to_compare_decision(s: &str) -> CompareDecision {
 }
 
 pub struct FileComparer<'a> {
-    zstd: Arc<TotkZstd<'a>>, // Replace with the actual type
-    opened_file: &'a OpenedFile<'a>,
-    internal_file: Option<&'a InternalFile<'a>>,
+    zstd: Arc<TotkZstd<'a>>,
+    _opened_file: &'a OpenedFile<'a>,
+    _internal_file: Option<&'a InternalFile<'a>>,
     pack: Option<&'a PackComparer<'a>>,
 }
 
@@ -53,30 +52,29 @@ impl<'a> FileComparer<'a> {
     ) -> Self {
         Self {
             zstd,
-            opened_file,
-            internal_file,
+            _opened_file: opened_file,
+            _internal_file: internal_file,
             pack,
         }
     }
 
     pub fn fetch_vanilla_path(&self, path: &str) -> Result<String, String> {
         self.zstd
-            .clone()
             .totk_config
             .find_vanila_file_in_romfs(path)
-            .map_err(|e| format!("Error: {:?}", e))
+            .map_err(|error| format!("Error: {error}"))
     }
 
     pub fn fetch_file_data(&self, path: &str, is_from_sarc: bool) -> Result<String, String> {
         if is_from_sarc {
-            if let Some(pack) = &self.pack {
-                if let Some(opened) = &pack.opened {
-                    if let Some(rawdata) = opened.sarc.get_data(path) {
-                        return get_string_from_data(path, rawdata.to_vec(), self.zstd.clone())
-                            .map(|(_, t)| t)
-                            .ok_or_else(|| format!("Error parsing data from SARC: {}", path));
-                    }
-                }
+            if let Some(rawdata) = self
+                .pack
+                .and_then(|pack| pack.opened.as_ref())
+                .and_then(|opened| opened.sarc.get_data(path))
+            {
+                return get_string_from_data(path, rawdata.to_vec(), Arc::clone(&self.zstd))
+                    .map(|(_, text)| text)
+                    .ok_or_else(|| format!("Error parsing data from SARC: {path}"));
             }
         }
         Err(format!("Error: Data not found in SARC for {}", path))
@@ -84,13 +82,12 @@ impl<'a> FileComparer<'a> {
 
     pub fn fetch_vanilla_data(&self, path: &str) -> Result<String, String> {
         self.zstd
-            .clone()
-            .find_vanila_internal_file_data_in_romfs(path, self.zstd.clone())
-            .map_err(|e| format!("Error fetching vanilla data: {:?}", e))
+            .find_vanila_internal_file_data_in_romfs(path, Arc::clone(&self.zstd))
+            .map_err(|error| format!("Error fetching vanilla data: {error}"))
     }
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default)]
 pub struct FileToCompare {
     pub path: Pathlib,
     pub label: String,
@@ -98,50 +95,34 @@ pub struct FileToCompare {
     pub is_internal: bool,
 }
 
-impl Default for FileToCompare {
-    fn default() -> Self {
-        Self {
-            path: Pathlib::default(),
-            label: String::new(),
-            text: String::new(),
-            is_internal: false,
-        }
-    }
-}
-
 impl FileToCompare {
     pub fn new<P: AsRef<Path>>(path: P, text: String) -> Self {
         Self {
             path: Pathlib::new(&path),
             label: String::new(),
-            text: text,
+            text,
             is_internal: false,
         }
     }
 
     pub fn get_path_from_dialog(&mut self, title: Option<String>) {
-        let title_to_set = title.unwrap_or("Select file".to_string());
-        let file = rfd::FileDialog::new()
-            .set_title(title_to_set)
+        if let Some(file) = rfd::FileDialog::new()
+            .set_title(title.unwrap_or_else(|| "Select file".to_owned()))
             .pick_file()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .replace("\\", "//");
-        if !file.is_empty() {
-            self.path = Pathlib::new(&file);
+        {
+            self.path = Pathlib::new(file);
         }
     }
     pub fn get_text_from_file_on_disk(&mut self, zstd: Arc<TotkZstd>) -> io::Result<()> {
-        let file_res = file_from_disk_to_senddata(&self.path.full_path, zstd);
-        if let Some(file_res) = file_res {
-            self.text = file_res.1.text;
+        if let Some((_, send_data)) = file_from_disk_to_senddata(&self.path.full_path, zstd) {
+            self.text = send_data.text;
         }
         Ok(())
     }
     pub fn from_path<P: AsRef<Path>>(&mut self, path: P, zstd: Arc<TotkZstd>) -> io::Result<()> {
         self.path = Pathlib::new(&path);
         if self.path.exists() && self.path.is_file() {
-            self.get_text_from_file_on_disk(zstd.clone())?;
+            self.get_text_from_file_on_disk(zstd)?;
             if !self.text.is_empty() {
                 self.is_internal = false;
             }
@@ -152,7 +133,7 @@ impl FileToCompare {
     pub fn from_disk(&mut self, title: Option<String>, zstd: Arc<TotkZstd>) -> io::Result<()> {
         self.get_path_from_dialog(title);
         if !self.path.full_path.is_empty() {
-            self.get_text_from_file_on_disk(zstd.clone())?;
+            self.get_text_from_file_on_disk(zstd)?;
             if !self.text.is_empty() {
                 self.is_internal = false;
             }
@@ -165,14 +146,14 @@ impl FileToCompare {
         internal_path: String,
         zstd: Arc<TotkZstd>,
     ) -> io::Result<()> {
-        if let Some(opened) = &pack.opened {
-            if let Some(raw_data) = opened.sarc.get_data(&internal_path) {
-                if let Some((_, text)) =
-                    get_string_from_data(internal_path.clone(), raw_data.to_vec(), zstd.clone())
-                {
-                    self.text = text;
-                    self.is_internal = true;
-                }
+        if let Some(raw_data) = pack
+            .opened
+            .as_ref()
+            .and_then(|opened| opened.sarc.get_data(&internal_path))
+        {
+            if let Some((_, text)) = get_string_from_data(&internal_path, raw_data.to_vec(), zstd) {
+                self.text = text;
+                self.is_internal = true;
             }
         }
         Ok(())
@@ -201,17 +182,41 @@ impl Default for DiffComparer {
 impl DiffComparer {
     pub fn new(file1: FileToCompare, file2: FileToCompare) -> Self {
         Self {
-            file1: file1,
-            file2: file2,
+            file1,
+            file2,
             MAX_COMPARE_SIZE,
         }
     }
     pub fn new_default() -> Self {
-        Self {
-            file1: FileToCompare::default(),
-            file2: FileToCompare::default(),
-            MAX_COMPARE_SIZE,
+        Self::default()
+    }
+
+    fn is_too_large(&self, text: &str) -> bool {
+        let size = text.len();
+        if size <= self.MAX_COMPARE_SIZE {
+            return false;
         }
+        self.msgbox_max_size_exceeded(size);
+        true
+    }
+
+    fn show_error(description: impl AsRef<str>) {
+        rfd::MessageDialog::new()
+            .set_title("Error")
+            .set_description(description.as_ref())
+            .show();
+    }
+
+    fn same_disk_path(&self) -> bool {
+        !self.file1.path.full_path.is_empty()
+            && self.file1.path.full_path == self.file2.path.full_path
+    }
+
+    fn show_same_path_error(&self) {
+        Self::show_error(format!(
+            "Paths to both files are the same, skipping comparison\n{}",
+            self.file1.path.full_path
+        ));
     }
 
     pub fn msgbox_max_size_exceeded(&self, size: usize) {
@@ -251,9 +256,7 @@ impl DiffComparer {
             println!("Skipping, ill get from Monaco ");
             comp.file1.label = "YAML editor".to_string();
         }
-        let mut size = comp.file1.text.len();
-        if size > comp.MAX_COMPARE_SIZE {
-            comp.msgbox_max_size_exceeded(size);
+        if comp.is_too_large(&comp.file1.text) {
             return None;
         }
         //File2
@@ -267,32 +270,24 @@ impl DiffComparer {
         if comp.file2.path.full_path.is_empty() {
             return None;
         }
-        if comp.file2.path.full_path == comp.file1.path.full_path {
-            rfd::MessageDialog::new()
-                .set_title("Error")
-                .set_description(format!(
-                    "Paths to both files are the same, skipping comparison\n{}",
-                    comp.file1.path.full_path
-                ))
-                .show();
+        if comp.same_disk_path() {
+            comp.show_same_path_error();
             return None;
         }
         if comp.file2.text.is_empty() {
             data.status_text = format!("ERROR: Unable to parse: {}", comp.file2.path.full_path);
             return Some(data);
         }
-        size = comp.file2.text.len();
-        if size > comp.MAX_COMPARE_SIZE {
-            comp.msgbox_max_size_exceeded(size);
+        if comp.is_too_large(&comp.file2.text) {
             return None;
         }
 
         comp.file1.is_internal = false;
         comp.file2.is_internal = false;
         comp.file2.label = comp.file2.path.full_path.clone();
-        data.status_text = format!("Files loaded successfully");
+        data.status_text = "Files loaded successfully".to_owned();
         data.file_label = if !comp.file1.path.name.is_empty() {
-            format!("{}", comp.file1.path.name)
+            comp.file1.path.name.clone()
         } else {
             comp.file2.label.clone()
         };
@@ -335,36 +330,21 @@ impl DiffComparer {
             }
         }
         //File2
-        match zstd
-            .clone()
-            .totk_config
-            .clone()
-            .find_vanila_file_in_romfs(&path)
-        {
+        match zstd.totk_config.find_vanila_file_in_romfs(&path) {
             Ok(vanila_path) => {
                 comp.file2.path = Pathlib::new(&vanila_path);
             }
             Err(err) => {
-                rfd::MessageDialog::new()
-                    .set_title("Error")
-                    .set_description(format!(
-                        "ERROR:\n{:?}\nUnable to find original path for file:\n{:?}",
-                        &err,
-                        &path.as_ref()
-                    ))
-                    .show();
+                Self::show_error(format!(
+                    "ERROR:\n{err:?}\nUnable to find original path for file:\n{:?}",
+                    path.as_ref()
+                ));
                 data.status_text = format!("ERROR: {:?}", err);
                 return Some(data);
             }
         }
-        if comp.file2.path.full_path == comp.file1.path.full_path {
-            rfd::MessageDialog::new()
-                .set_title("Error")
-                .set_description(format!(
-                    "Paths to both files are the same, skipping comparison\n{}",
-                    comp.file1.path.full_path
-                ))
-                .show();
+        if comp.same_disk_path() {
+            comp.show_same_path_error();
             return None;
         }
 
@@ -373,13 +353,10 @@ impl DiffComparer {
             return Some(data);
         }
         if comp.file2.text.is_empty() {
-            rfd::MessageDialog::new()
-                .set_title("Error")
-                .set_description(format!(
-                    "ERROR: Could not get text from original file: {}",
-                    &comp.file2.path.full_path
-                ))
-                .show();
+            Self::show_error(format!(
+                "ERROR: Could not get text from original file: {}",
+                comp.file2.path.full_path
+            ));
             data.status_text = format!("ERROR: failed to parse: {}", comp.file2.path.full_path);
             return Some(data);
         }
@@ -400,24 +377,17 @@ impl DiffComparer {
         if is_from_sarc {
             if let Err(err) = comp.file1.from_opened_pack(
                 pack,
-                internal_path
-                    .as_ref()
-                    .to_str()
-                    .unwrap_or_default()
-                    .to_string(),
-                zstd.clone(),
+                internal_path.as_ref().to_string_lossy().into_owned(),
+                Arc::clone(&zstd),
             ) {
                 data.status_text = format!("ERROR: {:?}", err);
                 return Some(data);
             }
             if comp.file1.text.is_empty() {
-                rfd::MessageDialog::new()
-                    .set_title("Error")
-                    .set_description(format!(
-                        "ERROR: Could not get text from internal file: {}",
-                        &comp.file1.path.full_path
-                    ))
-                    .show();
+                Self::show_error(format!(
+                    "ERROR: Could not get text from internal file: {}",
+                    comp.file1.path.full_path
+                ));
                 data.status_text = format!("ERROR: failed to parse: {}", comp.file1.path.full_path);
                 return Some(data);
             }
@@ -437,25 +407,22 @@ impl DiffComparer {
             data.status_text = format!("ERROR: Path {} is not a file", comp.file2.path.full_path);
             return Some(data);
         }
-        if let Err(err) = comp.file2.get_text_from_file_on_disk(zstd.clone()) {
+        if let Err(err) = comp.file2.get_text_from_file_on_disk(zstd) {
             data.status_text = format!("ERROR: {:?}", err);
             return Some(data);
         }
         if comp.file2.text.is_empty() {
-            rfd::MessageDialog::new()
-                .set_title("Error")
-                .set_description(format!(
-                    "ERROR: Could not get text from file:\n{}",
-                    &comp.file2.path.full_path
-                ))
-                .show();
+            Self::show_error(format!(
+                "ERROR: Could not get text from file:\n{}",
+                comp.file2.path.full_path
+            ));
             data.status_text = format!("ERROR: failed to parse: {}", comp.file2.path.full_path);
             return Some(data);
         }
         comp.file2.is_internal = false;
         comp.file1.label = comp.file1.path.name.clone();
         comp.file2.label = comp.file2.path.full_path.clone();
-        data.status_text = format!("Files loaded successfully");
+        data.status_text = "Files loaded successfully".to_owned();
         // data.compare_data = comp.clone();
         Some(data)
     }
@@ -473,24 +440,17 @@ impl DiffComparer {
         if is_from_sarc {
             if let Err(err) = comp.file1.from_opened_pack(
                 pack,
-                internal_path
-                    .as_ref()
-                    .to_str()
-                    .unwrap_or_default()
-                    .to_string(),
-                zstd.clone(),
+                internal_path.as_ref().to_string_lossy().into_owned(),
+                Arc::clone(&zstd),
             ) {
                 data.status_text = format!("ERROR: {:?}", err);
                 return Some(data);
             }
             if comp.file1.text.is_empty() {
-                rfd::MessageDialog::new()
-                    .set_title("Error")
-                    .set_description(format!(
-                        "ERROR: Could not get text from internal file: {}",
-                        &comp.file1.path.full_path
-                    ))
-                    .show();
+                Self::show_error(format!(
+                    "ERROR: Could not get text from internal file: {}",
+                    comp.file1.path.full_path
+                ));
                 data.status_text = format!("ERROR: Failed to parse: {}", comp.file1.path.full_path);
                 return Some(data);
             }
@@ -498,18 +458,12 @@ impl DiffComparer {
         comp.file1.is_internal = true;
         //File2
         comp.file2.path = Pathlib::new(&internal_path);
-        match zstd
-            .clone()
-            .find_vanila_internal_file_data_in_romfs(&internal_path, zstd.clone())
-        {
+        match zstd.find_vanila_internal_file_data_in_romfs(&internal_path, Arc::clone(&zstd)) {
             Ok(text) => {
                 comp.file2.text = text;
             }
             Err(err) => {
-                rfd::MessageDialog::new()
-                    .set_title("Error")
-                    .set_description(format!("ERROR:\n{:?}", &err))
-                    .show();
+                Self::show_error(format!("ERROR:\n{err:?}"));
                 data.status_text = format!("ERROR: {:?}", err);
                 return Some(data);
             }
@@ -517,7 +471,7 @@ impl DiffComparer {
         comp.file2.is_internal = true;
         comp.file1.label = comp.file1.path.name.clone();
         comp.file2.label = "Original".to_string();
-        data.status_text = format!("Files loaded successfully");
+        data.status_text = "Files loaded successfully".to_owned();
         // data.compare_data = comp.clone();
         Some(data)
     }
@@ -577,5 +531,55 @@ impl DiffComparer {
         }
 
         res //should not reach here
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn comparison_decisions_preserve_legacy_names_and_fallback() {
+        let cases = [
+            ("FilesFromDisk", CompareDecision::FilesFromDisk),
+            (
+                "RegularFileWithOriginal",
+                CompareDecision::RegularFileWithOriginal,
+            ),
+            (
+                "InternalFileWithFileFromDisk",
+                CompareDecision::InternalFileWithFileFromDisk,
+            ),
+            (
+                "InternalFileWithOriginal",
+                CompareDecision::InternalFileWithOriginal,
+            ),
+            ("unknown", CompareDecision::FilesFromDisk),
+        ];
+
+        for (name, expected) in cases {
+            let actual = str_to_compare_decision(name);
+            assert_eq!(actual, expected);
+            if name != "unknown" {
+                assert_eq!(actual.as_str(), name);
+            }
+        }
+    }
+
+    #[test]
+    fn constructors_preserve_data_and_size_limit() {
+        let first = FileToCompare::new("first.byml", "first".to_owned());
+        let second = FileToCompare::new("second.byml", "second".to_owned());
+        let comparer = DiffComparer::new(first.clone(), second.clone());
+
+        assert_eq!(comparer.file1.path.full_path, first.path.full_path);
+        assert_eq!(comparer.file1.text, first.text);
+        assert_eq!(comparer.file2.path.full_path, second.path.full_path);
+        assert_eq!(comparer.file2.text, second.text);
+        assert_eq!(comparer.MAX_COMPARE_SIZE, MAX_COMPARE_SIZE);
+        assert_eq!(
+            DiffComparer::new_default().MAX_COMPARE_SIZE,
+            MAX_COMPARE_SIZE
+        );
     }
 }

@@ -58,7 +58,7 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) =>
     <>
       <ul className="directory-tree" 
         style={{ //width: activeTab === 'SARC' ? "100%" : "0%", 
-        ...activeTab !== 'SARC' ? { height: '0%', width: '0%', marginLeft: '-50px' } : {}
+        ...activeTab !== 'SARC' && activeTab !== 'AUDIO' ? { height: '0%', width: '0%', marginLeft: '-50px' } : {}
          }}//robust solution to hide tree when not active. This way collapsed nodes states are not lost
       >
         {Object.entries(renderTree).map(([key, value]) => (
@@ -74,7 +74,7 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) =>
           />
         ))}
       </ul>
-      {activeTab === 'SARC' && <div className='textsearch' style={{ padding: '10px' }}>
+      {(activeTab === 'SARC' || activeTab === 'AUDIO') && <div className='textsearch' style={{ padding: '10px' }}>
         <input
           className='inputtext'
           type="text"

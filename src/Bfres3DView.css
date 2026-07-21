@@ -2,7 +2,9 @@
 .bfres-viewport-toolbar { grid-area: tools; min-width: 0; display: flex; align-items: center; gap: 4px; padding: 0 7px; overflow-x: auto; overflow-y: hidden; border-bottom: 1px solid #303946; background: #20252c; }
 .bfres-viewport-toolbar button, .bfres-yaml-panel button { flex: 0 0 auto; color: #cbd5df; border: 1px solid transparent; background: transparent; border-radius: 3px; padding: 5px 8px; }
 .bfres-viewport-toolbar button:hover { background: #303943; }
-.bfres-viewport-toolbar select { flex: 0 0 auto; max-width: 180px; margin-left: auto; color: #cbd5df; border: 1px solid #394655; background: #171c23; border-radius: 3px; padding: 4px 7px; }
+.bfres-viewport-toolbar select { flex: 0 0 auto; max-width: 210px; color: #cbd5df; border: 1px solid #394655; background: #171c23; border-radius: 3px; padding: 4px 7px; }
+.bfres-shading-select { display: flex; flex: 0 0 auto; align-items: center; gap: 5px; color: #aeb9c4; font-size: 11px; }
+.bfres-bone-select { margin-left: auto; }
 .bfres-viewport-toolbar button.active { background: #31536c; border-color: #4c86aa; color: white; }
 .bfres-viewport-toolbar small { margin-left: 4px; color: #97bed8; }
 .bfres-viewport { grid-area: viewport; position: relative; min-width: 0; min-height: 0; }
@@ -69,4 +71,31 @@ button.bfres-row:hover, button.bfres-row.selected { background: #253543; }
 .bfres-property-list code { color: #dce3ea; white-space: pre-wrap; }
 .bfres-property-group > summary { cursor: pointer; color: #9dbbd0; }
 .bfres-property-group pre { max-height: 360px; margin: 6px 0 0; padding: 7px; overflow: auto; background: #10151b; color: #cbd5df; font-size: 10px; white-space: pre; }
+.bfres-inspector-tabs { display: flex; overflow-x: auto; border-bottom: 1px solid #3b4551; background: #191f26; }
+.bfres-inspector-tabs button { flex: 0 0 auto; padding: 8px 10px; border: 0; border-right: 1px solid #303946; border-radius: 0; background: transparent; color: #8f9baa; }
+.bfres-inspector-tabs button.active { background: #28313a; color: #f2f5f7; box-shadow: inset 0 -2px #4aa3df; }
+.bfres-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; padding: 10px; border-bottom: 1px solid #303946; }
+.bfres-form-grid label { display: grid; gap: 4px; color: #9ca9b6; }
+.bfres-form-grid input:not([type="checkbox"]) { min-width: 0; padding: 5px 6px; border: 1px solid #46515d; background: #171c22; color: #e2e8ee; }
+.bfres-form-grid .bfres-check { display: flex; align-items: center; gap: 7px; }
+.bfres-texture-table { width: 100%; border-collapse: collapse; color: #dce3ea; }
+.bfres-texture-table th, .bfres-texture-table td { padding: 7px 8px; border-bottom: 1px solid #303946; text-align: left; }
+.bfres-texture-table th { color: #9ca9b6; font-weight: 500; }
+.bfres-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 10px; }
+.bfres-action-grid button { padding: 7px; border: 1px solid #46515d; background: #252d36; color: #dce3ea; }
+.bfres-resource-menu { position: fixed; z-index: 10000; display: grid; min-width: 245px; padding: 4px; border: 1px solid #77818b; background: #20252b; box-shadow: 0 8px 24px #0009; }
+.bfres-resource-menu button { padding: 7px 12px; border: 0; background: transparent; color: #e7ebef; text-align: left; }
+.bfres-resource-menu button:hover { background: #3b4652; }
 .bfres-null { color: #7f8d9b; font-style: italic; }
+.bfres-texture-preview { margin-top: auto; }
+.bfres-texture-preview img {
+    display: block;
+    width: min(100%, 280px);
+    max-height: 220px;
+    margin: 12px auto;
+    object-fit: contain;
+    image-rendering: auto;
+    border: 1px solid #394550;
+    border-radius: 4px;
+    background: repeating-conic-gradient(#30363d 0 25%, #22272e 0 50%) 50% / 16px 16px;
+}

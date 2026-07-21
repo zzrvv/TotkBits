@@ -38,6 +38,10 @@ impl NestedArchive {
                 Some(SevenZipFile::from_bytes(data).map(RootArchive::SevenZip))
             }
             Some(ArchiveMagic::Rar) => Some(RarFile::from_bytes(data).map(RootArchive::Rar)),
+            Some(ArchiveMagic::Bars) => Some(
+                crate::file_format::Archive::Bars::BarsFile::from_bytes(data)
+                    .map(RootArchive::Bars),
+            ),
             None => None,
         };
         if let Some(archive) = generic {

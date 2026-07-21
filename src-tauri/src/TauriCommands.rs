@@ -7,12 +7,13 @@ use crate::{
 };
 use reqwest::blocking::{get, Client};
 use rfd::MessageDialog;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::{
     env,
     error::Error,
+    fs,
     os::windows::process::CommandExt,
     path::Path,
     process::{self, Command},
@@ -24,6 +25,42 @@ use windows::{
     Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK},
 };
 
+#[derive(Serialize)]
+pub struct BfwavPreview {
+    pub path: String,
+    pub data_url: String,
+    pub sample_rate: u32,
+    pub channels: usize,
+    pub samples: usize,
+    pub looping: bool,
+}
+
+#[derive(Serialize)]
+pub struct BfwavReplacement {
+    pub old_size: usize,
+    pub new_size: usize,
+    pub increased: bool,
+    pub compressed: bool,
+    pub sample_rate: u32,
+}
+
+#[derive(Serialize)]
+pub struct BarsFolderReplacement {
+    pub replaced: Vec<String>,
+    pub skipped: Vec<String>,
+    pub failed: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BfresResolvedTexture {
+    name: String,
+    path: String,
+    data_url: String,
+    width: u32,
+    height: u32,
+}
+
 #[tauri::command]
 pub fn inspect_bfres(
     path: String,
@@ -33,8 +70,97 @@ pub fn inspect_bfres(
 }
 
 #[tauri::command]
-pub fn render_image(path: String) -> Result<crate::file_format::Image::RenderedImage, String> {
-    crate::file_format::Image::ImageDocument::render_path(path).map_err(|error| error.to_string())
+pub fn inspect_3d_model(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    let data = std::fs::read(&path).map_err(|error| error.to_string())?;
+    if data.starts_with(b"Kaydara FBX Binary") {
+        serde_json::to_value(
+            crate::parser::fbx::FbxFile::parse(
+                &data,
+                std::path::Path::new(&path)
+                    .file_stem()
+                    .and_then(|v| v.to_str())
+                    .unwrap_or("FBX"),
+            )
+            .map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())
+    } else {
+        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(path)
+            .map_err(|error| error.to_string())?;
+        let documents = app_handle.state::<DocumentState>();
+        let romfs = documents.with(&documentId, |app| app.zstd.totk_config.romfs.clone());
+        let textures = resolve_bfres_textures(&bfres, Path::new(&romfs));
+        let mut value = serde_json::to_value(bfres).map_err(|error| error.to_string())?;
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "resolvedTextures".into(),
+                serde_json::to_value(textures).map_err(|error| error.to_string())?,
+            );
+        }
+        Ok(value)
+    }
+}
+
+fn resolve_bfres_textures(
+    bfres: &crate::file_format::Model3D::bfres::BfresFile,
+    romfs: &Path,
+) -> Vec<BfresResolvedTexture> {
+    if !crate::TotkConfig::TotkConfig::check_for_zsdic(romfs) {
+        return Vec::new();
+    }
+    let root = romfs.join("TexToGo");
+    if !root.is_dir() {
+        return Vec::new();
+    }
+    let names: HashSet<&str> = bfres
+        .materials
+        .iter()
+        .flat_map(|material| material.texture_slots.iter().map(|slot| slot.name.as_str()))
+        .collect();
+    let mut textures = Vec::with_capacity(names.len());
+    for name in names {
+        let file_name = if name.to_ascii_lowercase().ends_with(".txtg") {
+            name.to_owned()
+        } else {
+            format!("{name}.txtg")
+        };
+        let path = root.join(file_name);
+        if !path.is_file() {
+            continue;
+        }
+        let Ok(rendered) = crate::file_format::Image::ImageDocument::render_path(&path) else {
+            continue;
+        };
+        textures.push(BfresResolvedTexture {
+            name: name.to_owned(),
+            path: path.to_string_lossy().into_owned(),
+            data_url: rendered.data_url,
+            width: rendered.width,
+            height: rendered.height,
+        });
+    }
+    textures.sort_by(|left, right| left.name.cmp(&right.name));
+    textures
+}
+
+#[tauri::command]
+pub fn render_image(
+    path: String,
+    texture_index: Option<usize>,
+    array_index: Option<u32>,
+    mip_index: Option<u32>,
+) -> Result<crate::file_format::Image::RenderedImage, String> {
+    crate::file_format::Image::ImageDocument::render_path_selection(
+        path,
+        texture_index.unwrap_or(0),
+        array_index.unwrap_or(0),
+        mip_index.unwrap_or(0),
+    )
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -251,6 +377,113 @@ macro_rules! with_document {
         let documents = $handle.state::<DocumentState>();
         documents.with(&$id, |$app| $body)
     }};
+}
+
+#[tauri::command]
+pub fn open_bfwav_node(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+) -> Result<BfwavPreview, String> {
+    with_document!(app_handle, documentId, app, app.open_bfwav_node(&path))
+}
+
+#[tauri::command]
+pub fn replace_bfwav_node(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+    sourcePath: String,
+    fitToOriginal: Option<bool>,
+    maximumSize: Option<usize>,
+) -> Result<BfwavReplacement, String> {
+    with_document_mut!(
+        app_handle,
+        documentId,
+        app,
+        app.replace_bfwav_node(
+            &path,
+            Path::new(&sourcePath),
+            fitToOriginal.unwrap_or(false),
+            maximumSize,
+        )
+    )
+}
+
+#[tauri::command]
+pub fn replace_bars_audio_from_folder(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    folderPath: String,
+    fitToOriginal: Option<bool>,
+) -> Result<BarsFolderReplacement, String> {
+    with_document_mut!(app_handle, documentId, app, {
+        app.replace_bars_audio_from_folder(Path::new(&folderPath), fitToOriginal.unwrap_or(false))
+    })
+}
+
+#[tauri::command]
+pub fn open_amta_node(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+) -> Result<serde_json::Value, String> {
+    with_document!(app_handle, documentId, app, {
+        let bytes = app
+            .archive
+            .as_ref()
+            .and_then(|archive| archive.get(&path))
+            .ok_or_else(|| format!("archive entry not found: {path}"))?;
+        serde_json::to_value(crate::parser::amta::AmtaFile::parse(bytes)?)
+            .map_err(|error| error.to_string())
+    })
+}
+
+#[tauri::command]
+pub fn open_audio_file_dialog() -> Option<String> {
+    rfd::FileDialog::new()
+        .add_filter("Audio", &["wav", "mp3"])
+        .pick_file()
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn export_bfwav_node(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+    format: String,
+) -> Result<Option<String>, String> {
+    let format = format.to_ascii_lowercase();
+    if format != "wav" && format != "mp3" {
+        return Err("audio export format must be WAV or MP3".into());
+    }
+    let encoded = with_document!(app_handle, documentId, app, {
+        let bytes = app
+            .archive
+            .as_ref()
+            .and_then(|archive| archive.get(&path))
+            .ok_or_else(|| format!("archive entry not found: {path}"))?;
+        if format == "wav" {
+            crate::file_format::Audio::to_wav(bytes)
+        } else {
+            crate::file_format::Audio::to_mp3(bytes)
+        }
+    })?;
+    let stem = Path::new(&path)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("audio");
+    let Some(output) = rfd::FileDialog::new()
+        .add_filter(format.to_ascii_uppercase(), &[format.as_str()])
+        .set_file_name(format!("{stem}.{format}"))
+        .save_file()
+    else {
+        return Ok(None);
+    };
+    fs::write(&output, encoded).map_err(|error| format!("failed to export audio: {error}"))?;
+    Ok(Some(output.to_string_lossy().into_owned()))
 }
 
 #[tauri::command]
@@ -801,4 +1034,45 @@ pub fn update_app(latestVer: String) -> String {
     }
     // process::exit(1);
     String::new()
+}
+
+#[cfg(test)]
+mod texture_resolution_tests {
+    use super::*;
+
+    #[test]
+    fn resolves_only_material_referenced_textogo_files() {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(
+            workspace.join("tmp/bfres/Animal_Bull.Bull.bfres"),
+        )
+        .expect("failed to parse BFRES texture fixture");
+        let texture_name = bfres
+            .materials
+            .iter()
+            .flat_map(|material| &material.texture_slots)
+            .next()
+            .expect("BFRES fixture has no texture slots")
+            .name
+            .clone();
+        let root = std::env::temp_dir().join(format!(
+            "totkbits-textogo-resolution-{}",
+            std::process::id()
+        ));
+        let texture_root = root.join("TexToGo");
+        std::fs::create_dir_all(root.join("Pack")).expect("failed to create ROMFS Pack folder");
+        std::fs::create_dir_all(&texture_root).expect("failed to create TexToGo folder");
+        std::fs::write(root.join("Pack/ZsDic.pack.zs"), []).expect("failed to create ROMFS marker");
+        std::fs::copy(
+            workspace.join("tmp/tex/Armor_1006_Lower_Alb.7.txtg"),
+            texture_root.join(format!("{texture_name}.txtg")),
+        )
+        .expect("failed to stage TexToGo fixture");
+
+        let textures = resolve_bfres_textures(&bfres, &root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(textures.len(), 1);
+        assert_eq!(textures[0].name, texture_name);
+        assert!(textures[0].data_url.starts_with("data:image/png;base64,"));
+    }
 }

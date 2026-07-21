@@ -4,6 +4,7 @@ use std::{
     path::{Component, Path},
 };
 
+pub mod Bars;
 pub mod Folder;
 pub mod Rar;
 pub mod SevenZip;
@@ -16,6 +17,7 @@ pub enum ArchiveMagic {
     Zip,
     SevenZip,
     Rar,
+    Bars,
 }
 
 pub fn detect_archive_magic(data: &[u8]) -> Option<ArchiveMagic> {
@@ -28,6 +30,8 @@ pub fn detect_archive_magic(data: &[u8]) -> Option<ArchiveMagic> {
         Some(ArchiveMagic::SevenZip)
     } else if data.starts_with(b"Rar!\x1A\x07\x00") || data.starts_with(b"Rar!\x1A\x07\x01\x00") {
         Some(ArchiveMagic::Rar)
+    } else if data.starts_with(b"BARS") {
+        Some(ArchiveMagic::Bars)
     } else {
         None
     }
@@ -38,6 +42,7 @@ pub enum RootArchive {
     SevenZip(SevenZip::SevenZipFile),
     Rar(Rar::RarFile),
     Folder(Folder::FolderFile),
+    Bars(Bars::BarsFile),
 }
 
 pub struct ArchiveDocument {
@@ -65,6 +70,7 @@ impl ArchiveDocument {
                 RootArchive::SevenZip(SevenZip::SevenZipFile::from_bytes(&bytes)?)
             }
             Some(ArchiveMagic::Rar) => RootArchive::Rar(Rar::RarFile::from_bytes(&bytes)?),
+            Some(ArchiveMagic::Bars) => RootArchive::Bars(Bars::BarsFile::from_bytes(&bytes)?),
             None => return Ok(None),
         };
         Ok(Some(Self {
@@ -212,6 +218,7 @@ impl RootArchive {
             Self::SevenZip(v) => v.entries(),
             Self::Rar(v) => v.entries(),
             Self::Folder(v) => v.entries(),
+            Self::Bars(v) => v.entries(),
         }
     }
     pub(crate) fn entries_mut(&mut self) -> &mut BTreeMap<String, Vec<u8>> {
@@ -220,6 +227,7 @@ impl RootArchive {
             Self::SevenZip(v) => v.entries_mut(),
             Self::Rar(v) => v.entries_mut(),
             Self::Folder(v) => v.entries_mut(),
+            Self::Bars(v) => v.entries_mut(),
         }
     }
     pub(crate) fn get(&self, path: &str) -> Option<&[u8]> {
@@ -231,6 +239,7 @@ impl RootArchive {
             Self::SevenZip(v) => v.to_bytes(),
             Self::Rar(v) => v.to_bytes(),
             Self::Folder(v) => v.to_bytes(),
+            Self::Bars(v) => v.to_bytes(),
         }
     }
 }

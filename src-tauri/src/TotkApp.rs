@@ -1,4 +1,5 @@
 use crate::file_format::Archive::{ArchiveDocument, RootArchive};
+use crate::file_format::Audio::{self, Bfwav};
 use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
 use crate::file_format::Esetb::Esetb;
 use crate::file_format::Pack::{PackComparer, SarcPaths};
@@ -97,6 +98,139 @@ impl Default for TotkBitsApp<'_> {
 }
 
 impl<'a> TotkBitsApp<'a> {
+    pub fn open_bfwav_node(
+        &self,
+        path: &str,
+    ) -> Result<crate::TauriCommands::BfwavPreview, String> {
+        use base64::Engine;
+        let bytes = self
+            .archive
+            .as_ref()
+            .and_then(|v| v.get(path))
+            .ok_or_else(|| format!("archive entry not found: {path}"))?;
+        let decoded = Audio::decode(bytes)?;
+        let wav = Audio::to_wav(bytes)?;
+        Ok(crate::TauriCommands::BfwavPreview {
+            path: path.into(),
+            data_url: format!(
+                "data:audio/wav;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(wav)
+            ),
+            sample_rate: decoded.sample_rate,
+            channels: decoded.channels.len(),
+            samples: decoded.channels.first().map_or(0, Vec::len),
+            looping: decoded.looping,
+        })
+    }
+
+    pub fn replace_bfwav_node(
+        &mut self,
+        path: &str,
+        source: &Path,
+        fit_to_original: bool,
+        maximum_size: Option<usize>,
+    ) -> Result<crate::TauriCommands::BfwavReplacement, String> {
+        let archive = self.archive.as_mut().ok_or("no archive is open")?;
+        let original = archive
+            .get(path)
+            .ok_or_else(|| format!("archive entry not found: {path}"))?
+            .to_vec();
+        let old_size = original.len();
+        let extension = source
+            .extension()
+            .and_then(|v| v.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if extension != "wav" && extension != "mp3" {
+            return Err("choose an MP3 or WAV file".into());
+        }
+        let source = Bfwav::decode_source(source)?;
+        let encoded = if fit_to_original {
+            Audio::encode_replacement_to_limit(
+                &original,
+                &source,
+                maximum_size.unwrap_or(old_size),
+            )?
+        } else {
+            Audio::encode_replacement(&original, &source)?
+        };
+        let new_size = encoded.len();
+        let sample_rate = Audio::decode(&encoded)?.sample_rate;
+        archive.set(path, encoded)?;
+        Ok(crate::TauriCommands::BfwavReplacement {
+            old_size,
+            new_size,
+            increased: new_size > old_size,
+            compressed: fit_to_original,
+            sample_rate,
+        })
+    }
+
+    pub fn replace_bars_audio_from_folder(
+        &mut self,
+        folder: &Path,
+        fit_to_original: bool,
+    ) -> Result<crate::TauriCommands::BarsFolderReplacement, String> {
+        use std::collections::HashMap;
+        if !folder.is_dir() {
+            return Err(format!(
+                "audio replacement folder does not exist: {}",
+                folder.display()
+            ));
+        }
+        let mut sources = HashMap::new();
+        for item in std::fs::read_dir(folder).map_err(|error| error.to_string())? {
+            let path = item.map_err(|error| error.to_string())?.path();
+            let extension = path
+                .extension()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default();
+            if !extension.eq_ignore_ascii_case("wav") && !extension.eq_ignore_ascii_case("mp3") {
+                continue;
+            }
+            if let Some(stem) = path.file_stem().and_then(|value| value.to_str()) {
+                sources.entry(stem.to_ascii_lowercase()).or_insert(path);
+            }
+        }
+        let targets: Vec<String> = self
+            .archive
+            .as_ref()
+            .ok_or("no archive is open")?
+            .archive
+            .entries()
+            .keys()
+            .filter(|path| {
+                path.starts_with("Audio/") && (path.ends_with(".bfwav") || path.ends_with(".bwav"))
+            })
+            .cloned()
+            .collect();
+        let mut result = crate::TauriCommands::BarsFolderReplacement {
+            replaced: Vec::new(),
+            skipped: Vec::new(),
+            failed: Vec::new(),
+        };
+        for target in targets {
+            let stem = Path::new(&target)
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let Some(source) = sources.get(&stem) else {
+                result.skipped.push(target);
+                continue;
+            };
+            let maximum = self
+                .archive
+                .as_ref()
+                .and_then(|archive| archive.get(&target))
+                .map(<[u8]>::len);
+            match self.replace_bfwav_node(&target, source, fit_to_original, maximum) {
+                Ok(_) => result.replaced.push(target),
+                Err(error) => result.failed.push(format!("{target}: {error}")),
+            }
+        }
+        Ok(result)
+    }
     fn initialization_error_data(&self) -> Option<SendData> {
         self.initialization_error.as_ref().map(|error| {
             let mut data = SendData::default();
@@ -1765,12 +1899,21 @@ impl<'a> TotkBitsApp<'a> {
             }
             match ArchiveDocument::open(Path::new(&file_name)) {
                 Ok(Some(archive)) => {
+                    let is_bars = matches!(archive.archive, RootArchive::Bars(_));
                     self.pack = None;
                     self.internal_file = None;
                     self.opened_file = OpenedFile::default();
                     self.archive = Some(archive);
                     let mut data = self.archive_send_data(format!("Opened archive {file_name}"));
-                    data.set_file_metadata(TotkFileType::Sarc, dictionary);
+                    if is_bars {
+                        data.file_metadata = match dictionary.as_ref() {
+                            Some(ZstdDictionary::Yaz0) => "[Bars] [Yaz0]".into(),
+                            Some(dictionary) => format!("[Bars] [ZSTD: {dictionary:?}]"),
+                            None => "[Bars]".into(),
+                        };
+                    } else {
+                        data.set_file_metadata(TotkFileType::Sarc, dictionary);
+                    }
                     return Some(data);
                 }
                 Ok(None) => {}
