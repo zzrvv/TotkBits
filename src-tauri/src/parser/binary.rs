@@ -82,9 +82,53 @@ impl<'a> BinaryReader<'a> {
     }
 
     pub fn slice(&self, start: usize, end: usize) -> io::Result<&'a [u8]> {
+        if start > end {
+            return Err(self.error_at(start, "slice start exceeds end"));
+        }
         self.data
             .get(start..end)
-            .ok_or_else(|| self.error("slice exceeds input"))
+            .ok_or_else(|| self.error_at(start, "slice exceeds input"))
+    }
+
+    pub fn read_bytes_at(&self, offset: usize, count: usize) -> io::Result<&'a [u8]> {
+        let end = offset
+            .checked_add(count)
+            .ok_or_else(|| self.error_at(offset, "read overflow"))?;
+        self.slice(offset, end)
+    }
+
+    pub fn read_array_at<const N: usize>(&self, offset: usize) -> io::Result<[u8; N]> {
+        let mut value = [0; N];
+        value.copy_from_slice(self.read_bytes_at(offset, N)?);
+        Ok(value)
+    }
+
+    pub fn read_u8_at(&self, offset: usize) -> io::Result<u8> {
+        Ok(self.read_array_at::<1>(offset)?[0])
+    }
+
+    pub fn read_u16_at(&self, offset: usize) -> io::Result<u16> {
+        let bytes = self.read_array_at(offset)?;
+        Ok(match self.endian {
+            Endian::Little => u16::from_le_bytes(bytes),
+            Endian::Big => u16::from_be_bytes(bytes),
+        })
+    }
+
+    pub fn read_u32_at(&self, offset: usize) -> io::Result<u32> {
+        let bytes = self.read_array_at(offset)?;
+        Ok(match self.endian {
+            Endian::Little => u32::from_le_bytes(bytes),
+            Endian::Big => u32::from_be_bytes(bytes),
+        })
+    }
+
+    pub fn read_u64_at(&self, offset: usize) -> io::Result<u64> {
+        let bytes = self.read_array_at(offset)?;
+        Ok(match self.endian {
+            Endian::Little => u64::from_le_bytes(bytes),
+            Endian::Big => u64::from_be_bytes(bytes),
+        })
     }
 
     pub fn read_u8(&mut self) -> io::Result<u8> {
@@ -154,9 +198,13 @@ impl<'a> BinaryReader<'a> {
     }
 
     fn error(&self, message: &str) -> io::Error {
+        self.error_at(self.position, message)
+    }
+
+    fn error_at(&self, offset: usize, message: &str) -> io::Error {
         io::Error::new(
             ErrorKind::UnexpectedEof,
-            format!("{message} at {:#x}", self.position),
+            format!("{message} at {offset:#x}"),
         )
     }
 }
@@ -306,5 +354,15 @@ mod tests {
     fn string_at_end_of_input_is_empty() {
         let reader = BinaryReader::new(&[]);
         assert_eq!(reader.read_c_string_at(0).unwrap(), "");
+    }
+
+    #[test]
+    fn random_access_reads_are_checked_and_preserve_position() {
+        let reader = BinaryReader::new(&[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(reader.read_u16_at(1).unwrap(), 0x0302);
+        assert_eq!(reader.read_u32_at(4).unwrap(), 0x0807_0605);
+        assert_eq!(reader.position(), 0);
+        assert!(reader.read_u64_at(1).is_err());
+        assert!(reader.read_bytes_at(usize::MAX, 2).is_err());
     }
 }

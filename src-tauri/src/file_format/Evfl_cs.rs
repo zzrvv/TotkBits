@@ -7,7 +7,7 @@ use std::{
 use crate::{
     Open_and_Save::SendData,
     Settings::Pathlib,
-    Zstd::{is_evfl, is_little_endian, TotkFileType, TotkZstd},
+    Zstd::{is_evfl, TotkFileType, TotkZstd},
 };
 
 use super::{BinTextFile::OpenedFile, Wrapper::ExeWrapper};

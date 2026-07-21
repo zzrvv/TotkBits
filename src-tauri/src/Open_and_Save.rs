@@ -246,10 +246,6 @@ pub fn get_binary_by_filetype(
     is_internal: bool,
 ) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
-    let endian_str = match endian {
-        roead::Endian::Big => "BE",
-        roead::Endian::Little => "LE",
-    };
     let is_zs = file_path.to_lowercase().ends_with(".zs") && zstd_dictionary.is_none();
     let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs");
     match file_type {
@@ -309,7 +305,7 @@ pub fn get_binary_by_filetype(
                     .map_err(|e| println!("Unable to encode GameDataList: {e}"))
                     .ok()?;
             }
-            if (rawdata.is_empty()) {
+            if rawdata.is_empty() {
                 let processed_text = if is_banc_path(&file_path) && zstd.totk_config.rotation_deg {
                     &replace_rotate_deg_to_rad(&text)
                 } else {
@@ -319,7 +315,7 @@ pub fn get_binary_by_filetype(
                 let pio = Byml::from_text(processed_text).ok()?;
                 rawdata = pio.to_binary(endian);
             }
-            if (!rawdata.is_empty()) {
+            if !rawdata.is_empty() {
                 if is_bcett {
                     rawdata = zstd.cpp_compressor.compress_bcett(&rawdata).ok()?;
                 } else if is_zs {

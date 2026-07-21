@@ -368,10 +368,28 @@ fn convert_bphcl_cloth_to_hkcl_template_internal(
                 .join("; "),
         ));
     }
-    let source_cloth_value = &source.cloths[source_cloth];
-    let source_sim = &source_cloth_value.simulations[0];
-    let source_skeleton = paired_skeleton(source, source_cloth).unwrap();
-    let template_skeleton_index = paired_skeleton_index(target, template_cloth).unwrap();
+    let source_cloth_value = source.cloths.get(source_cloth).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "source cloth index is out of range",
+        )
+    })?;
+    let source_sim = source_cloth_value.simulations.first().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidData, "source cloth has no simulation")
+    })?;
+    let source_skeleton = paired_skeleton(source, source_cloth).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "source cloth has no paired skeleton",
+        )
+    })?;
+    let template_skeleton_index =
+        paired_skeleton_index(target, template_cloth).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "template cloth has no paired skeleton",
+            )
+        })?;
     let source_colliders = referenced_colliders(source, source_cloth_value);
     let template_colliders = referenced_colliders(target, &target.cloths[template_cloth]);
     let mut converted = target.clone();
@@ -433,11 +451,16 @@ fn convert_bphcl_cloth_to_hkcl_template_internal(
         converted.skeletons[template_skeleton_index].bones[*target_index] = bone;
     }
     for source_id in &source_sim.constraints {
-        let source_set = source
+        let Some(source_set) = source
             .constraints
             .iter()
             .find(|value| &value.id == source_id)
-            .unwrap();
+        else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("source constraint {source_id:?} is missing"),
+            ));
+        };
         if source_set.elements.is_empty() {
             continue;
         }
@@ -456,7 +479,9 @@ fn convert_bphcl_cloth_to_hkcl_template_internal(
                 .constraints
                 .iter()
                 .position(|value| &value.id == target_id)
-                .unwrap();
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "target constraint is missing")
+                })?;
             converted.constraints[index].name = source_set.name.clone();
             converted.constraints[index]
                 .elements
@@ -469,7 +494,9 @@ fn convert_bphcl_cloth_to_hkcl_template_internal(
             .collidables
             .iter()
             .position(|value| value.id == template_value.id)
-            .unwrap();
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "template collider is missing")
+            })?;
         converted.collidables[index].name = source_value
             .name
             .as_deref()

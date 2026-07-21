@@ -15,7 +15,11 @@ impl DdsHeader {
                 "invalid DDS header",
             ));
         }
-        let read = |offset: usize| u32::from_le_bytes(data[offset..offset + 4].try_into().unwrap());
+        let read = |offset: usize| {
+            let mut value = [0; 4];
+            value.copy_from_slice(&data[offset..offset + 4]);
+            u32::from_le_bytes(value)
+        };
         Ok(Self {
             height: read(12),
             width: read(16),

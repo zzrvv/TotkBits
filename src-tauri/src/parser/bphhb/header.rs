@@ -1,3 +1,4 @@
+use crate::parser::binary::BinaryReader;
 use std::{io, io::ErrorKind};
 
 pub const BPHHB_HEADER_SIZE: usize = 0x30;
@@ -26,14 +27,9 @@ impl BphhbHeader {
         if &data[..4] != b"AAMP" {
             return Err(invalid("BPHHB must begin with the AAMP signature"));
         }
-        let value = |offset| {
-            u32::from_le_bytes(
-                data[offset..offset + 4]
-                    .try_into()
-                    .expect("header bounds checked"),
-            )
-        };
-        let parameter_io_offset = value(0x14);
+        let reader = BinaryReader::new(data);
+        let value = |offset| reader.read_u32_at(offset);
+        let parameter_io_offset = value(0x14)?;
         let type_end = BPHHB_HEADER_SIZE
             .checked_add(parameter_io_offset as usize)
             .ok_or_else(|| invalid("BPHHB parameter root offset overflows"))?;
@@ -54,17 +50,17 @@ impl BphhbHeader {
             )));
         }
         Ok(Self {
-            archive_version: value(0x04),
-            flags: value(0x08),
-            file_size: value(0x0c),
-            parameter_io_version: value(0x10),
+            archive_version: value(0x04)?,
+            flags: value(0x08)?,
+            file_size: value(0x0c)?,
+            parameter_io_version: value(0x10)?,
             parameter_io_offset,
-            list_count: value(0x18),
-            object_count: value(0x1c),
-            parameter_count: value(0x20),
-            data_size: value(0x24),
-            string_pool_size: value(0x28),
-            unknown: value(0x2c),
+            list_count: value(0x18)?,
+            object_count: value(0x1c)?,
+            parameter_count: value(0x20)?,
+            data_size: value(0x24)?,
+            string_pool_size: value(0x28)?,
+            unknown: value(0x2c)?,
             data_type,
         })
     }

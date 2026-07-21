@@ -5,7 +5,7 @@ use crate::{
     file_format::BinTextFile::{BymlFile, FileData},
     Zstd::{is_byml, TotkFileType, TotkZstd},
 };
-use roead::byml::{self, Byml};
+use roead::byml::Byml;
 use std::{
     fs::OpenOptions,
     io::{self, Write},
@@ -139,7 +139,7 @@ impl<'a> SmoSaveFile<'a> {
     }
     pub fn from_string(text: &str, zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
         let mut byml_file = BymlFile::from_text(&text, zstd.clone())?;
-        let mut pio_map = byml_file
+        let pio_map = byml_file
             .pio
             .as_mut_map()
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;

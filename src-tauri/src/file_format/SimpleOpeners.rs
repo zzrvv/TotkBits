@@ -43,7 +43,7 @@ impl TextFile {
         print!("Is {} regular text file? ", &pathlib_var.full_path);
         let mut file = fs::File::open(path_ref).ok()?;
         let mut buffer = Vec::new();
-        if let Ok(x) = file.read_to_end(&mut buffer) {
+        if file.read_to_end(&mut buffer).is_ok() {
             if let Ok(text) = String::from_utf8(buffer) {
                 println!(" yes!");
                 opened_file.path = pathlib_var.clone();

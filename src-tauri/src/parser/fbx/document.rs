@@ -1,4 +1,5 @@
 use crate::file_format::Model3D::bfres::{BfresMesh, BfresRenderGraph};
+use crate::parser::binary::BinaryReader;
 use fbxcel_dom::{
     any::AnyDocument,
     v7400::object::{geometry::TypedGeometryHandle, TypedObjectHandle},
@@ -54,12 +55,9 @@ impl FbxFile {
         )
     }
     pub fn parse(data: &[u8], name: &str) -> io::Result<Self> {
-        let version = u32::from_le_bytes(
-            data.get(23..27)
-                .ok_or_else(|| invalid("truncated FBX header"))?
-                .try_into()
-                .unwrap(),
-        );
+        let version = BinaryReader::new(data)
+            .read_u32_at(23)
+            .map_err(|_| invalid("truncated FBX header"))?;
         let document = AnyDocument::from_seekable_reader(std::io::Cursor::new(data))
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
         let AnyDocument::V7400(_, document) = document else {

@@ -3,7 +3,6 @@ use rfd::MessageDialog;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::env;
-use std::error::Error;
 use std::path::PathBuf;
 
 /// Returns the directory containing the running executable.
@@ -57,7 +56,6 @@ use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 use std::process;
 use std::process::Command;
-use updater::TotkbitsVersion::TotkbitsVersion;
 
 use crate::TotkConfig::TotkConfig;
 
@@ -342,7 +340,7 @@ pub fn spawn_updater(latest_ver: &str) -> io::Result<()> {
     println!("[+] Backing up: {}", &backup_upd_exe);
     fs::copy(&upd_exe, &backup_upd_exe)?;
     println!("[+] Updater executable found: {}", &backup_upd_exe);
-    let p = Command::new("cmd")
+    Command::new("cmd")
         .arg("/c")
         .arg("start")
         .arg(&backup_upd_exe)
@@ -353,5 +351,4 @@ pub fn spawn_updater(latest_ver: &str) -> io::Result<()> {
         .spawn()?;
     // pipe_worker();
     process::exit(0);
-    Ok(())
 }

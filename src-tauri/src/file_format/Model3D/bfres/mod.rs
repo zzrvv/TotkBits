@@ -202,7 +202,7 @@ impl BfresFile {
         let read_u32 = |offset| u32_at(data, offset, endian);
 
         let header = BfresHeader {
-            version: data[8..12].try_into().unwrap(),
+            version: [data[8], data[9], data[10], data[11]],
             endian,
             alignment_exponent: data[0x0E],
             target_address_size: data[0x0F],
@@ -228,7 +228,12 @@ impl BfresFile {
         let name = read_string(data, header.name_offset as u64);
         let mut sections = Vec::new();
         for offset in (0..data.len().saturating_sub(3)).filter(|offset| offset % 4 == 0) {
-            let signature: [u8; 4] = data[offset..offset + 4].try_into().unwrap();
+            let signature = [
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ];
             if !SECTION_SIGNATURES
                 .iter()
                 .any(|candidate| **candidate == signature)
@@ -379,12 +384,12 @@ fn parse_vertex_stream(
         attributes.push(VertexAttribute {
             name: read_string(data, u64_at(data, entry, endian)?)
                 .unwrap_or_else(|| format!("attribute_{index}")),
-            format: u16::from_be_bytes(
-                data.get(entry + 8..entry + 10)
-                    .ok_or_else(|| BfresError::new(entry, "truncated vertex attribute"))?
-                    .try_into()
-                    .unwrap(),
-            ),
+            format: {
+                let bytes = data
+                    .get(entry + 8..entry + 10)
+                    .ok_or_else(|| BfresError::new(entry, "truncated vertex attribute"))?;
+                u16::from_be_bytes([bytes[0], bytes[1]])
+            },
             offset: u16_at(data, entry + 12, endian)? as usize,
             buffer_index: byte_at(data, entry + 14)? as usize,
         });
@@ -768,11 +773,13 @@ pub(super) fn f32_at(data: &[u8], offset: usize, endian: Endian) -> Result<f32, 
 }
 
 pub(super) fn u16_at(data: &[u8], offset: usize, endian: Endian) -> Result<u16, BfresError> {
-    let bytes: [u8; 2] = data
-        .get(offset..offset + 2)
-        .ok_or_else(|| BfresError::new(offset, "truncated u16"))?
-        .try_into()
-        .unwrap();
+    let end = offset
+        .checked_add(2)
+        .ok_or_else(|| BfresError::new(offset, "u16 offset overflow"))?;
+    let source = data
+        .get(offset..end)
+        .ok_or_else(|| BfresError::new(offset, "truncated u16"))?;
+    let bytes = [source[0], source[1]];
     Ok(match endian {
         Endian::Little => u16::from_le_bytes(bytes),
         Endian::Big => u16::from_be_bytes(bytes),
@@ -780,11 +787,13 @@ pub(super) fn u16_at(data: &[u8], offset: usize, endian: Endian) -> Result<u16, 
 }
 
 pub(super) fn u32_at(data: &[u8], offset: usize, endian: Endian) -> Result<u32, BfresError> {
-    let bytes: [u8; 4] = data
-        .get(offset..offset + 4)
-        .ok_or_else(|| BfresError::new(offset, "truncated u32"))?
-        .try_into()
-        .unwrap();
+    let end = offset
+        .checked_add(4)
+        .ok_or_else(|| BfresError::new(offset, "u32 offset overflow"))?;
+    let source = data
+        .get(offset..end)
+        .ok_or_else(|| BfresError::new(offset, "truncated u32"))?;
+    let bytes = [source[0], source[1], source[2], source[3]];
     Ok(match endian {
         Endian::Little => u32::from_le_bytes(bytes),
         Endian::Big => u32::from_be_bytes(bytes),
@@ -792,11 +801,15 @@ pub(super) fn u32_at(data: &[u8], offset: usize, endian: Endian) -> Result<u32, 
 }
 
 pub(super) fn u64_at(data: &[u8], offset: usize, endian: Endian) -> Result<u64, BfresError> {
-    let bytes: [u8; 8] = data
-        .get(offset..offset + 8)
-        .ok_or_else(|| BfresError::new(offset, "truncated u64"))?
-        .try_into()
-        .unwrap();
+    let end = offset
+        .checked_add(8)
+        .ok_or_else(|| BfresError::new(offset, "u64 offset overflow"))?;
+    let source = data
+        .get(offset..end)
+        .ok_or_else(|| BfresError::new(offset, "truncated u64"))?;
+    let bytes = [
+        source[0], source[1], source[2], source[3], source[4], source[5], source[6], source[7],
+    ];
     Ok(match endian {
         Endian::Little => u64::from_le_bytes(bytes),
         Endian::Big => u64::from_be_bytes(bytes),

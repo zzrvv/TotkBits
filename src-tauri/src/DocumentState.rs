@@ -465,11 +465,12 @@ impl DocumentState {
         };
         let mut sarc_paths = crate::file_format::Pack::SarcPaths::default();
         sarc_paths.read_only = true;
-        sarc_paths.paths = target
+        let refreshed = target
             .opened_file
             .bphcl
             .as_ref()
-            .expect("modified BPHCL was just assigned")
+            .ok_or_else(|| "Modified BPHCL state was lost".to_owned())?;
+        sarc_paths.paths = refreshed
             .leaves()
             .map_err(|error| format!("Failed to refresh BPHCL tree: {error}"))?
             .into_iter()
@@ -622,11 +623,12 @@ impl DocumentState {
         };
         let mut sarc_paths = crate::file_format::Pack::SarcPaths::default();
         sarc_paths.read_only = true;
-        sarc_paths.paths = target
+        let refreshed = target
             .opened_file
             .bphcl
             .as_ref()
-            .expect("merged BPHCL was just assigned")
+            .ok_or_else(|| "Merged BPHCL state was lost".to_owned())?;
+        sarc_paths.paths = refreshed
             .leaves()
             .map_err(|error| format!("Failed to refresh merged BPHCL tree: {error}"))?
             .into_iter()

@@ -5,15 +5,13 @@ use crate::{
     Settings::{spawn_updater, NO_WINDOW_FLAG},
     TotkApp::SaveData,
 };
-use reqwest::blocking::{get, Client};
+use reqwest::blocking::Client;
 use rfd::MessageDialog;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::{
-    env,
-    error::Error,
-    fs,
+    env, fs,
     os::windows::process::CommandExt,
     path::Path,
     process::{self, Command},
@@ -527,13 +525,8 @@ pub fn restart_app() -> Option<()> {
     // .ok()?;
     match p {
         Ok(_) => process::exit(0),
-        Err(_) => {
-            return None;
-        }
-    };
-    // process::exit(0);
-    // #[allow(unreachable_code)]
-    Some(())
+        Err(_) => None,
+    }
 }
 
 #[tauri::command]

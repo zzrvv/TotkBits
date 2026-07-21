@@ -18,7 +18,6 @@ use serde_json::json;
 use updater::TotkbitsVersion::TotkbitsVersion;
 
 use crate::file_format::Pack::PackFile;
-use crate::Settings::makedirs;
 use crate::Settings::write_string_to_file;
 use crate::Settings::Pathlib;
 

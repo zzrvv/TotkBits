@@ -19,7 +19,8 @@ fn take<'a>(data: &'a [u8], offset: &mut usize, count: usize) -> io::Result<&'a 
 }
 
 fn u16_at(data: &[u8], offset: &mut usize, endian: Endian) -> io::Result<u16> {
-    let bytes: [u8; 2] = take(data, offset, 2)?.try_into().unwrap();
+    let source = take(data, offset, 2)?;
+    let bytes = [source[0], source[1]];
     Ok(match endian {
         Endian::Little => u16::from_le_bytes(bytes),
         Endian::Big => u16::from_be_bytes(bytes),
@@ -54,7 +55,7 @@ fn argument_text(
         }
         other => return Err(invalid(format!("unsupported tag argument type {other}"))),
     };
-    let numeric = numeric.unwrap();
+    let numeric = numeric.ok_or_else(|| invalid("tag argument did not produce a value"))?;
     Ok(arg
         .mapped_name(numeric)
         .unwrap_or_else(|| numeric.to_string()))

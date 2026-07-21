@@ -211,13 +211,10 @@ impl BphclDocument {
         }
         let bytes = self.graph_data_bytes()?;
         let start = offset as usize;
-        let value = u32::from_le_bytes(
-            bytes
-                .get(start..start + 4)
-                .ok_or_else(|| invalid("pointer exceeds DATA"))?
-                .try_into()
-                .unwrap(),
-        ) as usize;
+        let raw = bytes
+            .get(start..start.saturating_add(4))
+            .ok_or_else(|| invalid("pointer exceeds DATA"))?;
+        let value = u32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]) as usize;
         if value >= self.items.len() {
             return Err(invalid(&format!("pointer references missing ITEM {value}")));
         }

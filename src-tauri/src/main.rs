@@ -2,14 +2,9 @@
 // #![windows_subsystem = "windows"]
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case, non_camel_case_types)]
-use miow::pipe::NamedPipeBuilder;
-use std::io::{BufRead, BufReader};
+use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
-use std::thread::sleep;
-use std::time::Duration;
-use std::{env, io, thread};
-use std::{fs, process};
+use std::{env, io};
 use tauri::Manager;
 use Settings::BACKUP_UPDATER_NAME;
 use Zstd::get_executable_dir;
@@ -46,7 +41,6 @@ use crate::TauriCommands::{
     search_in_sarc, update_app, update_toml_config, validate_bphcl_merge_documents,
     validate_physics_merge_request,
 };
-use updater::TotkbitsVersion::TotkbitsVersion;
 
 fn main() -> io::Result<()> {
     let cli = Cli::CliCommand::from_env();
@@ -148,45 +142,6 @@ fn main() -> io::Result<()> {
             .show();
     }
     Ok(())
-}
-
-fn pipe_worker() {
-    thread::spawn(|| {
-        let pipe_name = r"//./pipe/tauri_pipe";
-
-        // Create the named pipe
-        if let Ok(pipe) = NamedPipeBuilder::new(pipe_name).first(true).create() {
-            println!("[+] Named pipe created: {}", pipe_name);
-            if let Ok(_) = pipe.connect() {
-                println!("[+] Connected to named pipe");
-                let reader = BufReader::new(pipe);
-                for line in reader.lines() {
-                    match line {
-                        Ok(msg) => {
-                            if msg.starts_with("END") {
-                                println!("Received end message, closing pipe...");
-                                break;
-                            }
-                            if msg.starts_with("KILL") {
-                                println!("Received kill message, ending program...");
-                                process::exit(0);
-                            }
-                            println!("Received message: {}", msg);
-                        }
-                        Err(e) => {
-                            eprintln!("Error reading from pipe: {}", e);
-                            // break;
-                            sleep(Duration::from_secs(1));
-                        }
-                    }
-                }
-            } else {
-                println!("[-] Error connecting to named pipe: {}", pipe_name);
-            }
-        } else {
-            println!("[-] Error creating named pipe: {}", pipe_name);
-        }
-    });
 }
 
 fn main_initialization() -> io::Result<()> {

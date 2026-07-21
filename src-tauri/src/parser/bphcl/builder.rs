@@ -173,8 +173,12 @@ fn rebuild(
             tag_payload.extend_from_slice(&rebuilt_data);
         } else if child.offset == index.offset {
             tag_payload.extend_from_slice(&rebuilt_index);
-        } else if child.signature == "TYPE" && replacement_type.is_some() {
-            tag_payload.extend_from_slice(replacement_type.unwrap());
+        } else if child.signature == "TYPE" {
+            if let Some(replacement) = replacement_type {
+                tag_payload.extend_from_slice(replacement);
+            } else {
+                copy_section(&mut tag_payload, &document.raw, child)?;
+            }
         } else {
             copy_section(&mut tag_payload, &document.raw, child)?;
         }
@@ -185,8 +189,9 @@ fn rebuild(
         .offset
         .checked_add(document.tag.size)
         .ok_or_else(|| invalid("TAG0 overflow"))?;
-    let delta =
-        i64::try_from(rebuilt_tag.len()).unwrap() - i64::try_from(document.tag.size).unwrap();
+    let delta = i64::try_from(rebuilt_tag.len())
+        .map_err(|_| invalid("rebuilt TAG0 size exceeds i64"))?
+        - i64::try_from(document.tag.size).map_err(|_| invalid("TAG0 size exceeds i64"))?;
     let mut output = Vec::with_capacity(
         (document.raw.len() as i64 + delta)
             .try_into()
@@ -208,7 +213,8 @@ fn rebuild(
         if end > output.len() {
             return Err(invalid("AAMP range exceeds rebuilt BPHCL"));
         }
-        let delta = i64::try_from(aamp.len()).unwrap() - i64::try_from(old_size).unwrap();
+        let delta = i64::try_from(aamp.len()).map_err(|_| invalid("AAMP size exceeds i64"))?
+            - i64::try_from(old_size).map_err(|_| invalid("old AAMP size exceeds i64"))?;
         output.splice(offset..end, aamp.iter().copied());
         write_u32_at(
             &mut output,
@@ -224,12 +230,7 @@ fn rebuild(
 }
 
 fn read_header_u32(data: &[u8], offset: usize) -> io::Result<u32> {
-    Ok(u32::from_le_bytes(
-        data.get(offset..offset + 4)
-            .ok_or_else(|| invalid("header read exceeds file"))?
-            .try_into()
-            .unwrap(),
-    ))
+    crate::parser::binary::BinaryReader::new(data).read_u32_at(offset)
 }
 fn write_u32_at(data: &mut [u8], offset: usize, value: u32) -> io::Result<()> {
     data.get_mut(offset..offset + 4)
@@ -282,7 +283,12 @@ fn external_patch_tail<'a>(bytes: &'a [u8], section: &Section) -> io::Result<(bo
     let mut cursor = section.payload_offset;
     let end = section.payload_end();
     while cursor + 4 <= end {
-        let type_index = u32::from_le_bytes(bytes[cursor..cursor + 4].try_into().unwrap());
+        let type_index = u32::from_le_bytes([
+            bytes[cursor],
+            bytes[cursor + 1],
+            bytes[cursor + 2],
+            bytes[cursor + 3],
+        ]);
         cursor += 4;
         if type_index == 0 {
             return Ok((true, &bytes[cursor..end]));
@@ -290,7 +296,12 @@ fn external_patch_tail<'a>(bytes: &'a [u8], section: &Section) -> io::Result<(bo
         if cursor + 4 > end {
             return Err(invalid("truncated PTCH count"));
         }
-        let count = u32::from_le_bytes(bytes[cursor..cursor + 4].try_into().unwrap()) as usize;
+        let count = u32::from_le_bytes([
+            bytes[cursor],
+            bytes[cursor + 1],
+            bytes[cursor + 2],
+            bytes[cursor + 3],
+        ]) as usize;
         cursor += 4;
         cursor = cursor
             .checked_add(
@@ -352,13 +363,7 @@ fn add_patch(patches: &mut Vec<Patch>, type_index: u32, offset: u32) {
 }
 
 fn read_u32(data: &[u8], offset: u32) -> io::Result<u32> {
-    let offset = offset as usize;
-    Ok(u32::from_le_bytes(
-        data.get(offset..offset + 4)
-            .ok_or_else(|| invalid("DATA read exceeds section"))?
-            .try_into()
-            .unwrap(),
-    ))
+    crate::parser::binary::BinaryReader::new(data).read_u32_at(offset as usize)
 }
 
 fn write_u32(data: &mut [u8], offset: u32, value: u32) -> io::Result<()> {
@@ -384,12 +389,7 @@ fn adjust_offset_after(
     old_tag_end: usize,
     delta: i64,
 ) -> io::Result<()> {
-    let value = u32::from_le_bytes(
-        data.get(field..field + 4)
-            .ok_or_else(|| invalid("header read exceeds file"))?
-            .try_into()
-            .unwrap(),
-    );
+    let value = crate::parser::binary::BinaryReader::new(data).read_u32_at(field)?;
     if value as usize >= old_tag_end {
         write_adjusted_u32(data, field, value, delta)?;
     }

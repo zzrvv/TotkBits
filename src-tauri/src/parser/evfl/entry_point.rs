@@ -90,7 +90,12 @@ impl EntryPoint {
                                         .collect::<io::Result<_>>()?,
                                 )
                             }
-                            _ => unreachable!(),
+                            _ => {
+                                return Err(io::Error::new(
+                                    ErrorKind::InvalidData,
+                                    format!("unsupported variable array type {kind}"),
+                                ))
+                            }
                         }
                     }
                     _ => {

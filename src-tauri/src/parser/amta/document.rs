@@ -1,3 +1,4 @@
+use crate::parser::binary::{BinaryReader, Endian};
 use serde::Serialize;
 
 #[derive(Clone, Debug, Serialize)]
@@ -28,15 +29,16 @@ impl AmtaFile {
             Some(b"\xfe\xff") => false,
             _ => return Err("invalid AMTA byte order".into()),
         };
-        let read_u32 = |at: usize| -> Result<u32, String> {
-            let value = data.get(at..at + 4).ok_or("truncated AMTA header")?;
-            Ok(if little {
-                u32::from_le_bytes(value.try_into().map_err(|_| "truncated AMTA value")?)
-            } else {
-                u32::from_be_bytes(value.try_into().map_err(|_| "truncated AMTA value")?)
-            })
+        let reader =
+            BinaryReader::with_endian(data, if little { Endian::Little } else { Endian::Big });
+        let read_u32 = |at: usize| {
+            reader
+                .read_u32_at(at)
+                .map_err(|error| format!("invalid AMTA value: {error}"))
         };
-        let version = *data.get(7).ok_or("truncated AMTA version")?;
+        let version = reader
+            .read_u8_at(7)
+            .map_err(|error| format!("invalid AMTA version: {error}"))?;
         let declared = read_u32(8)? as usize;
         let file_size = if declared == 0 {
             data.len()
@@ -58,21 +60,16 @@ impl AmtaFile {
         section_offsets.sort_unstable();
         let mut chunks = Vec::new();
         for (index, &offset) in section_offsets.iter().enumerate() {
-            let magic = data
-                .get(offset..offset + 4)
+            let magic = reader
+                .read_bytes_at(offset, 4)
+                .ok()
                 .filter(|value| value.iter().all(u8::is_ascii_graphic))
                 .map(|value| String::from_utf8_lossy(value).into_owned())
                 .unwrap_or_else(|| "DATA".into());
             let next = section_offsets.get(index + 1).copied().unwrap_or(file_size);
-            let declared_chunk = data
-                .get(offset + 4..offset + 8)
-                .map(|value| {
-                    if little {
-                        u32::from_le_bytes(value.try_into().unwrap_or([0; 4]))
-                    } else {
-                        u32::from_be_bytes(value.try_into().unwrap_or([0; 4]))
-                    }
-                })
+            let declared_chunk = offset
+                .checked_add(4)
+                .and_then(|at| reader.read_u32_at(at).ok())
                 .unwrap_or(0) as usize;
             let end = offset
                 .checked_add(declared_chunk)

@@ -2024,36 +2024,32 @@ impl<'a> TotkBitsApp<'a> {
             data.status_text = "Error: No file from disk nor SARC opened".to_string();
             return Some(data);
         }
-        let mut van_path = String::new();
-        match self
+        let van_path = match self
             .zstd
             .clone()
             .totk_config
             .find_vanila_file_in_romfs(&self.opened_file.path.full_path)
         {
-            Ok(p) => {
-                van_path = p;
-            }
+            Ok(path) => path,
             Err(e) => {
                 eprintln!("{:?}", e);
                 data.status_text = format!("Error: {} not found", &self.opened_file.path.name);
                 return Some(data);
             }
-        }
+        };
         println!(
             "Comparing {} with original {}",
             &self.opened_file.path.full_path, &van_path
         );
-        let mut text2 = String::new();
-        if let Some((_, t)) = file_from_disk_to_senddata(&van_path, self.zstd.clone()) {
-            text2 = t.text;
+        let text2 = if let Some((_, t)) = file_from_disk_to_senddata(&van_path, self.zstd.clone()) {
+            t.text
         } else {
             data.status_text = format!(
                 "Error: Failed to parse {}",
                 &self.opened_file.path.full_path
             );
             return Some(data);
-        }
+        };
         data.compare_data.file1.label = self.opened_file.path.full_path.clone();
         data.compare_data.file1.path = self.opened_file.path.clone();
 

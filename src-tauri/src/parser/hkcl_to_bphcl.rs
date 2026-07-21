@@ -129,9 +129,24 @@ pub fn convert_hkcl_cloth_to_bphcl_template(
                 .join("; "),
         ));
     }
-    let source_cloth_value = &source.cloths[source_cloth];
-    let source_skeleton = paired_skeleton(source, source_cloth).unwrap();
-    let target_skeleton_index = paired_skeleton_index(target, template_cloth).unwrap();
+    let source_cloth_value = source.cloths.get(source_cloth).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "source cloth index is out of range",
+        )
+    })?;
+    let source_skeleton = paired_skeleton(source, source_cloth).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "source cloth has no paired skeleton",
+        )
+    })?;
+    let target_skeleton_index = paired_skeleton_index(target, template_cloth).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "template cloth has no paired skeleton",
+        )
+    })?;
     let source_colliders = referenced_colliders(source, source_cloth_value);
     let target_colliders = referenced_colliders(target, &target.cloths[template_cloth]);
     let mut converted = target.clone();
@@ -156,12 +171,16 @@ pub fn convert_hkcl_cloth_to_bphcl_template(
                 .constraints
                 .iter()
                 .position(|value| &value.id == target_id)
-                .unwrap();
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "target constraint is missing")
+                })?;
             let source_value = source
                 .constraints
                 .iter()
                 .find(|value| &value.id == source_id)
-                .unwrap();
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidData, "source constraint is missing")
+                })?;
             converted.constraints[target_index].name = source_value.name.clone();
             converted.constraints[target_index].elements = source_value.elements.clone();
         }
@@ -177,7 +196,9 @@ pub fn convert_hkcl_cloth_to_bphcl_template(
             .collidables
             .iter()
             .position(|value| value.id == target_value.id)
-            .unwrap();
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "target collider is missing")
+            })?;
         converted.collidables[index].name = source_value.name.clone();
         converted.collidables[index].transform = source_value.transform;
         converted.collidables[index].linear_velocity = source_value.linear_velocity;

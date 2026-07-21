@@ -27,7 +27,7 @@ impl ResourceSizeTable {
                 Err(e) => errors = Some(e),
             }
         }
-        Err(errors.unwrap())
+        Err(errors.unwrap_or(RstbError::InvalidMagic))
     }
     fn parse(data: &[u8], endian: Endian) -> Result<Self, RstbError> {
         let dynamic = data.starts_with(b"RESTBL");
@@ -88,8 +88,8 @@ impl ResourceSizeTable {
             let key = std::str::from_utf8(&raw[..end])
                 .map_err(|e| RstbError::InvalidUtf8(e.to_string()))?
                 .to_owned();
-            overflow_table.insert(key, r.read_u32()?);
-            overflow_order.push(std::str::from_utf8(&raw[..end]).unwrap().to_owned());
+            overflow_table.insert(key.clone(), r.read_u32()?);
+            overflow_order.push(key);
         }
         Ok(Self {
             version: if dynamic {

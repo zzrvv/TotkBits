@@ -1,9 +1,6 @@
 use super::{detect_archive_magic, validate_entry_path, ArchiveCodec, ArchiveMagic, ArchiveResult};
 use sevenz_rust::{Password, SevenZArchiveEntry, SevenZReader, SevenZWriter};
-use std::{
-    collections::BTreeMap,
-    io::{Cursor, Read},
-};
+use std::{collections::BTreeMap, io::Cursor};
 
 #[derive(Default)]
 pub struct SevenZipFile {

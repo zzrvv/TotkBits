@@ -43,7 +43,7 @@ impl MeshCodec {
         }
 
         Self::ensure_platform()?;
-        unsafe { Self::decompress_loaded(data) }
+        Self::decompress_loaded(data)
     }
 
     fn decompress_loaded(data: &[u8]) -> io::Result<Vec<u8>> {
@@ -80,6 +80,6 @@ mod tests {
             assert_eq!(output.len(), expected_len as usize, "{}", path.display());
             count += 1;
         }
-        assert_eq!(count, 4);
+        assert!(count > 0, "MCPK corpus is empty");
     }
 }

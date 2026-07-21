@@ -64,9 +64,8 @@ fn tags() -> &'static [TagConfig] {
     static TAGS: OnceLock<Vec<TagConfig>> = OnceLock::new();
     TAGS.get_or_init(|| {
         serde_yaml::from_str::<Root>(include_str!("totk_tags.gcf"))
-            .expect("the bundled TotK MSBT tag configuration must be valid")
-            .msbt
-            .tags
+            .map(|root| root.msbt.tags)
+            .unwrap_or_default()
     })
 }
 

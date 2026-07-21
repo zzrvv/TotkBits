@@ -1,5 +1,5 @@
 use super::{item_range::ItemRange, HkclDocument, Patch};
-use crate::parser::binary::Endian;
+use crate::parser::binary::BinaryReader;
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     io::{self, ErrorKind},
@@ -126,11 +126,9 @@ impl HkclDocument {
         }
         let data = self.data_range().ok()?;
         let start = data.start.checked_add(offset as usize)?;
-        let bytes = self.raw.get(start..start + 4)?;
-        let index = match self.header.layout.endian {
-            Endian::Little => u32::from_le_bytes(bytes.try_into().ok()?),
-            Endian::Big => u32::from_be_bytes(bytes.try_into().ok()?),
-        } as usize;
+        let index = BinaryReader::with_endian(&self.raw, self.header.layout.endian)
+            .read_u32_at(start)
+            .ok()? as usize;
         (index < self.items.len()).then_some(index)
     }
 
@@ -178,14 +176,15 @@ impl HkclDocument {
             )));
         }
         let data_payload = self.data_range()?;
-        let bytes = self
-            .raw
-            .get(data_payload.start + offset as usize..data_payload.start + offset as usize + 4)
-            .ok_or_else(|| invalid("HKCL pointer exceeds DATA"))?;
-        let value = usize::try_from(match self.header.layout.endian {
-            Endian::Little => u32::from_le_bytes(bytes.try_into().unwrap()),
-            Endian::Big => u32::from_be_bytes(bytes.try_into().unwrap()),
-        })
+        let pointer = data_payload
+            .start
+            .checked_add(offset as usize)
+            .ok_or_else(|| invalid("HKCL pointer offset overflows"))?;
+        let value = usize::try_from(
+            BinaryReader::with_endian(&self.raw, self.header.layout.endian)
+                .read_u32_at(pointer)
+                .map_err(|_| invalid("HKCL pointer exceeds DATA"))?,
+        )
         .map_err(|_| invalid("HKCL ITEM index does not fit usize"))?;
         if value >= self.items.len() {
             return Err(invalid(&format!(

@@ -449,10 +449,7 @@ fn ensure(bytes: &[u8], offset: usize, size: usize) -> io::Result<()> {
     }
 }
 fn read_u32(bytes: &[u8], offset: usize) -> io::Result<u32> {
-    ensure(bytes, offset, 4)?;
-    Ok(u32::from_le_bytes(
-        bytes[offset..offset + 4].try_into().unwrap(),
-    ))
+    crate::parser::binary::BinaryReader::new(bytes).read_u32_at(offset)
 }
 fn write_u32(bytes: &mut [u8], offset: usize, value: u32) -> io::Result<()> {
     bytes

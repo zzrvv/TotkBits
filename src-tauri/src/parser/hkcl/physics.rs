@@ -1,5 +1,5 @@
 use super::{GlobalFixup, HkclHeader, HkclSection, Item, LocalFixup};
-use crate::parser::binary::Endian;
+use crate::parser::binary::{BinaryReader, Endian};
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
@@ -431,11 +431,8 @@ impl<'a> GraphReader<'a> {
     }
 
     fn u16(&self, key: ObjectKey, field: usize) -> io::Result<u16> {
-        let bytes: [u8; 2] = self.bytes(key, field, 2)?.try_into().unwrap();
-        Ok(match self.endian {
-            Endian::Little => u16::from_le_bytes(bytes),
-            Endian::Big => u16::from_be_bytes(bytes),
-        })
+        let source = self.bytes(key, field, 2)?;
+        BinaryReader::with_endian(source, self.endian).read_u16_at(0)
     }
 
     fn i16(&self, key: ObjectKey, field: usize) -> io::Result<i16> {
@@ -443,11 +440,8 @@ impl<'a> GraphReader<'a> {
     }
 
     fn u32(&self, key: ObjectKey, field: usize) -> io::Result<u32> {
-        let bytes: [u8; 4] = self.bytes(key, field, 4)?.try_into().unwrap();
-        Ok(match self.endian {
-            Endian::Little => u32::from_le_bytes(bytes),
-            Endian::Big => u32::from_be_bytes(bytes),
-        })
+        let source = self.bytes(key, field, 4)?;
+        BinaryReader::with_endian(source, self.endian).read_u32_at(0)
     }
 
     fn f32(&self, key: ObjectKey, field: usize) -> io::Result<f32> {

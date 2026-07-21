@@ -529,12 +529,11 @@ fn discover_graph_sections_in_range(
         if cursor + 8 > payload.end {
             return Err(invalid("HKCL nested section is truncated"));
         }
-        let size_word = u32::from_be_bytes(
-            data.get(cursor..cursor + 4)
-                .ok_or_else(|| invalid("HKCL nested section is truncated"))?
-                .try_into()
-                .unwrap(),
-        );
+        let size_bytes = data
+            .get(cursor..cursor + 4)
+            .ok_or_else(|| invalid("HKCL nested section is truncated"))?;
+        let size_word =
+            u32::from_be_bytes([size_bytes[0], size_bytes[1], size_bytes[2], size_bytes[3]]);
         let size = (size_word & 0x3fff_ffff) as usize;
         let signature = std::str::from_utf8(
             data.get(cursor + 4..cursor + 8)
