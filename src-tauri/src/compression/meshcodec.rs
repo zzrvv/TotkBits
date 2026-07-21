@@ -1,20 +1,10 @@
-use libloading::{Library, Symbol};
-use std::{
-    ffi::{c_char, c_int},
-    io,
-    path::PathBuf,
-    slice,
-};
+use std::ffi::c_int;
+use std::io;
 
 const MCPK_MAGIC: &[u8; 4] = b"MCPK";
+use meshcodec_bindings::MeshCodecBindings;
 
-type DecompressFn = unsafe extern "C" fn(*const c_char, c_int, *mut c_int) -> *mut c_char;
-type FreeFn = unsafe extern "C" fn(*mut c_char);
-
-pub struct MeshCodec {
-    library: Library,
-    library_path: PathBuf,
-}
+pub struct MeshCodec;
 
 impl MeshCodec {
     pub fn has_magic(data: &[u8]) -> bool {
@@ -22,41 +12,23 @@ impl MeshCodec {
     }
 
     pub fn new() -> io::Result<Self> {
-        let candidates = Self::library_candidates();
-        let library_path = candidates
-            .iter()
-            .find(|path| path.is_file())
-            .cloned()
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!(
-                        "MeshCodec DLL was not found; checked {}",
-                        candidates
-                            .iter()
-                            .map(|path| path.display().to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    ),
-                )
-            })?;
-        let library = unsafe { Library::new(&library_path) }.map_err(|error| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                format!(
-                    "failed to load MeshCodec DLL {}: {error}",
-                    library_path.display()
-                ),
-            )
-        })?;
-        Ok(Self {
-            library,
-            library_path,
-        })
+        Self::ensure_platform()
+    }
+
+    #[cfg(windows)]
+    fn ensure_platform() -> io::Result<Self> {
+        Ok(Self)
+    }
+
+    #[cfg(not(windows))]
+    fn ensure_platform() -> io::Result<Self> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "MeshCodec bindings are only supported on Windows",
+        ))
     }
 
     pub fn decompress(data: &[u8]) -> io::Result<Vec<u8>> {
-        // This check deliberately precedes both path discovery and Library::new.
         if !Self::has_magic(data) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -70,76 +42,12 @@ impl MeshCodec {
             ));
         }
 
-        let codec = Self::new()?;
-        unsafe { codec.decompress_loaded(data) }
+        Self::ensure_platform()?;
+        unsafe { Self::decompress_loaded(data) }
     }
 
-    unsafe fn decompress_loaded(&self, data: &[u8]) -> io::Result<Vec<u8>> {
-        let decompress: Symbol<DecompressFn> = self
-            .library
-            .get(b"meshcodec_decompress\0")
-            .map_err(|error| self.symbol_error("meshcodec_decompress", error))?;
-        let free: Symbol<FreeFn> = self
-            .library
-            .get(b"meshcodec_free\0")
-            .map_err(|error| self.symbol_error("meshcodec_free", error))?;
-
-        let mut output_len: c_int = 0;
-        let output = decompress(
-            data.as_ptr().cast::<c_char>(),
-            data.len() as c_int,
-            &mut output_len,
-        );
-        if output.is_null() || output_len <= 0 {
-            if !output.is_null() {
-                free(output);
-            }
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "MeshCodec failed to decompress MCPK input",
-            ));
-        }
-
-        let result = slice::from_raw_parts(output.cast::<u8>(), output_len as usize).to_vec();
-        free(output);
-        Ok(result)
-    }
-
-    fn symbol_error(&self, symbol: &str, error: libloading::Error) -> io::Error {
-        io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "MeshCodec DLL {} is missing {symbol}: {error}",
-                self.library_path.display()
-            ),
-        )
-    }
-
-    fn library_candidates() -> Vec<PathBuf> {
-        let mut candidates = Vec::new();
-        if let Ok(executable) = std::env::current_exe() {
-            if let Some(directory) = executable.parent() {
-                candidates.push(directory.join("meshcodec.dll"));
-                candidates.push(directory.join("bin").join("dlls").join("meshcodec.dll"));
-            }
-        }
-        if let Ok(current) = std::env::current_dir() {
-            candidates.push(current.join("meshcodec.dll"));
-            candidates.push(
-                current
-                    .join("src-tauri")
-                    .join("bin")
-                    .join("dlls")
-                    .join("meshcodec.dll"),
-            );
-        }
-        candidates.push(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("bin")
-                .join("dlls")
-                .join("meshcodec.dll"),
-        );
-        candidates
+    fn decompress_loaded(data: &[u8]) -> io::Result<Vec<u8>> {
+        MeshCodecBindings::decompress(data)
     }
 }
 

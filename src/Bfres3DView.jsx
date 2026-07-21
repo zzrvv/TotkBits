@@ -7,12 +7,6 @@ import * as THREE from 'three';
 import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
 import './Bfres3DView.css';
 
-const COLORS = {
-    FMDL: '#5ac8fa', FSKL: '#ffd166', FVTX: '#74c69d', FSHP: '#48cae4',
-    FMAT: '#f28482', FSKA: '#c77dff', FSHU: '#ff9f1c', FSHA: '#e76f51',
-    FSCN: '#90be6d', FTXP: '#f9c74f', FVIS: '#adb5bd', FMAA: '#f72585', FREL: '#6c757d',
-};
-
 const sectionYaml = (section) => [
     `type: ${section.signature.join ? String.fromCharCode(...section.signature) : section.signature}`,
     `name: ${section.name ?? 'null'}`,
@@ -20,11 +14,13 @@ const sectionYaml = (section) => [
     'parameters: {}',
 ].join('\n');
 
-function boneWorldMatrices(bones, rotationMode = 'quaternion', scaleMode = 'none') {
+function boneWorldMatrices(bones, scaleMode = 'none') {
     const matrices = bones.map(() => new THREE.Matrix4());
     bones.forEach((bone, index) => {
-        const rotation = rotationMode === 'euler_xyz'
-            ? new THREE.Quaternion().setFromEuler(new THREE.Euler(bone.rotation[0], bone.rotation[1], bone.rotation[2], 'XYZ'))
+        const rotation = bone.rotation_mode === 'euler_xyz'
+            ? new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), bone.rotation[2])
+                .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), bone.rotation[1]))
+                .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), bone.rotation[0]))
             : new THREE.Quaternion(...bone.rotation).normalize();
         const local = new THREE.Matrix4().compose(
             new THREE.Vector3(...bone.translation),
@@ -47,55 +43,28 @@ function boneWorldMatrices(bones, rotationMode = 'quaternion', scaleMode = 'none
     return matrices;
 }
 
-function RenderMesh({ mesh, bones, rotationMode, scaleMode, wireframe, weightBone, showNormals, onSelect }) {
+function RenderMesh({ mesh, bones, scaleMode, wireframe, weightBone, showNormals, onSelect }) {
     const geometry = useMemo(() => {
         const result = new THREE.BufferGeometry();
         const positions = new Float32Array(mesh.positions.flat());
         const normals = mesh.normals.length === mesh.positions.length ? new Float32Array(mesh.normals.flat()) : null;
+        // Smooth-skinned vertices are stored in model bind space. Rigid and
+        // one-bone shapes are stored in bone-local space and need their rest-pose
+        // bone transform restored (the inverse operation used by BFRES writers).
         if (mesh.vertex_skin_count <= 1 && bones.length) {
-            const worlds = boneWorldMatrices(bones, rotationMode, scaleMode);
-            const fallback = mesh.bone_index;
+            const worlds = boneWorldMatrices(bones, scaleMode);
             for (let index = 0; index < mesh.positions.length; index += 1) {
-                const bone = mesh.vertex_skin_count === 1 ? mesh.bone_indices[index]?.[0] : fallback;
-                const matrix = worlds[bone];
+                const boneIndex = mesh.vertex_skin_count === 1
+                    ? (mesh.bone_indices[index]?.[0] ?? mesh.bone_index)
+                    : mesh.bone_index;
+                const matrix = worlds[boneIndex];
                 if (!matrix) continue;
                 const position = new THREE.Vector3(positions[index * 3], positions[index * 3 + 1], positions[index * 3 + 2]).applyMatrix4(matrix);
                 positions.set(position.toArray(), index * 3);
                 if (normals) {
-                    const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
-                    const normal = new THREE.Vector3(normals[index * 3], normals[index * 3 + 1], normals[index * 3 + 2]).applyMatrix3(normalMatrix).normalize();
+                    const normal = new THREE.Vector3(normals[index * 3], normals[index * 3 + 1], normals[index * 3 + 2])
+                        .applyMatrix3(new THREE.Matrix3().getNormalMatrix(matrix)).normalize();
                     normals.set(normal.toArray(), index * 3);
-                }
-            }
-        } else if (mesh.vertex_skin_count > 1 && bones.length) {
-            const worlds = boneWorldMatrices(bones, rotationMode, scaleMode);
-            for (let vertex = 0; vertex < mesh.positions.length; vertex += 1) {
-                const sourcePosition = new THREE.Vector3(...mesh.positions[vertex]);
-                const sourceNormal = normals ? new THREE.Vector3(...mesh.normals[vertex]) : null;
-                const skinnedPosition = new THREE.Vector3();
-                const skinnedNormal = new THREE.Vector3();
-                let totalWeight = 0;
-                for (let influence = 0; influence < 4; influence += 1) {
-                    const weight = mesh.bone_weights[vertex]?.[influence] || 0;
-                    const boneIndex = mesh.bone_indices[vertex]?.[influence];
-                    const bone = bones[boneIndex];
-                    if (weight <= 0.000001 || !bone || !worlds[boneIndex] || !bone.inverse_bind_matrix) continue;
-                    const inverse = bone.inverse_bind_matrix;
-                    const inverseBind = new THREE.Matrix4().set(
-                        inverse[0], inverse[1], inverse[2], inverse[3],
-                        inverse[4], inverse[5], inverse[6], inverse[7],
-                        inverse[8], inverse[9], inverse[10], inverse[11],
-                        0, 0, 0, 1,
-                    );
-                    const skinMatrix = worlds[boneIndex].clone().multiply(inverseBind);
-                    skinnedPosition.add(sourcePosition.clone().applyMatrix4(skinMatrix).multiplyScalar(weight));
-                    if (sourceNormal) skinnedNormal.add(sourceNormal.clone().applyMatrix3(new THREE.Matrix3().getNormalMatrix(skinMatrix)).multiplyScalar(weight));
-                    totalWeight += weight;
-                }
-                if (totalWeight > 0.000001) {
-                    skinnedPosition.multiplyScalar(1 / totalWeight);
-                    positions.set(skinnedPosition.toArray(), vertex * 3);
-                    if (normals && skinnedNormal.lengthSq() > 0) normals.set(skinnedNormal.normalize().toArray(), vertex * 3);
                 }
             }
         }
@@ -120,7 +89,7 @@ function RenderMesh({ mesh, bones, rotationMode, scaleMode, wireframe, weightBon
         result.setIndex(mesh.indices);
         result.computeBoundingSphere();
         return result;
-    }, [mesh, bones, rotationMode, scaleMode, weightBone]);
+    }, [mesh, bones, scaleMode, weightBone]);
     useEffect(() => () => geometry.dispose(), [geometry]);
     const normalLines = useMemo(() => {
         const lineGeometry = new THREE.BufferGeometry();
@@ -150,9 +119,9 @@ function RenderMesh({ mesh, bones, rotationMode, scaleMode, wireframe, weightBon
     </group>;
 }
 
-function Skeleton({ bones, rotationMode, scaleMode }) {
+function Skeleton({ bones, scaleMode }) {
     const points = useMemo(() => {
-        const worlds = boneWorldMatrices(bones, rotationMode, scaleMode);
+        const worlds = boneWorldMatrices(bones, scaleMode);
         const values = [];
         bones.forEach((bone, index) => {
             if (bone.parent_index < 0 || !worlds[bone.parent_index]) return;
@@ -160,7 +129,7 @@ function Skeleton({ bones, rotationMode, scaleMode }) {
             values.push(...new THREE.Vector3().setFromMatrixPosition(worlds[index]).toArray());
         });
         return new Float32Array(values);
-    }, [bones, rotationMode, scaleMode]);
+    }, [bones, scaleMode]);
     return <lineSegments><bufferGeometry><bufferAttribute attach="attributes-position" args={[points, 3]} /></bufferGeometry><lineBasicMaterial color="#ffd166" depthTest={false} /></lineSegments>;
 }
 
@@ -173,8 +142,8 @@ function ResourceScene({ render, wireframe, showSkeleton, showNormals, weightBon
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
         <Bounds fit clip observe margin={1.15}>
-            <group>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh }} bones={render.bones} rotationMode={render.rotation_mode} scaleMode={render.scale_mode} wireframe={wireframe} weightBone={weightBone} showNormals={showNormals} onSelect={onSelectMesh} />)}</group>
-            {showSkeleton && <Skeleton bones={render.bones} rotationMode={render.rotation_mode} scaleMode={render.scale_mode} />}
+            <group>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh }} bones={render.bones} scaleMode={render.scale_mode} wireframe={wireframe} weightBone={weightBone} showNormals={showNormals} onSelect={onSelectMesh} />)}</group>
+            {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} />}
         </Bounds>
     </>;
 }
@@ -186,7 +155,14 @@ function TreeFolder({ label, count, children }) {
     </details>;
 }
 
-function ResourceTree({ bfres, onSection, onMesh, onBone }) {
+function Folder({ label, children, open = false, detail }) {
+    return <details open={open} className="bfres-folder-node">
+        <summary><span className="bfres-folder-arrow">›</span><span className="bfres-folder-icon">■</span><strong>{label}</strong>{detail && <small>{detail}</small>}</summary>
+        <div>{children}</div>
+    </details>;
+}
+
+function ResourceTree({ bfres, title, onSection, onMesh, onBone }) {
     const sections = bfres?.sections || [];
     const materials = bfres?.materials || [];
     const textures = sections.filter((section) => ['FTXP', 'FTEX', 'BNTX'].includes(String.fromCharCode(...section.signature)));
@@ -203,14 +179,48 @@ function ResourceTree({ bfres, onSection, onMesh, onBone }) {
             <div>{children}</div>
         </details>;
     });
+    const modelName = sections.find((section) => String.fromCharCode(...section.signature) === 'FMDL')?.name || bfres?.name || 'Model';
     return <nav className="bfres-resource-tree" aria-label="BFRES resources">
-        <header>Scene collection</header>
-        <TreeFolder label="Meshes" count={meshes.length}>{meshes.map((mesh, index) => node(mesh.name, `${mesh.positions.length} vertices`, () => onMesh(mesh), `mesh-${index}`))}</TreeFolder>
-        <TreeFolder label="Materials" count={materials.length}>{materials.map((material) => node(material.name, `${material.texture_slots.length} textures`, () => onSection(material, 'material'), `material-${material.offset}`))}</TreeFolder>
-        
-        <TreeFolder label="Textures" count={textures.length}>{textures.map((section) => node(section.name, 'Unparsed texture data', () => onSection(section), `texture-${section.offset}`))}</TreeFolder>
-        <TreeFolder label="Skeleton" count={bones.length}>{boneNodes(-1)}</TreeFolder>
+        <div className="bfres-tree-actions"><button type="button" title="Expand resources">＋</button><span>Resources</span></div>
+        <Folder label={title || bfres?.name || 'BFRES'} open>
+            <Folder label="Models" open detail="1">
+                <Folder label={modelName} open>
+                    <Folder label="Objects" open detail={meshes.length}>{meshes.map((mesh, index) => node(mesh.name, `${mesh.positions.length} vertices`, () => onMesh(mesh), `mesh-${index}`))}</Folder>
+                    <Folder label="Materials" open detail={materials.length}>{materials.map((material) => node(material.name, `${material.texture_slots.length} textures`, () => onSection(material, 'material'), `material-${material.offset}`))}</Folder>
+                    <Folder label="Skeleton" open detail={bones.length}>{boneNodes(-1)}</Folder>
+                </Folder>
+            </Folder>
+            <Folder label="Textures" detail={textures.length}>{textures.map((section) => node(section.name, 'Texture', () => onSection(section), `texture-${section.offset}`))}</Folder>
+            <Folder label="Animations" detail={(bfres?.sections || []).filter((section) => ['FSKA', 'FSHU', 'FSHA', 'FVIS', 'FMAA'].includes(String.fromCharCode(...section.signature))).length} />
+            <Folder label="Embedded Files" />
+            <Folder label="TexToGo" />
+        </Folder>
     </nav>;
+}
+
+function PropertyValue({ value }) {
+    if (value === null || value === undefined) return <span className="bfres-null">null</span>;
+    if (Array.isArray(value)) {
+        const simple = value.length <= 8 && value.every((item) => typeof item !== 'object');
+        if (simple) return <code>[{value.join(', ')}]</code>;
+        return <details className="bfres-property-group"><summary>{value.length} items</summary><pre>{JSON.stringify(value, null, 2)}</pre></details>;
+    }
+    if (typeof value === 'object') return <details className="bfres-property-group" open><summary>{Object.keys(value).length} properties</summary><PropertyList value={value} /></details>;
+    return <code>{String(value)}</code>;
+}
+
+function PropertyList({ value }) {
+    return <dl className="bfres-property-list">
+        {Object.entries(value || {}).map(([name, property]) => <div key={name}><dt>{name}</dt><dd><PropertyValue value={property} /></dd></div>)}
+    </dl>;
+}
+
+function NodeInspector({ detail }) {
+    if (!detail) return <div className="bfres-empty-detail">Select a node in the scene collection to inspect its parsed properties.</div>;
+    return <section className="bfres-selected-detail">
+        <header><strong>{detail.value.name || 'Unnamed'}</strong><small>{detail.type}</small></header>
+        <PropertyList value={detail.value} />
+    </section>;
 }
 
 export default function Bfres3DView({ activeTab, setStatusText }) {
@@ -218,7 +228,6 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const document = documents.find((item) => item.id === activeDocumentId);
     const [bfres, setBfres] = useState(null);
     const [error, setError] = useState('');
-    const [filter, setFilter] = useState('');
     const [selected, setSelected] = useState(null);
     const [yaml, setYaml] = useState('');
     const [panel, setPanel] = useState('resources');
@@ -229,6 +238,8 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [detail, setDetail] = useState(null);
     const [showEditor, setShowEditor] = useState(false);
     const [selectedMesh, setSelectedMesh] = useState('');
+    const [leftWidth, setLeftWidth] = useState(240);
+    const [rightWidth, setRightWidth] = useState(390);
 
     useEffect(() => {
         if (activeTab !== '3D' || !document?.fullPath) return;
@@ -246,30 +257,34 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         return () => { cancelled = true; };
     }, [activeTab, document?.fullPath]);
 
-    const sections = useMemo(() => {
-        const query = filter.trim().toLowerCase();
-        if (!query) return bfres?.sections || [];
-        return (bfres?.sections || []).filter((section) => {
-            const signature = String.fromCharCode(...section.signature);
-            return signature.toLowerCase().includes(query) || (section.name || '').toLowerCase().includes(query);
-        });
-    }, [bfres, filter]);
     const animations = useMemo(() => (bfres?.sections || []).filter((section) =>
         ['FSKA', 'FSHU', 'FSHA', 'FTXP', 'FVIS', 'FMAA'].includes(String.fromCharCode(...section.signature))), [bfres]);
 
     const choose = (section) => {
         setSelected(section);
-        setDetail(null);
+        setDetail({ type: String.fromCharCode(...section.signature), value: section });
         setYaml(sectionYaml(section));
+    };
+    const startPanelDrag = (side, event) => {
+        event.preventDefault();
+        const move = (moveEvent) => {
+            if (side === 'left') setLeftWidth(Math.min(520, Math.max(170, moveEvent.clientX)));
+            else setRightWidth(Math.min(680, Math.max(260, window.innerWidth - moveEvent.clientX)));
+        };
+        const stop = () => {
+            window.removeEventListener('mousemove', move);
+            window.removeEventListener('mouseup', stop);
+        };
+        window.addEventListener('mousemove', move);
+        window.addEventListener('mouseup', stop);
     };
     const applyYaml = () => {
         setStatusText('BFRES node YAML is staged in the inspector; binary rebuilding is not available for this node type yet');
     };
 
     if (activeTab !== '3D') return null;
-    return <main className="bfres-workspace">
-        <header className="bfres-toolbar">
-            <div><strong>{document?.title || 'BFRES'}</strong><span>{bfres?.name || 'Resource file'}</span></div>
+    return <main className="bfres-workspace" style={{ '--bfres-left-width': `${leftWidth}px`, '--bfres-right-width': `${rightWidth}px` }}>
+        <header className="bfres-viewport-toolbar">
             <button type="button" onClick={() => setPanel('resources')} className={panel === 'resources' ? 'active' : ''}>Resources</button>
             <button type="button" onClick={() => setPanel('parameters')} className={panel === 'parameters' ? 'active' : ''}>Parameters</button>
             <button type="button" onClick={() => setPanel('animations')} className={panel === 'animations' ? 'active' : ''}>Animations <small>{animations.length}</small></button>
@@ -284,7 +299,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             </select>
         </header>
         {error ? <div className="bfres-error">{error}</div> : <>
-            <ResourceTree bfres={bfres} onSection={(value, type) => {
+            <ResourceTree bfres={bfres} title={document?.title} onSection={(value, type) => {
                 if (type === 'material') {
                     setSelected(value);
                     setDetail({ type, value });
@@ -303,40 +318,21 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 setWeightBone(index);
                 setStatusText(`Selected bone ${bone.name}`);
             }} />
+            <div className="bfres-panel-divider left" role="separator" aria-orientation="vertical" onMouseDown={(event) => startPanelDrag('left', event)} />
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
                 <Canvas dpr={[1, 2]} gl={{ antialias: true }}>
                     {bfres?.render && <ResourceScene render={bfres.render} wireframe={wireframe} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} selectedMesh={selectedMesh} onSelectMesh={(mesh) => {
                         setSelectedMesh(mesh.name);
+                        setDetail({ type: 'mesh', value: mesh });
                         setYaml(JSON.stringify(mesh, null, 2));
                         setStatusText(`${mesh.name}: ${mesh.positions.length.toLocaleString()} vertices, ${(mesh.indices.length / 3).toLocaleString()} triangles`);
                     }} />}
                 </Canvas>
                 <div className="bfres-viewport-note">{bfres?.render?.meshes.length || 0} meshes · {(bfres?.render?.meshes || []).reduce((sum, mesh) => sum + mesh.positions.length, 0).toLocaleString()} vertices · {bfres?.render?.bones.length || 0} bones</div>
             </section>
+            <div className="bfres-panel-divider right" role="separator" aria-orientation="vertical" onMouseDown={(event) => startPanelDrag('right', event)} />
             <aside className="bfres-inspector">
-                {detail?.type === 'material' && <section className="bfres-node-detail">
-                    <header><strong>{detail.value.name}</strong><small>BFMAT material</small></header>
-                    <h4>Texture slots</h4>
-                    {detail.value.texture_slots.length === 0 ? <p>No texture references.</p> : <div className="bfres-slot-list">
-                        {detail.value.texture_slots.map((slot) => <div key={slot.index}><span>{slot.index}</span><strong>{slot.name}</strong><small>{slot.texture_type}</small></div>)}
-                    </div>}
-                </section>}
-                {detail?.type === 'bone' && <section className="bfres-node-detail">
-                    <header><strong>{detail.value.name}</strong><small>Bone #{detail.value.index}</small></header>
-                    <dl><dt>Parent</dt><dd>{detail.value.parent_index}</dd><dt>Scale</dt><dd>{detail.value.scale.join(', ')}</dd><dt>Rotation</dt><dd>{detail.value.rotation.join(', ')}</dd><dt>Translation</dt><dd>{detail.value.translation.join(', ')}</dd><dt>Smooth matrix</dt><dd>{detail.value.smooth_matrix_index}</dd><dt>Rigid matrix</dt><dd>{detail.value.rigid_matrix_index}</dd></dl>
-                </section>}
-                {panel === 'resources' && <>
-                    <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter name or type…" aria-label="Filter BFRES resources" />
-                    <div className="bfres-resource-table" role="table">
-                        <div className="bfres-row bfres-table-head" role="row"><span>Type</span><span>Name</span><span>Offset</span></div>
-                        {sections.map((section) => {
-                            const signature = String.fromCharCode(...section.signature);
-                            return <button type="button" className={`bfres-row ${selected?.offset === section.offset ? 'selected' : ''}`} key={`${signature}-${section.offset}`} onClick={() => choose(section)}>
-                                <span style={{ color: COLORS[signature] }}>{signature}</span><span>{section.name || 'Unnamed'}</span><span>0x{Number(section.offset).toString(16).toUpperCase()}</span>
-                            </button>;
-                        })}
-                    </div>
-                </>}
+                {panel === 'resources' && <NodeInspector detail={detail} />}
                 {panel === 'parameters' && bfres && <dl className="bfres-parameters">
                     <dt>Version</dt><dd>{bfres.header.version.join('.')}</dd>
                     <dt>Endian</dt><dd>{bfres.header.endian}</dd>

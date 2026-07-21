@@ -1,4 +1,4 @@
-use super::bfres::{f32_at, i16_at, read_string, u16_at, u64_at, BfresBone, BfresError, Endian};
+use super::{f32_at, i16_at, read_string, u16_at, u32_at, u64_at, BfresBone, BfresError, Endian};
 
 pub fn parse_skeleton(
     data: &[u8],
@@ -10,6 +10,7 @@ pub fn parse_skeleton(
     let count = u16_at(data, offset + 56, endian)? as usize;
     let palette_count =
         u16_at(data, offset + 58, endian)? as usize + u16_at(data, offset + 60, endian)? as usize;
+    let skeleton_flags = u32_at(data, offset + 48, endian)?;
     let mut bones = Vec::with_capacity(count);
     for index in 0..count {
         let entry = bones_offset + index * 88;
@@ -19,6 +20,13 @@ pub fn parse_skeleton(
             parent_index: i16_at(data, entry + 34, endian)?,
             smooth_matrix_index: i16_at(data, entry + 36, endian)?,
             rigid_matrix_index: i16_at(data, entry + 38, endian)?,
+            // Rotation mode belongs to FSKL, not each Bone. BfresLibrary's
+            // SkeletonFlagsRotation uses zero for EulerXYZ and one for Quaternion.
+            rotation_mode: if skeleton_flags & 1 != 0 {
+                "quaternion".into()
+            } else {
+                "euler_xyz".into()
+            },
             scale: [
                 f32_at(data, entry + 48, endian)?,
                 f32_at(data, entry + 52, endian)?,

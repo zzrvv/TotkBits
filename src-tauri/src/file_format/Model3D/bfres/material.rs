@@ -1,4 +1,4 @@
-use super::bfres::{read_string, u64_at, BfresSection, Endian};
+use super::{read_string, u64_at, BfresSection, Endian};
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

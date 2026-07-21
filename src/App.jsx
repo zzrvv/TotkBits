@@ -23,6 +23,7 @@ import  OptionsEditor  from './OptionsEditor';
 import DocumentTabs from './DocumentTabs';
 import PhysicsMerge from './PhysicsMerge';
 import Bfres3DView from './Bfres3DView';
+import ImageView from './ImageView';
 
 
 let triggered = false
@@ -188,7 +189,7 @@ function App() {
   const rootStyle = activeTab !== "COMPARER" ? {} : isComparerWorking ? {backgroundColor: "#2E303C"} : {};
   return (
     <div
-      className={`maincontainer ${rightDocumentId ? 'has-split-view' : ''}`}
+      className={`maincontainer ${rightDocumentId && activeTab !== '3D' && activeTab !== 'IMAGE' ? 'has-split-view' : ''}`}
       style={{ ...rootStyle, '--buttons-h': displayButtons ? '33px' : '0px', '--split-position': `${splitRatio * 100}%` }}
     > 
       {isFileHovering && (
@@ -244,7 +245,7 @@ function App() {
         setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
       </SearchTextInSarcPrompt>
 
-      {activeTab !== '3D' && <ButtonsDisplay
+      {activeTab !== '3D' && activeTab !== 'IMAGE' && <ButtonsDisplay
         editorRef={editorRef}
         updateEditorContent={updateEditorContent}
         setStatusText={setStatusText}
@@ -275,6 +276,7 @@ function App() {
       <Comparer setStatusText={setStatusText} activeTab={activeTab}/>
       <PhysicsMerge activeTab={activeTab} setActiveTab={setActiveTab} returnTab={physicsMergeReturnTab} setStatusText={setStatusText} setpaths={setpaths} documentSnapshots={documentSnapshots} />
       <Bfres3DView activeTab={activeTab} setStatusText={setStatusText} />
+      <ImageView activeTab={activeTab} setStatusText={setStatusText} />
       
 
       {activeTab === 'YAML' && readOnly && <div className="physics-yaml-preview-banner" role="status">
@@ -282,7 +284,7 @@ function App() {
         <span>Read-only parsed data</span>
       </div>}
       <div ref={editorContainerRef} className={`code_editor ${activeTab === 'YAML' && readOnly ? 'physics-yaml-preview-editor' : ''}`} style={{ display: activeTab === 'YAML' ? "block" : "none" }}></div>
-      {rightDocumentId && <>
+      {rightDocumentId && activeTab !== '3D' && activeTab !== 'IMAGE' && <>
         <div className="split-view-divider" onMouseDown={startSplitDrag} role="separator" aria-orientation="vertical" />
         <section className="right-document-view">
           <header>

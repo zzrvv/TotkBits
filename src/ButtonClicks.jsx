@@ -257,6 +257,8 @@ export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLa
         setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label.replace(/\/\//g, '/') }));
       } else if (content.tab === '3D') {
         setActiveTab(content.tab);
+      } else if (content.tab === 'IMAGE') {
+        setActiveTab(content.tab);
       } else if (content.tab === 'ERROR') {
         console.log("Error opening file, no tab set");
       }
@@ -293,6 +295,8 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
       setActiveTab(content.tab);
       setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label.replace(/\/\//g, '/') }));
     } else if (content.tab === '3D') {
+      setActiveTab(content.tab);
+    } else if (content.tab === 'IMAGE') {
       setActiveTab(content.tab);
     } else if (content.tab === 'ERROR') {
       // setActiveTab(activeTabBak);

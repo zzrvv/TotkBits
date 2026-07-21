@@ -33,6 +33,28 @@ pub fn inspect_bfres(
 }
 
 #[tauri::command]
+pub fn render_image(path: String) -> Result<crate::file_format::Image::RenderedImage, String> {
+    crate::file_format::Image::ImageDocument::render_path(path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn export_image_png(source: String, output: String) -> Result<(), String> {
+    crate::file_format::Image::ImageDocument::export_png(source, output)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn replace_dds_image(
+    target: String,
+    png: String,
+    ddsType: String,
+    mipCount: u32,
+) -> Result<(), String> {
+    crate::file_format::Image::ImageDocument::replace_dds(target, png, &ddsType, mipCount)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn list_open_bphcl_documents(
     app_handle: tauri::AppHandle,
 ) -> Vec<crate::DocumentState::OpenBphclDocument> {

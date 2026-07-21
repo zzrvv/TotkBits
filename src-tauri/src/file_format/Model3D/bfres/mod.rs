@@ -4,6 +4,9 @@
 //! container header and inventories the typed resource sections without tying
 //! the result to TotkBits' document/YAML representation.
 
+mod material;
+mod skeleton;
+
 use serde::Serialize;
 use std::{fmt, fs, path::Path};
 
@@ -53,7 +56,7 @@ pub struct BfresFile {
     pub header: BfresHeader,
     pub name: Option<String>,
     pub sections: Vec<BfresSection>,
-    pub materials: Vec<super::bfmat::BfresMaterial>,
+    pub materials: Vec<material::BfresMaterial>,
     pub render: BfresRenderGraph,
 }
 
@@ -70,6 +73,7 @@ pub struct BfresBone {
     pub parent_index: i16,
     pub smooth_matrix_index: i16,
     pub rigid_matrix_index: i16,
+    pub rotation_mode: String,
     pub scale: [f32; 3],
     pub rotation: [f32; 4],
     pub translation: [f32; 3],
@@ -121,13 +125,15 @@ impl BfresFile {
         crate::file_format::BinTextFile::OpenedFile<'static>,
         crate::Open_and_Save::SendData,
     )> {
-        if !path
-            .extension()
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("bfres"))
+        let source = fs::read(path).ok()?;
+        let has_supported_extension = path.extension().is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("bfres") || extension.eq_ignore_ascii_case("mc")
+        });
+        if !has_supported_extension && !source.starts_with(b"FRES") && !source.starts_with(b"MCPK")
         {
             return None;
         }
-        let file = Self::from_path(path).ok()?;
+        let file = Self::from_bytes(&source).ok()?;
         let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
         opened.file_type = crate::Zstd::TotkFileType::Bfres;
         opened.path = crate::Settings::Pathlib::new(path);
@@ -150,6 +156,19 @@ impl BfresFile {
     }
 
     pub fn from_bytes(data: &[u8]) -> Result<Self, BfresError> {
+        if data.starts_with(b"MCPK") {
+            let decompressed =
+                crate::compression::meshcodec::MeshCodec::decompress(data).map_err(|error| {
+                    BfresError::new(0, format!("MCPK decompression failed: {error}"))
+                })?;
+            if !decompressed.starts_with(b"FRES") {
+                return Err(BfresError::new(
+                    0,
+                    "MCPK payload is not a BFRES file (missing FRES signature)",
+                ));
+            }
+            return Self::from_bytes(&decompressed);
+        }
         if data.len() < 0x30 {
             return Err(BfresError::new(0, "header is truncated"));
         }
@@ -223,7 +242,7 @@ impl BfresFile {
         if sections.is_empty() {
             return Err(BfresError::new(0, "no BFRES resource sections found"));
         }
-        let materials = super::bfmat::parse_materials(data, &sections, endian, header.version[2]);
+        let materials = material::parse_materials(data, &sections, endian, header.version[2]);
         let render = parse_render_graph(data, endian, header.file_size as usize, &sections)?;
         Ok(Self {
             header,
@@ -290,7 +309,7 @@ fn parse_render_graph(
     let (bones, matrix_to_bone) = sections
         .iter()
         .find(|section| &section.signature == b"FSKL")
-        .map(|section| super::bfskl::parse_skeleton(data, section.offset as usize, endian))
+        .map(|section| skeleton::parse_skeleton(data, section.offset as usize, endian))
         .transpose()?
         .unwrap_or_default();
     let mut meshes = Vec::new();
@@ -381,7 +400,7 @@ fn parse_shape(
     buffer_base: usize,
     endian: Endian,
     streams: &std::collections::HashMap<usize, VertexStream>,
-    _matrix_to_bone: &[u16],
+    matrix_to_bone: &[u16],
 ) -> Result<Vec<BfresMesh>, BfresError> {
     let offset = section.offset as usize;
     let vertex_offset = u64_at(data, offset + 16, endian)? as usize;
@@ -418,20 +437,27 @@ fn parse_shape(
         .collect();
     let colors = decode_attribute(stream, data, "_c0").unwrap_or_default();
 
-    // BFRES vertex bone indices are shape-local indices into FSHP::SkinBoneIndices.
-    // They are NOT indices into FSKL::MatrixToBone. Mapping through matrix_to_bone
-    // here assigns vertices to unrelated bones and produces the classic exploded
-    // mesh seen when the model is skinned.
+    // BFRES _i attributes contain skeleton matrix indices. MatrixToBone maps
+    // those palette indices to actual FSKL bone indices. FSHP::SkinBoneIndices
+    // is metadata listing bones used by the shape, not the vertex lookup table.
     let raw_indices = decode_attribute(stream, data, "_i").unwrap_or_default();
     let mut bone_indices: Vec<[u16; 4]> = raw_indices
         .into_iter()
         .map(|v| {
             let map = |value: f32| -> u16 {
+                let fallback = if vertex_skin_count == 1 {
+                    skin_bones.first().copied().unwrap_or(bone_index)
+                } else {
+                    bone_index
+                };
                 if !value.is_finite() || value < 0.0 {
-                    return bone_index;
+                    return fallback;
                 }
-                let local_index = value.round() as usize;
-                skin_bones.get(local_index).copied().unwrap_or(bone_index)
+                let matrix_index = value.round() as usize;
+                matrix_to_bone
+                    .get(matrix_index)
+                    .copied()
+                    .unwrap_or(fallback)
             };
             [map(v[0]), map(v[1]), map(v[2]), map(v[3])]
         })
@@ -453,6 +479,9 @@ fn parse_shape(
         // Normalise and sanitise weights. Small quantisation errors are common,
         // but NaN/negative/zero-sum weights must never reach the renderer.
         for weights in &mut bone_weights {
+            for weight in weights.iter_mut().skip(vertex_skin_count as usize) {
+                *weight = 0.0;
+            }
             for weight in weights.iter_mut() {
                 if !weight.is_finite() || *weight < 0.0 {
                     *weight = 0.0;
@@ -587,6 +616,7 @@ fn decode_vertex_value(data: &[u8], offset: usize, format: u16) -> Result<[f32; 
             b(3)? as i8 as f32 / 127.0,
         ],
         0x030B => [b(0)? as f32, b(1)? as f32, b(2)? as f32, b(3)? as f32],
+        0x0302 => [b(0)? as f32, 0.0, 0.0, 0.0],
         0x0115 => [
             u(0)? as f32 / 65535.0,
             u(2)? as f32 / 65535.0,
@@ -721,7 +751,7 @@ pub(super) fn u16_at(data: &[u8], offset: usize, endian: Endian) -> Result<u16, 
     })
 }
 
-fn u32_at(data: &[u8], offset: usize, endian: Endian) -> Result<u32, BfresError> {
+pub(super) fn u32_at(data: &[u8], offset: usize, endian: Endian) -> Result<u32, BfresError> {
     let bytes: [u8; 4] = data
         .get(offset..offset + 4)
         .ok_or_else(|| BfresError::new(offset, "truncated u32"))?
@@ -780,6 +810,24 @@ mod tests {
     #[test]
     fn rejects_non_bfres_data() {
         assert!(BfresFile::from_bytes(b"not a bfres file").is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn decompresses_mcpk_before_parsing_bfres() {
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/mcpk");
+        let mut parsed = 0;
+        for entry in fs::read_dir(corpus).expect("missing MCPK corpus") {
+            let path = entry.expect("invalid corpus entry").path();
+            if path.extension().and_then(|value| value.to_str()) != Some("mc") {
+                continue;
+            }
+            let bfres = BfresFile::from_path(&path)
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            assert!(!bfres.sections.is_empty(), "{}", path.display());
+            parsed += 1;
+        }
+        assert!(parsed >= 4, "MCPK corpus is unexpectedly incomplete");
     }
 
     #[test]
@@ -854,5 +902,41 @@ mod tests {
             parsed += 1;
         }
         assert!(parsed > 0, "BFRES corpus is empty");
+    }
+
+    #[test]
+    fn bull_skinning_uses_the_matrix_palette_and_head_bone() {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bfres/Animal_Bull.Bull.bfres");
+        if !path.is_file() {
+            return;
+        }
+        let bfres = BfresFile::from_path(path).unwrap();
+        let body = bfres
+            .render
+            .meshes
+            .iter()
+            .find(|mesh| mesh.name.starts_with("Body"))
+            .unwrap();
+        assert!(body
+            .bone_indices
+            .iter()
+            .zip(&body.bone_weights)
+            .all(|(indices, weights)| (0..body.vertex_skin_count as usize)
+                .all(|index| weights[index] <= 0.0001 || indices[index] != 0)));
+        for name in ["Eye", "Horn"] {
+            let mesh = bfres
+                .render
+                .meshes
+                .iter()
+                .find(|mesh| mesh.name.starts_with(name))
+                .unwrap();
+            assert!(mesh.bone_indices.iter().all(|indices| indices[0] == 14));
+        }
+        assert!(bfres
+            .render
+            .bones
+            .iter()
+            .all(|bone| bone.rotation_mode == "euler_xyz"));
     }
 }

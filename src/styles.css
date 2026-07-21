@@ -357,7 +357,7 @@ button {
   color: white;
   padding: 5px;
   text-align: left;
-  /* z-index: 1000; */
+  z-index: 1000;
   height: var(--status-bar-h);
   box-sizing: border-box;
   /* Fixed height for example */
