@@ -383,6 +383,11 @@ impl<'a> TotkBitsApp<'a> {
         };
         let mut data = SendData::default();
         data.text = text;
+        data.lang = if internal.file_type == TotkFileType::Xlink {
+            "xlink".into()
+        } else {
+            "yaml".into()
+        };
         data.path = internal.path.clone();
         data.tab = "YAML".into();
         data.status_text = match &outer_path {
@@ -1563,6 +1568,11 @@ impl<'a> TotkBitsApp<'a> {
                 self.opened_file = OpenedFile::default();
                 let internal = self.internal_file.as_ref()?;
                 data.text = text;
+                data.lang = if internal.file_type == TotkFileType::Xlink {
+                    "xlink".into()
+                } else {
+                    "yaml".into()
+                };
                 data.path = internal.path.clone();
                 data.tab = "YAML".into();
                 data.status_text = format!("Opened {} from archive", path);
@@ -1583,6 +1593,11 @@ impl<'a> TotkBitsApp<'a> {
                     {
                         self.opened_file = OpenedFile::default();
                         data.text = text;
+                        data.lang = if intern.file_type == TotkFileType::Xlink {
+                            "xlink".into()
+                        } else {
+                            "yaml".into()
+                        };
                         data.path = intern.path.clone();
                         data.status_text = format!(
                             "Opened {} [{:?}] from {}",
@@ -1669,7 +1684,11 @@ impl<'a> TotkBitsApp<'a> {
             self.nested_edit = Some((outer_path.clone(), inner_path.clone()));
             data.tab = "YAML".to_string();
             data.text = text;
-            data.lang = "yaml".to_string();
+            data.lang = if internal.file_type == TotkFileType::Xlink {
+                "xlink".to_string()
+            } else {
+                "yaml".to_string()
+            };
             data.path = Pathlib::new(&inner_path);
             data.status_text = format!("Opened {} inside {}", inner_path, outer_path);
             data.get_file_label(internal.file_type, internal.endian);
