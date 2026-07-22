@@ -53,7 +53,7 @@ function MenuBarDisplay({ updateButton = null }) {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
     if (activeTab === 'SARC') {
-      editInternalSarcFile(selectedPath.path, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+      editInternalSarcFile(selectedPath.path, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
     } else {
       setStatusText("Switch to SARC tab to edit files");
     }

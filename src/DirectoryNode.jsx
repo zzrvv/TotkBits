@@ -276,7 +276,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
         return;
       }
       if (sarcPaths.read_only) openBphclLeaf(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, setReadOnly);
-      else editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+      else editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
     }
   };
   const handleCompareInternalSarcFile = () => {

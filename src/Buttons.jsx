@@ -70,7 +70,7 @@ const ButtonsDisplay = () => {
   };
   const handleOpenInternalSarcFile = () => {
     if (selectedPath.isfile) {
-      editInternalSarcFile(selectedPath.path, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent);
+      editInternalSarcFile(selectedPath.path, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
     }
   };
 

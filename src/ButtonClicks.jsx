@@ -142,7 +142,7 @@ export async function clearSearchInSarcClick(setpaths, setStatusText, setSearchI
 }
 
 
-export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent) {
+export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
     if (fullPath === null || fullPath === undefined || fullPath === "") {
       setStatusText("Select some file first!");
@@ -158,7 +158,12 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
     }
     //  setStatusText(content.status_text);
     console.log('content.file_label', content.file_label);
-    if (content.tab === 'YAML') {
+    if (content.tab === 'SARC') {
+      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label.replace(/\/\//g, '/') }));
+      setpaths(content.sarc_paths);
+      setStatusText(content.status_text);
+      setActiveTab(content.tab);
+    } else if (content.tab === 'YAML') {
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
       updateEditorContent(content.text, content.lang);
       setStatusText(`Opened file: ${fullPath}`);
