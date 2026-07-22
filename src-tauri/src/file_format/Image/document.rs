@@ -31,22 +31,34 @@ pub struct ImageDocument;
 impl ImageDocument {
     pub fn open(
         path: &Path,
+        zstd: &crate::Zstd::TotkZstd<'_>,
     ) -> Option<(
         crate::file_format::BinTextFile::OpenedFile<'static>,
         crate::Open_and_Save::SendData,
     )> {
         let data = std::fs::read(path).ok()?;
-        if !Self::supports(path, &data) {
+        let bntx_dictionary = decode_compressed_bntx(&data, Some(zstd))
+            .ok()
+            .and_then(|(_, dictionary)| dictionary);
+        if !Self::supports(path, &data, Some(zstd)) {
             return None;
         }
         let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
         opened.path = crate::Settings::Pathlib::new(path);
-        opened.file_type = crate::Zstd::TotkFileType::Other;
+        opened.file_type = if data.starts_with(b"BNTX") || bntx_dictionary.is_some() {
+            crate::Zstd::TotkFileType::Bntx
+        } else {
+            crate::Zstd::TotkFileType::Other
+        };
 
         let mut send = crate::Open_and_Save::SendData::default();
         send.path = crate::Settings::Pathlib::new(path);
-        send.file_label = format!("{} [IMAGE]", send.path.name);
-        send.file_metadata = "[IMAGE] [READ ONLY]".into();
+        send.file_label = if opened.file_type == crate::Zstd::TotkFileType::Bntx {
+            format!("{} [BNTX]", send.path.name)
+        } else {
+            format!("{} [IMAGE]", send.path.name)
+        };
+        send.set_file_metadata(opened.file_type, bntx_dictionary);
         send.status_text = format!("Opened image {}", path.display());
         send.tab = "IMAGE".into();
         send.read_only = true;
@@ -63,9 +75,19 @@ impl ImageDocument {
         _array_index: u32,
         _mip_index: u32,
     ) -> io::Result<RenderedImage> {
+        Self::render_path_selection_with_zstd(path, texture_index, _array_index, _mip_index, None)
+    }
+
+    pub fn render_path_selection_with_zstd(
+        path: impl AsRef<Path>,
+        texture_index: usize,
+        _array_index: u32,
+        _mip_index: u32,
+        zstd: Option<&crate::Zstd::TotkZstd<'_>>,
+    ) -> io::Result<RenderedImage> {
         let path = path.as_ref();
         let source = std::fs::read(path)?;
-        let data = maybe_zstd(&source)?;
+        let data = maybe_zstd(&source, zstd)?;
         let mut entries = Vec::new();
         let (rgba, format, mip_count, dds_type) = if data.starts_with(b"BNTX") {
             let bntx = crate::parser::bntx::BntxFile::parse(&data).map_err(invalid)?;
@@ -253,6 +275,13 @@ impl ImageDocument {
 
     pub fn export_png(source: impl AsRef<Path>, output: impl AsRef<Path>) -> io::Result<()> {
         let rendered = Self::render_path(source)?;
+        Self::export_rendered_png(&rendered, output)
+    }
+
+    pub fn export_rendered_png(
+        rendered: &RenderedImage,
+        output: impl AsRef<Path>,
+    ) -> io::Result<()> {
         let encoded = rendered
             .data_url
             .split_once(',')
@@ -266,7 +295,7 @@ impl ImageDocument {
         std::fs::write(output, png)
     }
 
-    fn supports(path: &Path, data: &[u8]) -> bool {
+    fn supports(path: &Path, data: &[u8], zstd: Option<&crate::Zstd::TotkZstd<'_>>) -> bool {
         if data.starts_with(b"DDS ")
             || data.starts_with(b"BNTX")
             || data.get(4..8) == Some(b"6PK0")
@@ -275,7 +304,7 @@ impl ImageDocument {
             return true;
         }
         if data.starts_with(b"\x28\xB5\x2F\xFD") {
-            if let Ok(decoded) = maybe_zstd(data) {
+            if let Ok(decoded) = maybe_zstd(data, zstd) {
                 return decoded.starts_with(b"BNTX");
             }
         }
@@ -300,18 +329,61 @@ impl ImageDocument {
                     | "dds"
                     | "bntx"
                     | "txtg"
-                    | "zs"
             )
         )
     }
 }
 
-fn maybe_zstd(data: &[u8]) -> io::Result<Vec<u8>> {
+fn maybe_zstd(data: &[u8], zstd: Option<&crate::Zstd::TotkZstd<'_>>) -> io::Result<Vec<u8>> {
     if data.starts_with(b"\x28\xB5\x2F\xFD") {
-        zstd::stream::decode_all(std::io::Cursor::new(data))
+        if let Some(zstd) = zstd {
+            decode_compressed_bntx(data, Some(zstd)).map(|(decoded, _)| decoded)
+        } else {
+            crate::Zstd::TotkZstd::decompress_empty(data)
+        }
     } else {
         Ok(data.to_vec())
     }
+}
+
+fn decode_compressed_bntx(
+    data: &[u8],
+    zstd: Option<&crate::Zstd::TotkZstd<'_>>,
+) -> io::Result<(Vec<u8>, Option<crate::Zstd::ZstdDictionary>)> {
+    if data.starts_with(b"BNTX") {
+        return Ok((data.to_vec(), None));
+    }
+    if !data.starts_with(b"\x28\xB5\x2F\xFD") {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "data is neither BNTX nor Zstandard",
+        ));
+    }
+    let Some(zstd) = zstd else {
+        let decoded = crate::Zstd::TotkZstd::decompress_empty(data)?;
+        return decoded
+            .starts_with(b"BNTX")
+            .then_some((decoded, None))
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "Zstandard payload is not BNTX")
+            });
+    };
+    for dictionary in [
+        crate::Zstd::ZstdDictionary::Zs,
+        crate::Zstd::ZstdDictionary::Pack,
+        crate::Zstd::ZstdDictionary::Empty,
+        crate::Zstd::ZstdDictionary::Bcett,
+    ] {
+        if let Ok(decoded) = zstd.try_decompress_using(data, dictionary) {
+            if decoded.starts_with(b"BNTX") {
+                return Ok((decoded, Some(dictionary)));
+            }
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "no configured Zstandard dictionary produced a BNTX payload",
+    ))
 }
 fn invalid(error: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.to_string())
@@ -320,6 +392,16 @@ fn invalid(error: impl ToString) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compressed_non_image_is_not_accepted_by_extension() {
+        assert!(!ImageDocument::supports(
+            Path::new("Event/Test.bfevfl.zs"),
+            b"not an image",
+            None,
+        ));
+    }
+
     #[test]
     fn renders_bntx_sample() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");

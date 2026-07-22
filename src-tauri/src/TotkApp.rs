@@ -279,6 +279,34 @@ impl<'a> TotkBitsApp<'a> {
         path: String,
         bytes: Vec<u8>,
     ) -> Option<SendData> {
+        #[cfg(debug_assertions)]
+        if let Ok(bfres) = crate::file_format::Model3D::bfres::BfresFile::from_bytes(&bytes) {
+            let status = match &outer_path {
+                Some(outer) => format!("Opened {path} inside {outer}"),
+                None => format!("Opened {path} from archive"),
+            };
+            let mut data = SendData::default();
+            data.path = Pathlib::new(&path);
+            data.file_label = format!("{} [BFRES]", data.path.name);
+            data.file_metadata = "[BFRES] [3D]".into();
+            data.status_text = status;
+            data.tab = "3D".into();
+            data.read_only = true;
+
+            self.opened_file = OpenedFile::default();
+            self.opened_file.file_type = TotkFileType::Bfres;
+            self.opened_file.path = data.path.clone();
+            self.opened_file.bfres = Some(bfres);
+            let mut internal = InternalFile::new(path.clone());
+            internal.file_type = TotkFileType::Bfres;
+            self.internal_file = Some(internal);
+            self.internal_parent = Some(InternalParentLink {
+                document_id: parent_document_id,
+                outer_path,
+                inner_path: path,
+            });
+            return Some(data);
+        }
         if path.to_ascii_lowercase().ends_with(".bphhb") {
             if let Ok(bphhb) =
                 crate::file_format::bphhb::BphhbFile::from_binary(&bytes, Some(Path::new(&path)))
@@ -1948,7 +1976,9 @@ impl<'a> TotkBitsApp<'a> {
                     opened.file_type
                 );
                 self.archive = None;
-                data.set_file_metadata(opened.file_type, dictionary);
+                if opened.file_type != TotkFileType::Bntx {
+                    data.set_file_metadata(opened.file_type, dictionary);
+                }
                 self.opened_file = opened;
                 self.internal_file = None;
                 return Some(data);

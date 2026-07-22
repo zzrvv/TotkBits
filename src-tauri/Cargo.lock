@@ -16,6 +16,7 @@ dependencies = [
  "fs2",
  "image",
  "image_dds",
+ "libloading 0.8.3",
  "meshcodec_bindings",
  "miow",
  "native-dialog",
@@ -50,7 +51,6 @@ dependencies = [
  "walkdir",
  "windows 0.58.0",
  "winreg 0.52.0",
- "xlink2_bindings",
  "zip",
  "zstd",
 ]
@@ -8442,14 +8442,6 @@ name = "xkeysym"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9cc00251562a284751c9973bace760d86c0276c471b4be569fe6b068ee97a56"
-
-[[package]]
-name = "xlink2_bindings"
-version = "0.1.0"
-source = "git+https://github.com/SolidLink95/xlink2#85dcefa8847a11bf2caa203e3bfde7a94a06e14c"
-dependencies = [
- "cc",
-]
 
 [[package]]
 name = "yoke"

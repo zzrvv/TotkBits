@@ -16,9 +16,8 @@ tauri-build = { version = "2", features = [] }
 ryml = "0.3.2"
 miow = "0.6.0"
 # meshcodec_bindings = { path = "../tmp/MeshCodec/bindings" }
-# xlink2_bindings = { path = "../tmp/xlink2/bindings" }
 meshcodec_bindings = { git = "https://github.com/SolidLink95/MeshCodec" }
-xlink2_bindings = { git = "https://github.com/SolidLink95/xlink2" }
+libloading = "0.8"
 
 regex = "1.10.4"
 # glob = "0.3"

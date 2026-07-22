@@ -79,7 +79,12 @@ impl ArchiveDocument {
         let source =
             fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         let decompressed;
-        let zstd_zs = source.starts_with(b"\x28\xB5\x2F\xFD") && zstd.is_some();
+        // Only BARS uses the archive layer's Zs wrapper. Other ZSTD-framed
+        // formats (notably BCETT BYML) need their own dictionaries and must be
+        // allowed to continue to their format-specific openers.
+        let lower_path = path.to_string_lossy().to_ascii_lowercase();
+        let bars_path = lower_path.ends_with(".bars") || lower_path.ends_with(".bars.zs");
+        let zstd_zs = source.starts_with(b"\x28\xB5\x2F\xFD") && zstd.is_some() && bars_path;
         let bytes = if zstd_zs {
             let decoder = zstd.ok_or("zs decompressor is unavailable")?;
             decompressed = decoder

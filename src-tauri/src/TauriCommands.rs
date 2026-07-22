@@ -76,6 +76,24 @@ pub fn inspect_3d_model(
     path: String,
 ) -> Result<serde_json::Value, String> {
     require_experimental_visuals()?;
+    let documents = app_handle.state::<DocumentState>();
+    let (internal_bfres, romfs) = documents.with(&documentId, |app| {
+        (
+            app.opened_file.bfres.clone(),
+            app.zstd.totk_config.romfs.clone(),
+        )
+    });
+    if let Some(bfres) = internal_bfres {
+        let textures = resolve_bfres_textures(&bfres, Path::new(&romfs));
+        let mut value = serde_json::to_value(bfres).map_err(|error| error.to_string())?;
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "resolvedTextures".into(),
+                serde_json::to_value(textures).map_err(|error| error.to_string())?,
+            );
+        }
+        return Ok(value);
+    }
     let data = std::fs::read(&path).map_err(|error| error.to_string())?;
     if data.starts_with(b"Kaydara FBX Binary") {
         serde_json::to_value(
@@ -92,8 +110,6 @@ pub fn inspect_3d_model(
     } else {
         let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(path)
             .map_err(|error| error.to_string())?;
-        let documents = app_handle.state::<DocumentState>();
-        let romfs = documents.with(&documentId, |app| app.zstd.totk_config.romfs.clone());
         let textures = resolve_bfres_textures(&bfres, Path::new(&romfs));
         let mut value = serde_json::to_value(bfres).map_err(|error| error.to_string())?;
         if let Some(object) = value.as_object_mut() {
@@ -164,26 +180,48 @@ fn resolve_bfres_textures(
 
 #[tauri::command]
 pub fn render_image(
+    app_handle: tauri::AppHandle,
+    documentId: String,
     path: String,
     texture_index: Option<usize>,
     array_index: Option<u32>,
     mip_index: Option<u32>,
 ) -> Result<crate::file_format::Image::RenderedImage, String> {
     require_experimental_visuals()?;
-    crate::file_format::Image::ImageDocument::render_path_selection(
-        path,
-        texture_index.unwrap_or(0),
-        array_index.unwrap_or(0),
-        mip_index.unwrap_or(0),
-    )
-    .map_err(|error| error.to_string())
+    let documents = app_handle.state::<DocumentState>();
+    documents.with(&documentId, |app| {
+        crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
+            path,
+            texture_index.unwrap_or(0),
+            array_index.unwrap_or(0),
+            mip_index.unwrap_or(0),
+            Some(&app.zstd),
+        )
+        .map_err(|error| error.to_string())
+    })
 }
 
 #[tauri::command]
-pub fn export_image_png(source: String, output: String) -> Result<(), String> {
+pub fn export_image_png(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    source: String,
+    output: String,
+) -> Result<(), String> {
     require_experimental_visuals()?;
-    crate::file_format::Image::ImageDocument::export_png(source, output)
-        .map_err(|error| error.to_string())
+    let documents = app_handle.state::<DocumentState>();
+    documents.with(&documentId, |app| {
+        let rendered = crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
+            source,
+            0,
+            0,
+            0,
+            Some(&app.zstd),
+        )
+        .map_err(|error| error.to_string())?;
+        crate::file_format::Image::ImageDocument::export_rendered_png(&rendered, output)
+            .map_err(|error| error.to_string())
+    })
 }
 
 #[tauri::command]

@@ -221,6 +221,7 @@ impl<'a> BymlFile<'_> {
                     if is_byml(&res) {
                         data.data = res;
                         data.file_type = TotkFileType::Byml;
+                        data.compression = Some(ZstdDictionary::Zs);
                     }
                 }
                 Err(_err) => {}
@@ -234,6 +235,7 @@ impl<'a> BymlFile<'_> {
                     data.file_type = TotkFileType::Byml;
                     if is_byml(&data.data) {
                         data.file_type = TotkFileType::Bcett;
+                        data.compression = Some(ZstdDictionary::Bcett);
                     }
                 }
                 _ => {}
@@ -251,7 +253,9 @@ impl<'a> BymlFile<'_> {
             }
         }
         if is_byml(&data.data) {
-            data.file_type = TotkFileType::Byml;
+            if data.file_type != TotkFileType::Bcett {
+                data.file_type = TotkFileType::Byml;
+            }
             return Ok(data);
         }
         return Err(io::Error::new(
@@ -264,9 +268,24 @@ impl<'a> BymlFile<'_> {
         path: P,
         zstd: Arc<TotkZstd>,
     ) -> Result<FileData, io::Error> {
+        let path = path.as_ref();
         let mut f_handle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;
+        if is_banc_path(path) && !is_byml(&buffer) {
+            let decoded = zstd.decompressor.decompress_bcett(&buffer)?;
+            if !is_byml(&decoded) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "BCETT dictionary decompression did not produce BYML",
+                ));
+            }
+            return Ok(FileData {
+                file_type: TotkFileType::Bcett,
+                data: decoded,
+                compression: Some(ZstdDictionary::Bcett),
+            });
+        }
         Self::byml_data_to_bytes(&buffer, zstd.clone())
     }
 
@@ -316,6 +335,61 @@ pub fn is_banc_path<P: AsRef<Path>>(path: P) -> bool {
         .unwrap_or_default()
         .to_ascii_lowercase();
     path.ends_with(".bcett.byml") || path.ends_with(".bcett.byml.zs")
+}
+
+#[cfg(test)]
+mod bcett_tests {
+    use super::BymlFile;
+    use crate::{
+        TotkConfig::TotkConfig,
+        Zstd::{TotkZstd, ZstdDictionary},
+    };
+    use std::{path::Path, sync::Arc};
+
+    #[test]
+    fn configured_romfs_bcett_file_uses_bcett_dictionary() {
+        let romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let sample = romfs.join("Banc/BossVehicle/Craft_AutoCar_Koga_Spike_2_Static.bcett.byml.zs");
+        if !sample.is_file() || !romfs.join("Pack/ZsDic.pack.zs").is_file() {
+            return;
+        }
+        let mut config = TotkConfig::default();
+        config.romfs = romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(TotkZstd::new(Arc::new(config), 16).expect("load ZSTD dictionaries"));
+        let file = BymlFile::new(&sample, zstd).expect("open BCETT BYML");
+        assert_eq!(file.file_data.compression, Some(ZstdDictionary::Bcett));
+    }
+
+    #[test]
+    fn tmp_bcett_fixtures_open_with_bcett_dictionary() {
+        let romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        if !romfs.join("Pack/ZsDic.pack.zs").is_file() {
+            return;
+        }
+        let mut config = TotkConfig::default();
+        config.romfs = romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(TotkZstd::new(Arc::new(config), 16).expect("load ZSTD dictionaries"));
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bcett");
+        let mut tested = 0;
+        for entry in std::fs::read_dir(fixtures).expect("read BCETT fixtures") {
+            let path = entry.expect("read BCETT fixture entry").path();
+            if !path.is_file() {
+                continue;
+            }
+            assert!(
+                crate::file_format::Archive::ArchiveDocument::open_with_zstd(&path, &zstd)
+                    .expect("archive routing must not reject BCETT compression")
+                    .is_none(),
+                "BCETT was incorrectly detected as an archive: {}",
+                path.display()
+            );
+            let file = BymlFile::new(&path, zstd.clone())
+                .unwrap_or_else(|| panic!("failed to open {}", path.display()));
+            assert_eq!(file.file_data.compression, Some(ZstdDictionary::Bcett));
+            tested += 1;
+        }
+        assert!(tested > 0, "no BCETT fixtures were tested");
+    }
 }
 
 #[inline]

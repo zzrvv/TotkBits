@@ -1,6 +1,10 @@
 use crate::parser::bphcl::BphclDocument;
-use roead::aamp::{ParameterIO, ParameterList};
+use roead::aamp::{Parameter, ParameterIO, ParameterList};
 use serde::Serialize;
+use serde_yaml::{
+    value::{Tag, TaggedValue},
+    Mapping, Value,
+};
 use std::{collections::HashMap, io, path::Path, sync::LazyLock};
 
 static AAMP_TOTK_NAMES: LazyLock<HashMap<u32, String>> = LazyLock::new(|| {
@@ -129,41 +133,143 @@ impl BphclFile {
     }
 }
 
-fn display_name(hash: u32) -> String {
-    AAMP_TOTK_NAMES
-        .get(&hash)
-        .cloned()
-        .unwrap_or_else(|| hash.to_string())
+fn yaml_name(hash: u32) -> Value {
+    match AAMP_TOTK_NAMES.get(&hash) {
+        Some(name) => Value::String(name.clone()),
+        None => Value::Number(hash.into()),
+    }
 }
 
-fn safe_aamp_yaml(pio: &ParameterIO) -> io::Result<String> {
-    fn list(value: &ParameterList) -> serde_yaml::Value {
-        let mut root = serde_yaml::Mapping::new();
-        let mut lists = serde_yaml::Mapping::new();
-        for (name, child) in value.lists.iter() {
-            lists.insert(display_name(name.hash()).into(), list(child));
+fn tagged(tag: &str, value: Value) -> Value {
+    Value::Tagged(Box::new(TaggedValue {
+        tag: Tag::new(tag),
+        value,
+    }))
+}
+
+fn float(value: f32) -> Value {
+    Value::from(value as f64)
+}
+
+fn sequence(values: impl IntoIterator<Item = Value>) -> Value {
+    Value::Sequence(values.into_iter().collect())
+}
+
+fn curves<const N: usize>(values: &[roead::types::Curve; N]) -> Value {
+    tagged(
+        "!curve",
+        sequence(values.iter().flat_map(|curve| {
+            std::iter::once(Value::from(curve.a))
+                .chain(std::iter::once(Value::from(curve.b)))
+                .chain(curve.floats.iter().copied().map(Value::from))
+        })),
+    )
+}
+
+fn parameter_yaml(parameter: &Parameter) -> Value {
+    match parameter {
+        Parameter::Bool(value) => Value::Bool(*value),
+        Parameter::F32(value) => float(*value),
+        Parameter::I32(value) => Value::Number((*value).into()),
+        Parameter::Vec2(value) => tagged("!vec2", sequence([float(value.x), float(value.y)])),
+        Parameter::Vec3(value) => tagged(
+            "!vec3",
+            sequence([float(value.x), float(value.y), float(value.z)]),
+        ),
+        Parameter::Vec4(value) => tagged(
+            "!vec4",
+            sequence([
+                float(value.x),
+                float(value.y),
+                float(value.z),
+                float(value.t),
+            ]),
+        ),
+        Parameter::Color(value) => tagged(
+            "!color",
+            sequence([
+                float(value.r),
+                float(value.g),
+                float(value.b),
+                float(value.a),
+            ]),
+        ),
+        Parameter::String32(value) => tagged("!str32", Value::String(value.to_string())),
+        Parameter::String64(value) => tagged("!str64", Value::String(value.to_string())),
+        Parameter::Curve1(value) => curves(value),
+        Parameter::Curve2(value) => curves(value),
+        Parameter::Curve3(value) => curves(value),
+        Parameter::Curve4(value) => curves(value),
+        Parameter::BufferInt(values) => tagged(
+            "!buffer_int",
+            sequence(values.iter().copied().map(Value::from)),
+        ),
+        Parameter::BufferF32(values) => {
+            tagged("!buffer_f32", sequence(values.iter().copied().map(float)))
         }
-        let mut objects = serde_yaml::Mapping::new();
+        Parameter::String256(value) => tagged("!str256", Value::String(value.to_string())),
+        Parameter::Quat(value) => tagged(
+            "!quat",
+            sequence([
+                float(value.a),
+                float(value.b),
+                float(value.c),
+                float(value.d),
+            ]),
+        ),
+        Parameter::U32(value) => tagged("!u", Value::Number((*value).into())),
+        Parameter::BufferU32(values) => tagged(
+            "!buffer_u32",
+            sequence(values.iter().copied().map(Value::from)),
+        ),
+        Parameter::BufferBinary(values) => tagged(
+            "!buffer_binary",
+            sequence(values.iter().copied().map(Value::from)),
+        ),
+        Parameter::StringRef(value) => Value::String(value.to_string()),
+    }
+}
+
+pub(crate) fn safe_aamp_yaml(pio: &ParameterIO) -> io::Result<String> {
+    fn list(value: &ParameterList) -> Value {
+        let mut root = Mapping::new();
+        let mut lists = Mapping::new();
+        for (name, child) in value.lists.iter() {
+            lists.insert(yaml_name(name.hash()), list(child));
+        }
+        let mut objects = Mapping::new();
         for (name, object) in value.objects.iter() {
-            let mut params = serde_yaml::Mapping::new();
+            let mut params = Mapping::new();
             for (parameter_name, parameter) in object.iter() {
-                // Debug is exhaustive over Parameter and never invokes the
-                // unsafe AAMP name-recovery table. Binary buffers remain
-                // numeric arrays, never base64 strings.
-                params.insert(
-                    display_name(parameter_name.hash()).into(),
-                    format!("{parameter:?}").into(),
-                );
+                params.insert(yaml_name(parameter_name.hash()), parameter_yaml(parameter));
             }
-            objects.insert(display_name(name.hash()).into(), params.into());
+            objects.insert(yaml_name(name.hash()), tagged("!obj", params.into()));
         }
         root.insert("lists".into(), lists.into());
         root.insert("objects".into(), objects.into());
-        root.into()
+        tagged("!list", root.into())
     }
-    let mut root = serde_yaml::Mapping::new();
+    let mut root = Mapping::new();
     root.insert("version".into(), pio.version.into());
-    root.insert("dataType".into(), pio.data_type.to_string().into());
-    root.insert("paramRoot".into(), list(&pio.param_root));
-    serde_yaml::to_string(&root).map_err(io::Error::other)
+    root.insert("type".into(), pio.data_type.to_string().into());
+    root.insert("param_root".into(), list(&pio.param_root));
+    serde_yaml::to_string(&tagged("!io", root.into())).map_err(io::Error::other)
+}
+
+pub(crate) fn aamp_from_yaml(yaml: &str) -> io::Result<ParameterIO> {
+    ParameterIO::from_text(yaml).map_err(io::Error::other)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::yaml_name;
+    use serde_yaml::Value;
+
+    #[test]
+    fn unknown_aamp_name_falls_back_to_numeric_hash() {
+        let unknown = (0..=u32::MAX)
+            .find(|hash| !super::AAMP_TOTK_NAMES.contains_key(hash))
+            .expect("the AAMP name table cannot contain every u32 hash");
+        assert_eq!(yaml_name(unknown), Value::Number(unknown.into()));
+    }
 }

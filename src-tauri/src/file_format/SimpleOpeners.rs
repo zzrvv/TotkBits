@@ -6,6 +6,8 @@ use crate::Settings::Pathlib;
 use crate::Zstd::{is_aamp, TotkFileType};
 use roead::aamp::ParameterIO;
 
+use super::bphcl::safe_aamp_yaml;
+
 pub struct AampFile;
 
 impl AampFile {
@@ -23,7 +25,7 @@ impl AampFile {
             opened_file.file_type = TotkFileType::Aamp;
             data.status_text = format!("Opened {}", &pathlib_var.full_path);
             data.path = pathlib_var;
-            data.text = pio.to_text();
+            data.text = safe_aamp_yaml(&pio).ok()?;
             data.get_file_label(TotkFileType::Aamp, None);
             return Some((opened_file, data));
         }
@@ -57,5 +59,61 @@ impl TextFile {
         }
         println!(" no");
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safe_aamp_yaml;
+    use crate::file_format::bphcl::aamp_from_yaml;
+    use roead::aamp::ParameterIO;
+
+    #[test]
+    fn gamescene_aamp_entries_render_without_aborting() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/GameScene");
+        let mut count = 0;
+        for entry in walkdir::WalkDir::new(root) {
+            let entry = entry.expect("read GameScene fixture path");
+            if !entry.file_type().is_file() {
+                continue;
+            }
+            let bytes = std::fs::read(entry.path()).expect("read GameScene AAMP fixture");
+            if !bytes.starts_with(b"AAMP") {
+                continue;
+            }
+            let parameter_io = ParameterIO::from_binary(&bytes).unwrap_or_else(|error| {
+                panic!("failed to parse {}: {error}", entry.path().display())
+            });
+            let yaml = safe_aamp_yaml(&parameter_io).unwrap_or_else(|error| {
+                panic!("failed to serialize {}: {error}", entry.path().display())
+            });
+            let from_yaml = aamp_from_yaml(&yaml).unwrap_or_else(|error| {
+                panic!(
+                    "failed to deserialize {}: {error}\n{yaml}",
+                    entry.path().display()
+                )
+            });
+            assert_eq!(
+                parameter_io,
+                from_yaml,
+                "YAML changed {}",
+                entry.path().display()
+            );
+            let rebuilt = from_yaml.to_binary();
+            let reparsed = ParameterIO::from_binary(&rebuilt).unwrap_or_else(|error| {
+                panic!(
+                    "failed to parse rebuilt {}: {error}",
+                    entry.path().display()
+                )
+            });
+            assert_eq!(
+                parameter_io,
+                reparsed,
+                "binary changed {}",
+                entry.path().display()
+            );
+            count += 1;
+        }
+        assert_eq!(count, 67, "not every GameScene AAMP fixture was tested");
     }
 }

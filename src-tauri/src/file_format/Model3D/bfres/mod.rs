@@ -174,10 +174,9 @@ impl BfresFile {
             return Self::from_bytes(&decompressed);
         }
         if !data.starts_with(b"FRES") {
-            let decompressed =
-                zstd::stream::decode_all(std::io::Cursor::new(data)).map_err(|error| {
-                    BfresError::new(0, format!("Zstandard decompression failed: {error}"))
-                })?;
+            let decompressed = crate::Zstd::TotkZstd::decompress_empty(data).map_err(|error| {
+                BfresError::new(0, format!("Zstandard decompression failed: {error}"))
+            })?;
             if !decompressed.starts_with(b"FRES") {
                 return Err(BfresError::new(
                     0,
@@ -879,7 +878,13 @@ mod tests {
             return;
         }
         let source = fs::read(path).unwrap();
-        let compressed = zstd::stream::encode_all(std::io::Cursor::new(source), 1).unwrap();
+        let codec = crate::Zstd::TotkZstd::dictionaryless(
+            std::sync::Arc::new(crate::TotkConfig::TotkConfig::default()),
+            1,
+        );
+        let compressed = codec
+            .compress_with_dictionary(&source, crate::Zstd::ZstdDictionary::Empty)
+            .unwrap();
         let bfres = BfresFile::from_bytes(&compressed).unwrap();
         assert!(!bfres.sections.is_empty());
     }

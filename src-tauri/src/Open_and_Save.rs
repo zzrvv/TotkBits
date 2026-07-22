@@ -39,13 +39,18 @@ pub fn get_string_from_data<P: AsRef<Path>>(
     zstd: Arc<TotkZstd>,
 ) -> Option<(InternalFile, String)> {
     let path = filepath.as_ref().to_string_lossy().into_owned();
-    let (data, dictionary) =
-        if data.starts_with(b"Yaz0") || path.to_ascii_lowercase().ends_with(".zs") {
-            let (decoded, dictionary) = zstd.try_decompress_with_dictionary(&data).ok()?;
-            (decoded, Some(dictionary))
-        } else {
-            (data, None)
-        };
+    let lower_path = path.to_ascii_lowercase();
+    let (data, dictionary) = if lower_path.ends_with(".bcett.byml.zs") {
+        let decoded = zstd
+            .try_decompress_using(&data, ZstdDictionary::Bcett)
+            .ok()?;
+        (decoded, Some(ZstdDictionary::Bcett))
+    } else if data.starts_with(b"Yaz0") || lower_path.ends_with(".zs") {
+        let (decoded, dictionary) = zstd.try_decompress_with_dictionary(&data).ok()?;
+        (decoded, Some(dictionary))
+    } else {
+        (data, None)
+    };
     let (mut internal_file, text) = get_string_from_decoded_data(&path, data, zstd)?;
     internal_file.zstd_dictionary = dictionary;
     Some((internal_file, text))
@@ -160,7 +165,8 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
     }
 
     if is_aamp(&data) {
-        let text = ParameterIO::from_binary(&data).ok()?.to_text();
+        let pio = ParameterIO::from_binary(&data).ok()?;
+        let text = crate::file_format::bphcl::safe_aamp_yaml(&pio).ok()?;
         internal_file.endian = None;
         internal_file.path = Pathlib::new(path.clone());
         internal_file.file_type = TotkFileType::Aamp;
@@ -344,7 +350,7 @@ pub fn get_binary_by_filetype(
             )?;
         }
         TotkFileType::Aamp => {
-            let pio = ParameterIO::from_text(text).ok()?;
+            let pio = crate::file_format::bphcl::aamp_from_yaml(text).ok()?;
             rawdata = pio.to_binary();
         }
         TotkFileType::SmoSaveFile => {
@@ -620,10 +626,13 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
             #[cfg(not(debug_assertions))]
             None
         })
+        // Structured formats must run before the generic image detector. In
+        // particular, many BFEVFL files use the shared `.zs` compression suffix.
+        .or_else(|| BfevFile::open_bfev(&file_name, zstd.clone()))
         .or_else(|| {
             // Experimental image viewers are intentionally disabled in release builds.
             #[cfg(debug_assertions)]
-            return crate::file_format::Image::ImageDocument::open(file_name);
+            return crate::file_format::Image::ImageDocument::open(file_name, &zstd);
             #[cfg(not(debug_assertions))]
             None
         })
@@ -631,7 +640,6 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
         .or_else(|| crate::file_format::hkcl::HkclFile::open(file_name))
         .or_else(|| crate::file_format::bphhb::BphhbFile::open(file_name))
         .or_else(|| crate::file_format::SimpleOpeners::AampFile::open_aamp(&file_name))
-        .or_else(|| BfevFile::open_bfev(&file_name, zstd.clone()))
         .or_else(|| SmoSaveFile::open_smo_save_file(&file_name, zstd.clone()))
         .or_else(|| crate::file_format::SimpleOpeners::TextFile::open_text(&file_name))
         .map(|(opened_file, data)| {

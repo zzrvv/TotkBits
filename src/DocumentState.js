@@ -14,6 +14,7 @@ const documentCommands = new Set([
     'mutate_nested_archive',
     'open_bfwav_node', 'replace_bfwav_node', 'replace_bars_audio_from_folder', 'export_bfwav_node', 'open_amta_node',
     'inspect_3d_model',
+    'render_image', 'export_image_png',
 ]);
 
 const createDocument = (title = 'Untitled') => ({

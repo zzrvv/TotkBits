@@ -16,10 +16,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 //use zstd::zstd_safe::CompressionLevel;
-use std::io::{self, Cursor, Read, Write};
+use std::io::{self, Read, Write};
 use std::{env, fs};
 use zstd::dict::{DecoderDictionary, EncoderDictionary};
-use zstd::{stream::decode_all, stream::Decoder, stream::Encoder};
+use zstd::{stream::Decoder, stream::Encoder};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TotkFileType {
@@ -32,6 +32,7 @@ pub enum TotkFileType {
     Byml,
     Aamp,
     Bfres,
+    Bntx,
     Bphcl,
     Bphhb,
     Hkcl,
@@ -230,6 +231,14 @@ pub enum ZstdDictionary {
 }
 
 impl<'a> TotkZstd<'_> {
+    pub fn decompress_empty(data: &[u8]) -> io::Result<Vec<u8>> {
+        let dictionary = DecoderDictionary::copy(&[]);
+        let mut decoder = Decoder::with_prepared_dictionary(data, &dictionary)?;
+        let mut decompressed = Vec::new();
+        decoder.read_to_end(&mut decompressed)?;
+        Ok(decompressed)
+    }
+
     pub fn new(totk_config: Arc<TotkConfig>, comp_level: i32) -> io::Result<TotkZstd<'a>> {
         let zsdic: Arc<ZsDic> = Arc::new(ZsDic::new(totk_config.clone())?);
         let decompressor: ZstdDecompressor =
@@ -480,8 +489,7 @@ impl ZsDic {
         let mut zs_file = fs::File::open(&zsdic)?; //with open() as f
         let mut raw_data = Vec::new();
         zs_file.read_to_end(&mut raw_data)?; //f.read()
-        let cursor = Cursor::new(&raw_data);
-        let data = decode_all(cursor)?;
+        let data = TotkZstd::decompress_empty(&raw_data)?;
 
         Sarc::new(data).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
     }

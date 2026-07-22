@@ -449,7 +449,8 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
 
     useEffect(() => {
         if (activeTab !== '3D' || !document?.fullPath) return;
-        const cached = modelInspectionCache.get(document.fullPath);
+        const cacheKey = `${document.id}:${document.fullPath}`;
+        const cached = modelInspectionCache.get(cacheKey);
         if (cached) {
             setBfres(cached);
             setError('');
@@ -473,7 +474,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             try {
                 const value = await invoke('inspect_3d_model', { path: document.fullPath });
                 if (cancelled) return;
-                cacheModelInspection(document.fullPath, value);
+                cacheModelInspection(cacheKey, value);
                 setBfres(value);
                 if (value.materials) {
                     const requested = new Set(value.materials.flatMap((material) => material.texture_slots.map((slot) => slot.name))).size;
@@ -495,7 +496,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             cancelled = true;
             finishLoading();
         };
-    }, [activeTab, document?.fullPath]);
+    }, [activeTab, document?.id, document?.fullPath]);
 
     const animations = useMemo(() => (bfres?.sections || []).filter((section) =>
         ['FSKA', 'FSHU', 'FSHA', 'FTXP', 'FVIS', 'FMAA'].includes(String.fromCharCode(...section.signature))), [bfres]);
@@ -533,12 +534,33 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <div className="bfres-toolbar-row bfres-toolbar-controls">
                 <label className="bfres-shading-select">Shading:
                 <select value={viewMode} onChange={(event) => { setViewMode(event.target.value); if (event.target.value === 'selectedBoneWeights' && weightBone < 0) setWeightBone(0); }}>
-                    <option value="default">Default</option><option value="normalMap">NormalMap</option><option value="specularMap">SpecularMap</option><option value="selectedBoneWeights">SelectedBoneWeights</option><option value="emissionMap">EmissionMap</option><option value="normal">Normal</option><option value="lighting">Lighting</option><option value="diffuse">Diffuse</option><option value="vertColor">VertColor</option><option value="ambientOcclusion">AmbientOcclusion</option><option value="uvCoords">UVCoords</option><option value="uvTestPattern">UVTestPattern</option><option value="tangents">Tangents</option><option value="bitangents">Bitangents</option><option value="lightMap">LightMap</option><option value="shadowMap">ShadowMap</option><option value="metalnessMap">MetalnessMap</option><option value="roughnessMap">RoughnessMap</option><option value="subSurfaceScatteringMap">SubSurfaceScatteringMap</option><option value="wireframe">Wireframe</option>
+                    <option value="default">Default</option>
+<option value="diffuse">Diffuse</option>
+<option value="normalMap">NormalMap</option>
+<option value="specularMap">SpecularMap</option>
+<option value="selectedBoneWeights">SelectedBoneWeights</option>
+<option value="emissionMap">EmissionMap</option>
+<option value="normal">Normal</option>
+{/* <option value="lighting">Lighting</option>
+<option value="vertColor">VertColor</option>
+<option value="ambientOcclusion">AmbientOcclusion</option>
+<option value="uvCoords">UVCoords</option>
+<option value="uvTestPattern">UVTestPattern</option>
+<option value="tangents">Tangents</option>
+<option value="bitangents">Bitangents</option>
+<option value="lightMap">LightMap</option>
+<option value="shadowMap">ShadowMap</option>
+<option value="metalnessMap">MetalnessMap</option> */}
+<option value="roughnessMap">RoughnessMap</option>
+{/* <option value="subSurfaceScatteringMap">SubSurfaceScatteringMap</option> */}
+<option value="wireframe">Wireframe</option>
+
                 </select>
                 </label>
                 <label className="bfres-shading-select">UV map:
                 <select value={uvIndex} onChange={(event) => setUvIndex(Number(event.target.value))}>
-                    {Array.from({ length: Math.max(1, ...(bfres?.render?.meshes || []).map((mesh) => mesh.uv_maps?.length || (mesh.uv0?.length ? 1 : 0))) }, (_, index) => <option value={index} key={index}>UV {index}</option>)}
+                    {Array.from({ length: Math.max(1, ...(bfres?.render?.meshes || []).map((mesh) => mesh.uv_maps?.length || (mesh.uv0?.length ? 1 : 0))) }, (_, index) => <option value={index} key={index}>UV {index}</option>
+)}
                 </select>
                 </label>
                 <label className="bfres-shading-select bfres-brightness">Brightness:
@@ -550,7 +572,8 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 <button type="button" onClick={() => setCelShading((value) => !value)} className={celShading ? 'active' : ''}>Cel Shading</button>
                 <button type="button" onClick={() => setShowEditor((value) => !value)} className={!showEditor ? 'active' : ''}>{showEditor ? 'Hide YAML' : 'Show YAML'}</button>
                 {viewMode === 'selectedBoneWeights' && <select className="bfres-bone-select" value={weightBone} onChange={(event) => setWeightBone(Number(event.target.value))} aria-label="Selected bone weights">
-                    {(bfres?.render?.bones || []).map((bone, index) => <option key={`${bone.name}-${index}`} value={index}>Bone: {bone.name}</option>)}
+                    {(bfres?.render?.bones || []).map((bone, index) => <option key={`${bone.name}-${index}`} value={index}>Bone: {bone.name}</option>
+)}
                 </select>}
             </div>
         </header>

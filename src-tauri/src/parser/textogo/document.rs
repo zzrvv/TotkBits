@@ -1,7 +1,6 @@
 use super::{TexToGoError, TexToGoHeader, TexToGoSurface};
 use crate::parser::binary::BinaryReader;
 use serde::Serialize;
-use std::io::Cursor;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TexToGoFile {
@@ -58,7 +57,7 @@ impl TexToGoFile {
             let size_entry = sizes + i * 8;
             let compressed_size = u32_at(&reader, size_entry)?;
             let compressed = bytes_at(&reader, payload, compressed_size as usize)?;
-            let decoded = zstd::stream::decode_all(Cursor::new(compressed)).map_err(|e| {
+            let decoded = crate::Zstd::TotkZstd::decompress_empty(compressed).map_err(|e| {
                 TexToGoError::new(payload, format!("invalid Zstandard surface: {e}"))
             })?;
             surfaces.push(TexToGoSurface {
