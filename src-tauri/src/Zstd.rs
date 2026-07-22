@@ -342,10 +342,10 @@ impl<'a> TotkZstd<'_> {
         dictionary: ZstdDictionary,
     ) -> io::Result<Vec<u8>> {
         match dictionary {
-            ZstdDictionary::Zs => self.cpp_compressor.compress_zs(data),
-            ZstdDictionary::Pack => self.cpp_compressor.compress_pack(data),
-            ZstdDictionary::Empty => self.cpp_compressor.compress_empty(data),
-            ZstdDictionary::Bcett => self.cpp_compressor.compress_bcett(data),
+            ZstdDictionary::Zs => self.compress_zs(data),
+            ZstdDictionary::Pack => self.compress_pack(data),
+            ZstdDictionary::Empty => self.compress_empty(data),
+            ZstdDictionary::Bcett => self.compress_bcett(data),
             ZstdDictionary::Yaz0 => Self::compress_yaz0(data),
         }
     }
@@ -433,6 +433,28 @@ impl<'a> TotkZstd<'_> {
         // let (_, result) = get_string_from_data("".to_string(), rawdata.to_vec(), zstd.clone())
         //     .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, format!("Unable to parse file:\n{}\n from sarc:\n{:?}", &int_path_str, &sarc_filepath)))?;;
         // Ok(result)
+    }
+
+    pub fn decompress_bcett(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
+        self.decompressor.decompress_bcett(data)
+    }
+    pub fn decompress_pack(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
+        self.decompressor.decompress_pack(data)
+    }
+    pub fn decompress_zs(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
+        self.decompressor.decompress_zs(data)
+    }
+    pub fn compress_zs(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
+        self.cpp_compressor.compress_zs(data)
+    }
+    pub fn compress_pack(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
+        self.cpp_compressor.compress_pack(data)
+    }
+    pub fn compress_bcett(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
+        self.cpp_compressor.compress_bcett(data)
+    }
+    pub fn compress_empty(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
+        self.cpp_compressor.compress_bcett(data)
     }
 }
 

@@ -6,7 +6,6 @@ use crate::{
         BfevFile::BfevFile,
         BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile},
         Esetb::Esetb,
-        Evfl_cs::Evfl,
         GameDataList::GameDataList,
         Pack::{PackComparer, SarcPaths},
         Rstb::Restbl,
@@ -40,7 +39,7 @@ pub fn get_string_from_data<P: AsRef<Path>>(
 ) -> Option<(InternalFile, String)> {
     let path = filepath.as_ref().to_string_lossy().into_owned();
     let lower_path = path.to_ascii_lowercase();
-    let (data, dictionary) = if lower_path.ends_with(".bcett.byml.zs") {
+    let (data, dictionary) = if is_banc_path(&path) {
         let decoded = zstd
             .try_decompress_using(&data, ZstdDictionary::Bcett)
             .ok()?;
@@ -264,15 +263,9 @@ pub fn get_binary_by_filetype(
             rawdata = Xlink_rs::text_to_binary(text, file_path, zstd.clone(), zstd_dictionary)?;
         }
         TotkFileType::Evfl => {
-            let evfl = Evfl::new(zstd.clone());
-            if let Ok(new_data) = evfl.string_to_binary(text) {
-                if is_zs {
-                    if let Ok(compressed_data) = zstd.cpp_compressor.compress_zs(&new_data) {
-                        rawdata = compressed_data;
-                    }
-                } else {
-                    rawdata = new_data;
-                }
+            rawdata = BfevFile::text_to_binary(text).ok()?;
+            if is_zs {
+                rawdata = zstd.compress_zs(&rawdata).ok()?;
             }
         }
         TotkFileType::Esetb => {
@@ -280,7 +273,7 @@ pub fn get_binary_by_filetype(
                 esetb.update_from_text(text).ok()?;
                 rawdata = esetb.to_binary();
                 if file_path.to_lowercase().ends_with(".zs") {
-                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
+                    rawdata = zstd.compress_zs(&rawdata).ok()?;
                 }
             }
         }
@@ -288,7 +281,7 @@ pub fn get_binary_by_filetype(
             if let Ok(some_data) = AsbFile::text_to_binary(text, Some(opened_file)) {
                 rawdata = some_data;
                 if is_zs {
-                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
+                    rawdata = zstd.compress_zs(&rawdata).ok()?;
                 }
             }
         }
@@ -301,7 +294,7 @@ pub fn get_binary_by_filetype(
             if let Ok(some_data) = TagProduct::to_binary(text) {
                 rawdata = some_data;
                 if is_zs {
-                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
+                    rawdata = zstd.compress_zs(&rawdata).ok()?;
                 }
             }
         }
@@ -323,9 +316,9 @@ pub fn get_binary_by_filetype(
             }
             if !rawdata.is_empty() {
                 if is_bcett {
-                    rawdata = zstd.cpp_compressor.compress_bcett(&rawdata).ok()?;
+                    rawdata = zstd.compress_bcett(&rawdata).ok()?;
                 } else if is_zs {
-                    rawdata = zstd.cpp_compressor.compress_zs(&rawdata).ok()?;
+                    rawdata = zstd.compress_zs(&rawdata).ok()?;
                 }
             }
         }
@@ -338,7 +331,7 @@ pub fn get_binary_by_filetype(
             let pio = Byml::from_text(processed_text).ok()?;
             rawdata = pio.to_binary(endian);
             if is_zs {
-                rawdata = zstd.cpp_compressor.compress_bcett(&rawdata).ok()?;
+                rawdata = zstd.compress_bcett(&rawdata).ok()?;
             }
         }
         TotkFileType::Msbt => {

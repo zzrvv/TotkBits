@@ -173,7 +173,7 @@ impl<'a> Xlink_rs<'a> {
             }
         };
         if file_path.to_ascii_lowercase().ends_with(".zs") && dictionary.is_none() {
-            zstd.cpp_compressor.compress_zs(&data).ok()
+            zstd.compress_zs(&data).ok()
         } else {
             Some(data)
         }

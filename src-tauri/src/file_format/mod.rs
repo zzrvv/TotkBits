@@ -17,8 +17,6 @@ pub mod Archive;
 pub mod Audio;
 pub mod BfevFile;
 pub mod Esetb;
-pub mod Evfl_cs;
-pub mod Evfl_py;
 pub mod GameDataList;
 pub mod SMO;
 pub mod Wrapper;

@@ -454,12 +454,12 @@ impl<'a> PackFile<'_> {
             TotkFileType::Sarc => {
                 println!("Compressing SARC");
                 // return self.zstd.compressor.compress_pack(data);
-                return self.zstd.cpp_compressor.compress_pack(data);
+                return self.zstd.compress_pack(data);
             }
             TotkFileType::MalsSarc => {
                 println!("Compressing MALS SARC");
                 // return self.zstd.compressor.compress_zs(data);
-                return self.zstd.cpp_compressor.compress_zs(data);
+                return self.zstd.compress_zs(data);
             }
             _ => {
                 return Ok(data.to_vec());

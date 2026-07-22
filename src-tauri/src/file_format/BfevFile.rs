@@ -1,5 +1,6 @@
 use crate::{
     file_format::BinTextFile::OpenedFile,
+    file_format::Wrapper::ExeWrapper,
     parser::evfl::BfevDocument,
     Open_and_Save::SendData,
     Settings::Pathlib,
@@ -21,6 +22,10 @@ impl BfevFile {
 
     pub fn binary_to_text(data: &[u8]) -> io::Result<String> {
         Self::from_binary(data)?.document.to_json()
+    }
+
+    pub fn text_to_binary(text: &str) -> io::Result<Vec<u8>> {
+        ExeWrapper::dotnet_new().string_to_binary(text, "EvflTextToBinary".to_owned())
     }
 
     pub fn open_bfev<'a, P: AsRef<Path>>(

@@ -181,8 +181,8 @@ impl NestedArchive {
         match encoding {
             NestedEncoding::Raw => Ok(raw),
             NestedEncoding::Yaz0 => Ok(roead::yaz0::compress(&raw)),
-            NestedEncoding::ZstdPack => zstd.cpp_compressor.compress_pack(&raw),
-            NestedEncoding::Zstd => zstd.cpp_compressor.compress_zs(&raw),
+            NestedEncoding::ZstdPack => zstd.compress_pack(&raw),
+            NestedEncoding::Zstd => zstd.compress_zs(&raw),
         }
     }
 }

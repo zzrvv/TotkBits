@@ -138,7 +138,7 @@ impl<'a> Asb_py<'a> {
         let mut data = self.text_to_binary(&text)?;
         if file_path.to_lowercase().ends_with(".zs") {
             // data = self.zstd.compressor.compress_zs(&data)?;
-            data = self.zstd.cpp_compressor.compress_zs(&data)?;
+            data = self.zstd.compress_zs(&data)?;
         }
         let mut f_handle = std::fs::File::create(file_path)?;
         f_handle.write_all(&data)?;
