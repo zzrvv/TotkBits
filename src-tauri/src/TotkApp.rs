@@ -55,7 +55,7 @@ unsafe impl<'a> Send for TotkBitsApp<'a> {}
 
 impl Default for TotkBitsApp<'_> {
     fn default() -> Self {
-        let (config, config_error) = match TotkConfig::safe_new() {
+        let (config, config_error) = match TotkConfig::safe_new(true) {
             Ok(config) => (config, None),
             Err(error) => (
                 TotkConfig::default(),

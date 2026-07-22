@@ -207,15 +207,18 @@ pub fn export_image_png(
     documentId: String,
     source: String,
     output: String,
+    texture_index: Option<usize>,
+    array_index: Option<u32>,
+    mip_index: Option<u32>,
 ) -> Result<(), String> {
     require_experimental_visuals()?;
     let documents = app_handle.state::<DocumentState>();
     documents.with(&documentId, |app| {
         let rendered = crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
             source,
-            0,
-            0,
-            0,
+            texture_index.unwrap_or(0),
+            array_index.unwrap_or(0),
+            mip_index.unwrap_or(0),
             Some(&app.zstd),
         )
         .map_err(|error| error.to_string())?;
@@ -230,10 +233,68 @@ pub fn replace_dds_image(
     png: String,
     ddsType: String,
     mipCount: u32,
+    array_index: Option<u32>,
+    mip_index: Option<u32>,
+    replacement_format: Option<String>,
 ) -> Result<(), String> {
     require_experimental_visuals()?;
-    crate::file_format::Image::ImageDocument::replace_dds(target, png, &ddsType, mipCount)
+    let _ = (ddsType, mipCount);
+    crate::file_format::Image::ImageDocument::replace_dds_surface(
+        target,
+        png,
+        array_index.unwrap_or(0),
+        mip_index.unwrap_or(0),
+        replacement_format.as_deref(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn rename_bntx_texture(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    path: String,
+    texture_index: usize,
+    new_name: String,
+) -> Result<(), String> {
+    require_experimental_visuals()?;
+    let documents = app_handle.state::<DocumentState>();
+    documents.with(&documentId, |app| {
+        crate::file_format::Image::ImageDocument::rename_bntx_texture(
+            path,
+            texture_index,
+            &new_name,
+            &app.zstd,
+        )
         .map_err(|error| error.to_string())
+    })
+}
+
+#[tauri::command]
+pub fn replace_bntx_image(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    target: String,
+    png: String,
+    texture_index: usize,
+    array_index: u32,
+    mip_index: u32,
+    replacement_format: Option<String>,
+) -> Result<(), String> {
+    require_experimental_visuals()?;
+    let documents = app_handle.state::<DocumentState>();
+    documents.with(&documentId, |app| {
+        crate::file_format::Image::ImageDocument::replace_bntx_surface(
+            target,
+            png,
+            texture_index,
+            array_index,
+            mip_index,
+            replacement_format.as_deref(),
+            &app.zstd,
+        )
+        .map_err(|error| error.to_string())
+    })
 }
 
 fn require_experimental_visuals() -> Result<(), String> {

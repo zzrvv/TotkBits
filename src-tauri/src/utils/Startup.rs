@@ -18,7 +18,7 @@ pub struct StartupData {
 impl StartupData {
     pub fn new() -> io::Result<Self> {
         let argv1 = env::args().nth(1).unwrap_or_default();
-        let config = TotkConfig::safe_new()?;
+        let config = TotkConfig::safe_new(true)?;
         Ok(Self { argv1, config })
     }
 

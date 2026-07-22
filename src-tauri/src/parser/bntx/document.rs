@@ -58,6 +58,7 @@ fn parse_texture(reader: &BinaryReader<'_>, p: usize) -> Result<BntxTexture, Bnt
     let name_ptr = usize::try_from(u64_at(reader, name_field)?)
         .map_err(|_| BntxError::new(name_field, "name pointer is too large"))?;
     let name = read_res_string(reader, name_ptr)?;
+    let name_capacity = usize::from(u16_at(reader, name_ptr)?);
     let mip_count = u16_at(reader, at(0x16)?)?;
     let array_length = u32_at(reader, at(0x30)?)?;
     let mip_field = at(0x70)?;
@@ -90,6 +91,9 @@ fn parse_texture(reader: &BinaryReader<'_>, p: usize) -> Result<BntxTexture, Bnt
         block_height_log2: (u32_at(reader, at(0x34)?)? & 7) as u8,
         channel_types: array_at(reader, at(0x58)?)?,
         data_offsets,
+        name_offset: name_ptr,
+        name_capacity,
+        format_offset: at(0x1c)?,
     })
 }
 

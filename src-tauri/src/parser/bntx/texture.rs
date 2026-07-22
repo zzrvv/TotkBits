@@ -16,4 +16,7 @@ pub struct BntxTexture {
     pub block_height_log2: u8,
     pub channel_types: [u8; 4],
     pub data_offsets: Vec<u64>,
+    pub name_offset: usize,
+    pub name_capacity: usize,
+    pub format_offset: usize,
 }

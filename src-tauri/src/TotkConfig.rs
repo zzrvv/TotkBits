@@ -77,21 +77,25 @@ impl Default for TotkConfig {
 }
 
 impl TotkConfig {
-    pub fn safe_new() -> io::Result<TotkConfig> {
-        match Self::new() {
+    /// Loads configuration in either interactive GUI mode or headless mode.
+    /// Headless callers never open dialogs, prompt for ROMFS, or rewrite config.
+    pub fn safe_new(interactive: bool) -> io::Result<TotkConfig> {
+        match Self::new(interactive) {
             Ok(conf) => Ok(conf),
             Err(err) => {
-                rfd::MessageDialog::new()
-                    .set_buttons(rfd::MessageButtons::Ok)
-                    .set_title("Error")
-                    .set_description(&format!("{}", err))
-                    .show();
+                if interactive {
+                    rfd::MessageDialog::new()
+                        .set_buttons(rfd::MessageButtons::Ok)
+                        .set_title("Error")
+                        .set_description(&format!("{}", err))
+                        .show();
+                }
                 Err(err)
             }
         }
     }
 
-    pub fn new() -> io::Result<TotkConfig> {
+    pub fn new(interactive: bool) -> io::Result<TotkConfig> {
         let mut conf = Self::default();
         conf.get_game_version().unwrap_or_default(); //no point in handling error here
                                                      //get config path
@@ -104,25 +108,29 @@ impl TotkConfig {
                 Ok(s) => conf_str = s,
                 Err(e) => {
                     let e = format!("Unable to read config file:\n{}", e);
-                    rfd::MessageDialog::new()
-                        .set_buttons(rfd::MessageButtons::Ok)
-                        .set_title("Error")
-                        .set_description(&e)
-                        .show();
+                    if interactive {
+                        rfd::MessageDialog::new()
+                            .set_buttons(rfd::MessageButtons::Ok)
+                            .set_title("Error")
+                            .set_description(&e)
+                            .show();
+                    }
                     // return Err(io::Error::new(io::ErrorKind::NotFound, e));
                 }
             }
             conf_json = toml::from_str(&conf_str).unwrap_or_default();
         }
         conf.update_from_json_data(conf_json);
-        if !Self::check_for_zsdic(&conf.romfs) && conf.should_ask_for_romfs() {
+        if interactive && !Self::check_for_zsdic(&conf.romfs) && conf.should_ask_for_romfs() {
             //unable to find romfs path, get it from NX editor or user input
             // A missing/cancelled path is a supported degraded mode. Remember the
             // prompt time even when the user cancels so it is not repeated on each start.
             conf.update_romfs_path().unwrap_or_default();
         }
 
-        conf.save()?;
+        if interactive {
+            conf.save()?;
+        }
         Ok(conf)
     }
 

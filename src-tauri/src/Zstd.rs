@@ -454,7 +454,7 @@ impl<'a> TotkZstd<'_> {
         self.cpp_compressor.compress_bcett(data)
     }
     pub fn compress_empty(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
-        self.cpp_compressor.compress_bcett(data)
+        self.compressor.compress_empty(data)
     }
 }
 
@@ -798,6 +798,8 @@ pub fn get_executable_dir() -> String {
 #[cfg(test)]
 mod yaz0_tests {
     use super::TotkZstd;
+    use crate::TotkConfig::TotkConfig;
+    use std::sync::Arc;
 
     #[test]
     fn yaz0_roundtrip_varied_binary_data() {
@@ -807,5 +809,13 @@ mod yaz0_tests {
         let compressed = TotkZstd::compress_yaz0(&data).unwrap();
         assert!(compressed.starts_with(b"Yaz0"));
         assert_eq!(TotkZstd::decompress_yaz0(&compressed).unwrap(), data);
+    }
+
+    #[test]
+    fn dictionaryless_codec_roundtrips_empty_dictionary_zstd() {
+        let codec = TotkZstd::dictionaryless(Arc::new(TotkConfig::default()), 16);
+        let data = b"lightweight CLI compression";
+        let compressed = codec.compress_empty(data).unwrap();
+        assert_eq!(TotkZstd::decompress_empty(&compressed).unwrap(), data);
     }
 }

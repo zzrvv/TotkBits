@@ -36,11 +36,11 @@ use crate::TauriCommands::{
     list_open_bphhb_documents, list_open_hkcl_documents, merge_bphcl_nodes, mutate_nested_archive,
     open_amta_node, open_audio_file_dialog, open_bfwav_node, open_bphcl_leaf, open_dir_dialog,
     open_file_dialog, open_file_from_path, open_file_struct, open_folder_struct, remove_bphcl_node,
-    remove_internal_sarc_file, rename_internal_sarc_file, render_image,
-    replace_bars_audio_from_folder, replace_bfwav_node, replace_dds_image, restart_app,
-    rstb_edit_entry, rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct,
-    search_in_sarc, update_app, update_toml_config, validate_bphcl_merge_documents,
-    validate_physics_merge_request,
+    remove_internal_sarc_file, rename_bntx_texture, rename_internal_sarc_file, render_image,
+    replace_bars_audio_from_folder, replace_bfwav_node, replace_bntx_image, replace_dds_image,
+    restart_app, rstb_edit_entry, rstb_get_entries, rstb_remove_entry, save_as_click,
+    save_file_struct, search_in_sarc, update_app, update_toml_config,
+    validate_bphcl_merge_documents, validate_physics_merge_request,
 };
 
 fn main() -> io::Result<()> {
@@ -74,6 +74,8 @@ fn main() -> io::Result<()> {
             inspect_bfres,
             inspect_3d_model,
             render_image,
+            rename_bntx_texture,
+            replace_bntx_image,
             export_image_png,
             replace_dds_image,
             open_bfwav_node,

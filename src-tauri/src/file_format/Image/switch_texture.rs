@@ -1,9 +1,9 @@
 use image::{ImageBuffer, RgbaImage};
-use image_dds::{ImageFormat, Surface};
+use image_dds::{ImageFormat, Mipmaps, Quality, Surface, SurfaceRgba8};
 use std::io;
 use std::num::NonZeroUsize;
 use tegra_swizzle::{
-    surface::{deswizzle_surface, swizzled_surface_size, BlockDim},
+    surface::{deswizzle_surface, swizzle_surface, swizzled_surface_size, BlockDim},
     BlockHeight,
 };
 
@@ -154,6 +154,42 @@ pub fn decode(
     })
 }
 
+pub fn encode(
+    image: &RgbaImage,
+    format: ImageFormat,
+    block_height_log2: u8,
+    linear: bool,
+) -> io::Result<Vec<u8>> {
+    let width = image.width();
+    let height = image.height();
+    let (block_width, block_height, bytes_per_block) = format_layout(format)?;
+    let encoded = SurfaceRgba8::from_image(image)
+        .encode(format, Quality::Normal, Mipmaps::Disabled)
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    if linear {
+        return Ok(encoded.data);
+    }
+    let block_dim = if block_width == 4 && block_height == 4 {
+        BlockDim::block_4x4()
+    } else {
+        BlockDim::uncompressed()
+    };
+    let block_height = BlockHeight::new(1usize << block_height_log2)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid Tegra block height"))?;
+    swizzle_surface(
+        width as usize,
+        height as usize,
+        1,
+        &encoded.data,
+        block_dim,
+        Some(block_height),
+        bytes_per_block as usize,
+        1,
+        1,
+    )
+    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
+}
+
 pub fn format_from_bntx(value: u32) -> io::Result<ImageFormat> {
     let srgb = value & 0xff == 6;
     match value >> 8 {
@@ -196,6 +232,39 @@ pub fn format_from_bntx(value: u32) -> io::Result<ImageFormat> {
             format!("unsupported BNTX format 0x{value:X}"),
         )),
     }
+}
+
+pub fn format_for_bntx_name(name: &str) -> io::Result<(ImageFormat, u32)> {
+    let format = crate::file_format::Image::dds::image_format(name)?;
+    let value = match name {
+        "R8_UNORM" => 0x0201,
+        "R8_G8_UNORM" => 0x0901,
+        "R8_G8_B8_A8_UNORM" => 0x0b01,
+        "R8_G8_B8_A8_SRGB" => 0x0b06,
+        "B8_G8_R8_A8_UNORM" => 0x0c01,
+        "B8_G8_R8_A8_SRGB" => 0x0c06,
+        "BC1_UNORM" => 0x1a01,
+        "BC1_SRGB" => 0x1a06,
+        "BC2_UNORM" => 0x1b01,
+        "BC2_SRGB" => 0x1b06,
+        "BC3_UNORM" => 0x1c01,
+        "BC3_SRGB" => 0x1c06,
+        "BC4_UNORM" => 0x1d01,
+        "BC4_SNORM" => 0x1d02,
+        "BC5_UNORM" => 0x1e01,
+        "BC5_SNORM" => 0x1e02,
+        "BC6_UFLOAT" => 0x1f05,
+        "BC6_FLOAT" => 0x1f04,
+        "BC7_UNORM" => 0x2001,
+        "BC7_SRGB" => 0x2006,
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                format!("{name} cannot be stored in a Switch BNTX texture"),
+            ))
+        }
+    };
+    Ok((format, value))
 }
 
 pub fn astc_block_from_bntx(value: u32) -> Option<(usize, usize)> {

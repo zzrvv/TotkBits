@@ -6,7 +6,7 @@ use crate::{
     },
     Open_and_Save::{get_binary_by_filetype, get_string_from_data},
     TotkConfig::TotkConfig,
-    Zstd::{global_totk_zstd, TotkFileType, ZstdDictionary},
+    Zstd::{TotkFileType, ZstdDictionary},
 };
 use roead::{
     sarc::{Sarc, SarcWriter},
@@ -115,8 +115,8 @@ impl CliCommand {
     }
 
     fn zstd(&self) -> Result<Arc<crate::Zstd::TotkZstd<'static>>, String> {
-        let config = TotkConfig::safe_new().map_err(|e| e.to_string())?;
-        global_totk_zstd(Arc::new(config), 16).map_err(|e| e.to_string())
+        let config = Arc::new(TotkConfig::safe_new(false).map_err(|e| e.to_string())?);
+        Ok(Arc::new(crate::Zstd::TotkZstd::dictionaryless(config, 16)))
     }
 
     fn bin_to_text(&self) -> Result<(), String> {
@@ -127,8 +127,14 @@ impl CliCommand {
                 .map_err(|e| format!("input could not be converted to AINB text: {e}"))?;
             return write_output(&self.output, text.as_bytes());
         }
-        let (parsed, text) = get_string_from_data(&self.input, bytes, self.zstd()?)
-            .ok_or_else(|| "input could not be converted to text".to_string())?;
+        let is_zstandard = bytes.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]);
+        let (parsed, text) = get_string_from_data(&self.input, bytes, self.zstd()?).ok_or_else(|| {
+            if is_zstandard {
+                "input could not be converted to text; it may require a game Zstandard dictionary unavailable in lightweight CLI mode".to_string()
+            } else {
+                "input could not be converted to text".to_string()
+            }
+        })?;
         if parsed.file_type != expected
             && !(expected == TotkFileType::Byml && parsed.file_type == TotkFileType::Bcett)
         {
