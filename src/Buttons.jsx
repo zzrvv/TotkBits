@@ -158,6 +158,12 @@ const ButtonsDisplay = () => {
     ;
   const handleFilterChange = (setPathsFilters, key, val) => {
     setPathsFilters((prevFilters) => {
+      const allPaths = paths.all_paths || paths.paths;
+      const restoreAllPaths = () => setpaths({
+        ...paths,
+        paths: allPaths,
+        all_paths: allPaths,
+      });
       const showAllFiles = () => ({
         showAll: true,
         showAdded: false,
@@ -168,7 +174,8 @@ const ButtonsDisplay = () => {
 
       switch (key) {
         case "showAll":
-          handleClearSarcSearch();
+          restoreAllPaths();
+          setStatusText(`Showing all files (${allPaths.length})`);
           newFilters = showAllFiles();
           break;
 
@@ -178,12 +185,13 @@ const ButtonsDisplay = () => {
               paths: paths.added_paths,
               added_paths: paths.added_paths,
               modded_paths: paths.modded_paths,
-              nested_paths: paths.nested_paths || {}
+              nested_paths: paths.nested_paths || {},
+              all_paths: allPaths
             });
             setStatusText(`Showing only added files (${paths.added_paths.length})`);
             newFilters = { showAll: false, showAdded: true, showModded: false };
           } else {
-            handleClearSarcSearch();
+            restoreAllPaths();
             newFilters = showAllFiles();
           }
           break;
@@ -194,12 +202,13 @@ const ButtonsDisplay = () => {
               paths: paths.modded_paths,
               added_paths: paths.added_paths,
               modded_paths: paths.modded_paths,
-              nested_paths: paths.nested_paths || {}
+              nested_paths: paths.nested_paths || {},
+              all_paths: allPaths
             });
             setStatusText(`Showing only modded files (${paths.modded_paths.length})`);
             newFilters = { showAll: false, showAdded: false, showModded: true };
           } else {
-            handleClearSarcSearch();
+            restoreAllPaths();
             newFilters = showAllFiles();
           }
           break;

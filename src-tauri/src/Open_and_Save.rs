@@ -393,7 +393,9 @@ impl SaveFileDialog<'_> {
         self.name = None;
         match self.tab.as_str() {
             "SARC" => {
-                if let Some(pack) = self.pack {
+                if self.opened_file.bphcl.is_some() {
+                    self.name = Some(self.opened_file.path.name.clone());
+                } else if let Some(pack) = self.pack {
                     if let Some(opened) = &pack.opened {
                         self.name = Some(opened.path.name.clone());
                     }
@@ -426,15 +428,19 @@ impl SaveFileDialog<'_> {
         let mut filters: BTreeMap<String, Vec<String>> = BTreeMap::new();
         match self.tab.as_str() {
             "SARC" => {
-                filters.insert(
-                    "SARC".to_string(),
-                    vec![
-                        "pack".to_string(),
-                        "sarc".to_string(),
-                        "pack.zs".to_string(),
-                        "sarc.zs".to_string(),
-                    ],
-                );
+                if self.opened_file.bphcl.is_some() {
+                    filters.insert("BPHCL".to_string(), vec!["bphcl".to_string()]);
+                } else {
+                    filters.insert(
+                        "SARC".to_string(),
+                        vec![
+                            "pack".to_string(),
+                            "sarc".to_string(),
+                            "pack.zs".to_string(),
+                            "sarc.zs".to_string(),
+                        ],
+                    );
+                }
             }
             "YAML" => {
                 let exts = if self.opened_file.path.ext_last.is_empty() {
@@ -506,6 +512,8 @@ pub struct SendData {
     pub lang: String,
     pub compare_data: DiffComparer,
     pub read_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_modded_path: Option<String>,
 }
 
 impl Default for SendData {
@@ -522,6 +530,7 @@ impl Default for SendData {
             lang: "yaml".to_string(),
             compare_data: DiffComparer::default(),
             read_only: false,
+            parent_modded_path: None,
         }
     }
 }

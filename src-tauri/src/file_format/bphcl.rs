@@ -1,10 +1,11 @@
 use crate::parser::bphcl::BphclDocument;
 use roead::aamp::{Parameter, ParameterIO, ParameterList};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_yaml::{
     value::{Tag, TaggedValue},
     Mapping, Value,
 };
+use sha2::{Digest, Sha256};
 use std::{collections::HashMap, io, path::Path, sync::LazyLock};
 
 static AAMP_TOTK_NAMES: LazyLock<HashMap<u32, String>> = LazyLock::new(|| {
@@ -18,6 +19,79 @@ static AAMP_TOTK_NAMES: LazyLock<HashMap<u32, String>> = LazyLock::new(|| {
         .into_iter()
         .filter_map(|(hash, name)| hash.parse().ok().map(|hash| (hash, name)))
         .collect()
+});
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+enum BphclVanillaNode {
+    Legacy(String),
+    Hashed { name: String, sha256: String },
+}
+
+impl BphclVanillaNode {
+    fn name(&self) -> &str {
+        match self {
+            Self::Legacy(name) | Self::Hashed { name, .. } => name,
+        }
+    }
+
+    fn matches_value(&self, value: &impl Serialize) -> io::Result<bool> {
+        match self {
+            Self::Legacy(_) => Ok(true),
+            Self::Hashed { sha256, .. } => Ok(*sha256 == canonical_node_hash(value)?),
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+struct BphclVanillaNodes {
+    cloth: Vec<BphclVanillaNode>,
+    collidables: Vec<BphclVanillaNode>,
+    #[serde(default)]
+    skeletons: Vec<BphclVanillaNode>,
+}
+
+impl BphclVanillaNodes {
+    fn cloth(&self, name: &str) -> Option<&BphclVanillaNode> {
+        self.cloth.iter().find(|node| node.name() == name)
+    }
+
+    fn collidable(&self, name: &str) -> Option<&BphclVanillaNode> {
+        self.collidables.iter().find(|node| node.name() == name)
+    }
+
+    fn skeleton(&self, name: &str) -> Option<&BphclVanillaNode> {
+        self.skeletons.iter().find(|node| node.name() == name)
+    }
+}
+
+fn canonical_node_hash(value: &impl Serialize) -> io::Result<String> {
+    fn remove_relocation_fields(value: &mut serde_json::Value) {
+        match value {
+            serde_json::Value::Object(map) => {
+                map.remove("index");
+                map.remove("item_index");
+                for child in map.values_mut() {
+                    remove_relocation_fields(child);
+                }
+            }
+            serde_json::Value::Array(values) => {
+                for child in values {
+                    remove_relocation_fields(child);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut value = serde_json::to_value(value).map_err(io::Error::other)?;
+    remove_relocation_fields(&mut value);
+    let bytes = serde_json::to_vec(&value).map_err(io::Error::other)?;
+    Ok(format!("{:x}", Sha256::digest(bytes)))
+}
+
+static BPHCL_VANILLA_NODES: LazyLock<HashMap<String, BphclVanillaNodes>> = LazyLock::new(|| {
+    serde_json::from_str(include_str!("../../bin/bphcl_nodes.json")).unwrap_or_default()
 });
 
 #[derive(Clone, Debug, Serialize)]
@@ -52,6 +126,67 @@ impl BphclFile {
             .into_iter()
             .map(|leaf| format!("{root_name}/{}", leaf.path))
             .collect();
+        if let Some(vanilla) = BPHCL_VANILLA_NODES.get(root_name.as_ref()) {
+            let mut nodes_changed = self.document.cloth.len() != vanilla.cloth.len()
+                || self.document.collidables.len() != vanilla.collidables.len()
+                || self.document.skeletons.len() != vanilla.skeletons.len();
+            for node in &self.document.cloth {
+                let path = format!("{root_name}/Cloth/{:03} {}.bin", node.index, node.name);
+                match vanilla.cloth(&node.name) {
+                    None => {
+                        nodes_changed = true;
+                        data.sarc_paths.added_paths.push(path);
+                    }
+                    Some(reference) if !reference.matches_value(node)? => {
+                        nodes_changed = true;
+                        data.sarc_paths.modded_paths.push(path);
+                    }
+                    Some(_) => {}
+                }
+            }
+            for node in &self.document.collidables {
+                let path = format!(
+                    "{root_name}/Collidables/{:03} {}.bin",
+                    node.index, node.name
+                );
+                match vanilla.collidable(&node.name) {
+                    None => {
+                        nodes_changed = true;
+                        data.sarc_paths.added_paths.push(path);
+                    }
+                    Some(reference) if !reference.matches_value(node)? => {
+                        nodes_changed = true;
+                        data.sarc_paths.modded_paths.push(path);
+                    }
+                    Some(_) => {}
+                }
+            }
+            for node in &self.document.skeletons {
+                let path = format!("{root_name}/Skeletons/{:03} {}.bin", node.index, node.name);
+                match vanilla.skeleton(&node.name) {
+                    None => {
+                        nodes_changed = true;
+                        data.sarc_paths.added_paths.push(path);
+                    }
+                    Some(reference) if !reference.matches_value(node)? => {
+                        nodes_changed = true;
+                        data.sarc_paths.modded_paths.push(path);
+                    }
+                    Some(_) => {}
+                }
+            }
+            if nodes_changed
+                && data
+                    .sarc_paths
+                    .paths
+                    .iter()
+                    .any(|entry| entry == &format!("{root_name}/Section.aamp"))
+            {
+                data.sarc_paths
+                    .modded_paths
+                    .push(format!("{root_name}/Section.aamp"));
+            }
+        }
         data.sarc_paths.read_only = true;
         data.get_file_label(crate::Zstd::TotkFileType::Bphcl, None);
         data.status_text = status_text;
@@ -94,6 +229,16 @@ impl BphclFile {
     pub fn raw_binary(&self) -> Vec<u8> {
         self.document.to_bytes()
     }
+    pub fn replace_aamp_yaml(&mut self, yaml: &str) -> io::Result<()> {
+        let aamp = aamp_from_yaml(yaml)?.to_binary();
+        let mut builder = crate::parser::bphcl::BphclBuilder::new(&self.document)?;
+        builder.replace_aamp(aamp);
+        let bytes = builder.build()?;
+        let rebuilt = BphclDocument::parse(&bytes)?;
+        rebuilt.validate()?;
+        self.document = rebuilt;
+        Ok(())
+    }
     pub fn leaves(&self) -> io::Result<Vec<BphclLeaf>> {
         let mut out = vec![];
         for c in &self.document.cloth {
@@ -126,11 +271,62 @@ impl BphclFile {
                 path: "Section.aamp".into(),
                 yaml: safe_aamp_yaml(&pio)?,
                 viewer_type: "AAMP".into(),
-                read_only: true,
+                read_only: false,
             })
         }
         Ok(out)
     }
+}
+
+pub(crate) fn generate_node_catalog(input: &Path, output: &Path) -> io::Result<()> {
+    use std::collections::BTreeMap;
+
+    fn hashed(name: &str, value: impl Serialize) -> io::Result<BphclVanillaNode> {
+        Ok(BphclVanillaNode::Hashed {
+            name: name.to_owned(),
+            sha256: canonical_node_hash(&value)?,
+        })
+    }
+
+    let mut catalog = BTreeMap::new();
+    let mut files: Vec<_> = std::fs::read_dir(input)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("bphcl"))
+        })
+        .collect();
+    files.sort();
+    for path in files {
+        let bytes = std::fs::read(&path)?;
+        let document = BphclDocument::parse(&bytes)?;
+        let nodes = BphclVanillaNodes {
+            cloth: document
+                .cloth
+                .iter()
+                .map(|node| hashed(&node.name, node))
+                .collect::<io::Result<_>>()?,
+            collidables: document
+                .collidables
+                .iter()
+                .map(|node| hashed(&node.name, node))
+                .collect::<io::Result<_>>()?,
+            skeletons: document
+                .skeletons
+                .iter()
+                .map(|node| hashed(&node.name, node))
+                .collect::<io::Result<_>>()?,
+        };
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid BPHCL filename"))?;
+        catalog.insert(name.to_owned(), nodes);
+    }
+    let mut json = serde_json::to_string_pretty(&catalog).map_err(io::Error::other)?;
+    json.push('\n');
+    std::fs::write(output, json)
 }
 
 fn yaml_name(hash: u32) -> Value {

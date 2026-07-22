@@ -184,14 +184,21 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
 
 }
 
-export async function openBphclLeaf(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, setReadOnly) {
-  const content = await invoke('open_bphcl_leaf', { path: fullPath });
-  if (!content) return;
-  setLabelTextDisplay(prev => ({ ...prev, yaml: content.file_label }));
-  updateEditorContent(content.text, content.lang || 'yaml');
-  setReadOnly(true);
-  setActiveTab('YAML');
-  setStatusText(content.status_text);
+export async function openBphclLeaf(fullPath, parentDocumentId, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, setReadOnly) {
+  try {
+    const content = await invoke('open_bphcl_leaf', { path: fullPath, parentDocumentId });
+    if (!content) {
+      setStatusText(`Unable to preview BPHCL node: ${fullPath}`);
+      return;
+    }
+    setLabelTextDisplay(prev => ({ ...prev, yaml: content.file_label }));
+    updateEditorContent(content.text, content.lang || 'yaml');
+    setReadOnly(content.read_only ?? true);
+    setActiveTab('YAML');
+    setStatusText(content.status_text);
+  } catch (error) {
+    setStatusText(`Unable to preview BPHCL node: ${String(error)}`);
+  }
 }
 
 export async function removeBphclNodeClick(fullPath, setStatusText, setpaths) {
@@ -456,15 +463,35 @@ export async function addFilesFromDirRecursively(internalPath, setStatusText, se
 
 }
 
-const refreshSavedArchivePaths = (sarcPaths, setpaths, documentSnapshots) => {
+const refreshSavedArchivePaths = (sarcPaths, setpaths, documentSnapshots, parentModdedPath = null) => {
   if (!sarcPaths || sarcPaths.paths.length === 0) return;
   setpaths(sarcPaths);
   const { documents, activeDocumentId } = getDocumentsSnapshot();
-  const parentId = documents.find((document) => document.id === activeDocumentId)?.parentDocumentId;
-  if (!parentId || !documentSnapshots?.current) return;
-  const parentSnapshot = documentSnapshots.current.get(parentId);
-  if (parentSnapshot) {
-    documentSnapshots.current.set(parentId, { ...parentSnapshot, paths: sarcPaths });
+  if (!activeDocumentId || !documentSnapshots?.current) return;
+  const activeSnapshot = documentSnapshots.current.get(activeDocumentId);
+  if (activeSnapshot) {
+    documentSnapshots.current.set(activeDocumentId, { ...activeSnapshot, paths: sarcPaths });
+  }
+  const activeDocument = documents.find((document) => document.id === activeDocumentId);
+  const parentId = activeDocument?.parentDocumentId;
+  if (parentId && activeDocument?.fileMetadata?.includes('[BPHCL] [AAMP]')) {
+    const parentSnapshot = documentSnapshots.current.get(parentId);
+    if (parentSnapshot) {
+      documentSnapshots.current.set(parentId, { ...parentSnapshot, paths: sarcPaths });
+    }
+  } else if (parentId && (parentModdedPath || activeDocument.fullPath)) {
+    const parentSnapshot = documentSnapshots.current.get(parentId);
+    if (parentSnapshot) {
+      const parentPaths = parentSnapshot.paths || { paths: [], added_paths: [], modded_paths: [] };
+      const moddedPath = parentModdedPath || activeDocument.fullPath;
+      documentSnapshots.current.set(parentId, {
+        ...parentSnapshot,
+        paths: {
+          ...parentPaths,
+          modded_paths: [...new Set([...(parentPaths.modded_paths || []), moddedPath])],
+        },
+      });
+    }
   }
 };
 
@@ -498,7 +525,7 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
-      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots);
+      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots, content.parent_modded_path);
       console.log(content.sarc_paths.added_paths);
       console.log(content.sarc_paths.modded_paths);
     }
@@ -535,7 +562,7 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
-      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots);
+      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots, content.parent_modded_path);
       console.log(content.sarc_paths.added_paths);
       console.log(content.sarc_paths.modded_paths);
     }

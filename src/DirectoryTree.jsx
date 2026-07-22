@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import DirectoryNode from './DirectoryNode';
 import { extractFileClick, editInternalSarcFile, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
+import { useEditorContext } from './StateManager';
 
 const fontsize = '15px';
 
@@ -19,7 +20,7 @@ const buildTree = (paths) => {
 //{ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }
 const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) => {
   const [selectedNode, setSelectedNode] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const { treeFilterQuery: searchQuery, setTreeFilterQuery: setSearchQuery } = useEditorContext();
   const tree = buildTree(sarcPaths);
   // setStatusText("Directory Tree Loaded  ");
   const handleSelectNode = (fullPath, isFile, identity = fullPath, updateRootSelection = true) => {

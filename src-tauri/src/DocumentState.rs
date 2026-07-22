@@ -74,7 +74,10 @@ pub struct HkclSelectableNode {
 pub struct BphclMergeResult {
     pub selected_count: usize,
     pub imported_count: usize,
+    pub imported_selection_count: usize,
     pub skipped_count: usize,
+    pub added_cloth_count: usize,
+    pub added_collidable_count: usize,
     pub cloth_count: usize,
     pub collidable_count: usize,
     pub imported: Vec<String>,
@@ -513,7 +516,14 @@ impl DocumentState {
                 format!("Document '{target_document_id}' is not a BPHCL document")
             })?;
         let target_source_path = target_file.source_path.clone();
-        let target_link = target_app.internal_parent.clone();
+        let original_cloth_count = target_file.document.cloth.len();
+        let original_collidable_count = target_file.document.collidables.len();
+        let original_collidable_names: std::collections::HashSet<String> = target_file
+            .document
+            .collidables
+            .iter()
+            .map(|collidable| collidable.name.clone())
+            .collect();
         let mut merged = target_file.document.clone();
         let mut imported = Vec::new();
         let mut skipped = Vec::new();
@@ -534,7 +544,7 @@ impl DocumentState {
                 .parse()
                 .map_err(|_| format!("Invalid BPHCL node ID '{node_id}'"))?;
             let before = merged.raw.clone();
-            let (display_name, bytes) = match kind {
+            let (display_name, existed_in_original_target, bytes) = match kind {
                 "cloth" => {
                     let position = source
                         .cloth
@@ -544,6 +554,7 @@ impl DocumentState {
                     let name = source.cloth[position].name.clone();
                     (
                         format!("Cloth: {name}"),
+                        false,
                         merged.merge_complete_cloth(&source, position),
                     )
                 }
@@ -556,43 +567,36 @@ impl DocumentState {
                     let name = source.collidables[position].name.clone();
                     (
                         format!("Collidable: {name}"),
+                        original_collidable_names.contains(&name),
                         merged.merge_collidable(&source, position),
                     )
                 }
                 _ => (
                     node_id.clone(),
+                    false,
                     Err(std::io::Error::new(
                         std::io::ErrorKind::InvalidInput,
                         format!("Unsupported BPHCL node kind '{kind}'"),
                     )),
                 ),
             };
-            let bytes = match bytes {
-                Ok(bytes) => bytes,
-                Err(error)
-                    if kind == "collidable"
-                        && error
-                            .to_string()
-                            .contains("target already has a different collidable named") =>
-                {
+            let bytes = bytes.map_err(|error| format!("Failed to merge '{node_id}': {error}"))?;
+            if bytes == before {
+                if kind == "collidable" && !existed_in_original_target {
+                    // A previously processed cloth imported this selected collidable as a
+                    // dependency. The selection was fulfilled by this merge, not skipped.
+                    imported.push(display_name);
+                } else {
                     skipped.push(BphclMergeSkip {
                         name: display_name,
-                        reason: error.to_string(),
+                        reason: if kind == "cloth" {
+                            "Target already contains a cloth with this name"
+                        } else {
+                            "Target already contained a collidable with this exact name before the merge"
+                        }
+                        .into(),
                     });
-                    continue;
                 }
-                Err(error) => return Err(format!("Failed to merge '{node_id}': {error}")),
-            };
-            if bytes == before {
-                skipped.push(BphclMergeSkip {
-                    name: display_name,
-                    reason: if kind == "cloth" {
-                        "Target already contains a cloth with this name"
-                    } else {
-                        "Target already contains an identical collidable"
-                    }
-                    .into(),
-                });
             } else {
                 imported.push(display_name);
                 merged = crate::parser::bphcl::BphclDocument::parse(&bytes)
@@ -600,15 +604,10 @@ impl DocumentState {
             }
         }
 
-        let merged_bytes = merged.raw.clone();
-        if let Some(link) = &target_link {
-            documents
-                .get_mut(&link.document_id)
-                .ok_or_else(|| format!("Parent document '{}' is not open", link.document_id))?
-                .update_child_entry(link.outer_path.as_deref(), &link.inner_path, merged_bytes)?;
-        }
         let cloth_count = merged.cloth.len();
         let collidable_count = merged.collidables.len();
+        let added_cloth_count = cloth_count.saturating_sub(original_cloth_count);
+        let added_collidable_count = collidable_count.saturating_sub(original_collidable_count);
         let target = documents
             .get_mut(target_document_id)
             .ok_or_else(|| format!("Document '{target_document_id}' was closed during merge"))?;
@@ -621,24 +620,26 @@ impl DocumentState {
         } else {
             target.opened_file.path.name.clone()
         };
-        let mut sarc_paths = crate::file_format::Pack::SarcPaths::default();
-        sarc_paths.read_only = true;
         let refreshed = target
             .opened_file
             .bphcl
             .as_ref()
             .ok_or_else(|| "Merged BPHCL state was lost".to_owned())?;
-        sarc_paths.paths = refreshed
-            .leaves()
+        let sarc_paths = refreshed
+            .send_data(
+                std::path::Path::new(&root_name),
+                "Refreshed merged BPHCL".into(),
+            )
             .map_err(|error| format!("Failed to refresh merged BPHCL tree: {error}"))?
-            .into_iter()
-            .map(|leaf| format!("{root_name}/{}", leaf.path))
-            .collect();
+            .sarc_paths;
 
         Ok(BphclMergeResult {
             selected_count: node_ids.len(),
-            imported_count: imported.len(),
+            imported_count: added_cloth_count + added_collidable_count,
+            imported_selection_count: imported.len(),
             skipped_count: skipped.len(),
+            added_cloth_count,
+            added_collidable_count,
             cloth_count,
             collidable_count,
             imported,
@@ -844,20 +845,40 @@ impl DocumentState {
         } else {
             return None;
         };
-        documents.entry(child_id.to_owned()).or_default();
+        let editable_bphcl_aamp = format_name == "BPHCL" && leaf.viewer_type == "AAMP";
+        let child = documents.entry(child_id.to_owned()).or_default();
+        if editable_bphcl_aamp {
+            child.opened_file = crate::file_format::BinTextFile::OpenedFile::from_path(
+                path.clone(),
+                crate::Zstd::TotkFileType::Aamp,
+            );
+            let mut internal = crate::TotkApp::InternalFile::new(path.clone());
+            internal.file_type = crate::Zstd::TotkFileType::Aamp;
+            child.internal_file = Some(internal);
+            child.internal_parent = Some(crate::TotkApp::InternalParentLink {
+                document_id: parent_id.to_owned(),
+                outer_path: None,
+                inner_path: path.clone(),
+            });
+        }
         let mut data = SendData::default();
         data.text = leaf.yaml;
         data.tab = "YAML".into();
         data.lang = "yaml".into();
         let file_name = path.replace('\\', "/").rsplit('/').next()?.to_owned();
         data.path = crate::Settings::Pathlib::new(&file_name);
+        let mode = if editable_bphcl_aamp {
+            "Editable"
+        } else {
+            "ReadOnly"
+        };
         data.file_label = format!(
-            "{file_name} [{format_name}] [{}] [ReadOnly]",
+            "{file_name} [{format_name}] [{}] [{mode}]",
             leaf.viewer_type
         );
-        data.file_metadata = format!("[{format_name}] [{}] [ReadOnly]", leaf.viewer_type);
-        data.status_text = format!("Opened read-only {format_name} leaf: {path}");
-        data.read_only = true;
+        data.file_metadata = format!("[{format_name}] [{}] [{mode}]", leaf.viewer_type);
+        data.status_text = format!("Opened {} {format_name} leaf: {path}", mode.to_lowercase());
+        data.read_only = !editable_bphcl_aamp;
         Some(data)
     }
 
@@ -948,11 +969,52 @@ impl DocumentState {
             }
             return result;
         }
+        let is_bphcl_aamp = documents
+            .get(id)
+            .is_some_and(|child| child.opened_file.file_type == crate::Zstd::TotkFileType::Aamp)
+            && documents
+                .get(&link.document_id)
+                .is_some_and(|parent| parent.opened_file.bphcl.is_some())
+            && link.inner_path.ends_with("Section.aamp");
+        if is_bphcl_aamp {
+            let parent = documents.get_mut(&link.document_id)?;
+            let bphcl = parent.opened_file.bphcl.as_mut()?;
+            if let Err(error) = bphcl.replace_aamp_yaml(&save_data.text) {
+                let mut data = SendData::default();
+                data.tab = "ERROR".into();
+                data.status_text = format!("Error: failed to update BPHCL Section.aamp: {error}");
+                return Some(data);
+            }
+            let source_path = bphcl
+                .source_path
+                .clone()
+                .unwrap_or_else(|| parent.opened_file.path.full_path.clone());
+            let mut data = bphcl
+                .send_data(
+                    std::path::Path::new(&source_path),
+                    "Updated Section.aamp in BPHCL; save the BPHCL to persist it".into(),
+                )
+                .ok()?;
+            data.tab = "YAML".into();
+            return Some(data);
+        }
         let bytes = documents.get_mut(id)?.internal_binary(&save_data.text)?;
-        documents
+        let parent_data = documents
             .get_mut(&link.document_id)?
             .update_child_entry(link.outer_path.as_deref(), &link.inner_path, bytes)
-            .ok()
+            .ok()?;
+        let child = documents.get(id)?;
+        if let Some(bphcl) = &child.opened_file.bphcl {
+            let mut data = bphcl
+                .send_data(
+                    std::path::Path::new(&link.inner_path),
+                    format!("Saved {} in archive", link.inner_path),
+                )
+                .ok()?;
+            data.parent_modded_path = Some(link.inner_path);
+            return Some(data);
+        }
+        Some(parent_data)
     }
 
     pub fn compare_internal_file(

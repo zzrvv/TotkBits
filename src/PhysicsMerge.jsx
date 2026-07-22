@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import './PhysicsMerge.css';
-import { getDocumentsSnapshot } from './DocumentState';
+import { activateDocument, getDocumentsSnapshot } from './DocumentState';
 
 const locationLabel = { disk: 'Disk', archive: 'Archive', 'nested-archive': 'Nested archive' };
 const formatLabel = { hkcl: 'HKCL', bphcl: 'BPHCL' };
@@ -163,11 +163,14 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpa
                 const result = await invoke('merge_bphcl_nodes', {
                     targetDocumentId: targetId, sourceDocumentId: sourceId, nodeIds: request.nodeIds,
                 });
+                const mergeStatus = `Physics merge completed: ${result.importedCount} nodes added (${result.addedClothCount} cloth, ${result.addedCollidableCount} collidables), ${result.skippedCount} selections skipped`;
+                const refreshedPaths = { ...result.sarcPaths, documentId: targetId };
                 const snapshot = documentSnapshots.current.get(targetId);
-                if (snapshot) documentSnapshots.current.set(targetId, { ...snapshot, paths: result.sarcPaths });
-                if (getDocumentsSnapshot().activeDocumentId === targetId) setpaths(result.sarcPaths);
-                setStatusText(`Physics merge completed: ${result.importedCount} imported, ${result.skippedCount} skipped`);
-                await refreshDocuments();
+                if (snapshot) documentSnapshots.current.set(targetId, { ...snapshot, activeTab: 'SARC', paths: refreshedPaths, statusText: mergeStatus });
+                if (getDocumentsSnapshot().activeDocumentId !== targetId) activateDocument(targetId);
+                setpaths(refreshedPaths);
+                setActiveTab('SARC');
+                setStatusText(mergeStatus);
             } else {
                 const result = await invoke('build_physics_merge_graph', { request });
                 setStatusText(`Physics merge graph built: ${result.imported.length} imported. Binary document update is not available yet.`);

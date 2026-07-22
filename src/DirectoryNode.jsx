@@ -275,7 +275,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
         }).catch((error) => setStatusText(`AMTA error: ${error}`));
         return;
       }
-      if (sarcPaths.read_only) openBphclLeaf(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, setReadOnly);
+      if (sarcPaths.read_only) openBphclLeaf(fullPath, sarcPaths.documentId, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, setReadOnly);
       else editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
     }
   };

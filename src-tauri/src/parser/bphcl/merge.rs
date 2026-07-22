@@ -1,6 +1,5 @@
 use super::{
-    AampRegistrationMerger, BphclBuilder, BphclDocument, Collidable, CollidableShape, Patch,
-    ReferenceArray,
+    AampRegistrationMerger, BphclBuilder, BphclDocument, Collidable, Patch, ReferenceArray,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -81,12 +80,6 @@ impl BphclDocument {
             .ok_or_else(|| invalid("source collidable index is out of range"))?;
         match collidable_policy(&self.collidables, collider) {
             CollidablePolicy::Skip => return Ok(self.raw.clone()),
-            CollidablePolicy::Conflict => {
-                return Err(invalid(&format!(
-                    "target already has a different collidable named '{}'",
-                    collider.name
-                )))
-            }
             CollidablePolicy::Import => {}
         }
         let closure = source.collect_item_closure([collider.item_index])?;
@@ -431,19 +424,12 @@ fn append_imported_patches(
 enum CollidablePolicy {
     Import,
     Skip,
-    Conflict,
 }
 fn collidable_policy(target: &[Collidable], source: &Collidable) -> CollidablePolicy {
-    let same_name: Vec<_> = target
-        .iter()
-        .filter(|item| item.name == source.name)
-        .collect();
-    if same_name.iter().any(|item| colliders_match(item, source)) {
+    if target.iter().any(|item| item.name == source.name) {
         CollidablePolicy::Skip
-    } else if same_name.is_empty() {
-        CollidablePolicy::Import
     } else {
-        CollidablePolicy::Conflict
+        CollidablePolicy::Import
     }
 }
 
@@ -464,7 +450,7 @@ fn reusable_colliders(
             .iter()
             .filter(|target_collider| {
                 !claimed.contains(&target_collider.item_index)
-                    && colliders_match(source_collider, target_collider)
+                    && source_collider.name == target_collider.name
             })
             .collect();
         if matches.len() == 1 {
@@ -474,88 +460,10 @@ fn reusable_colliders(
     }
     result
 }
-fn colliders_match(left: &Collidable, right: &Collidable) -> bool {
-    left.name == right.name
-        && left.class_name == right.class_name
-        && left.enabled == right.enabled
-        && vector_matches(&left.translation, &right.translation)
-        && vector_matches(&left.axis_x, &right.axis_x)
-        && vector_matches(&left.axis_y, &right.axis_y)
-        && vector_matches(&left.axis_z, &right.axis_z)
-        && shapes_match(&left.shape, &right.shape)
-}
-fn shapes_match(left: &CollidableShape, right: &CollidableShape) -> bool {
-    match (left, right) {
-        (
-            CollidableShape::Capsule {
-                start: ls,
-                end: le,
-                radius: lr,
-            },
-            CollidableShape::Capsule {
-                start: rs,
-                end: re,
-                radius: rr,
-            },
-        ) => vector_matches(ls, rs) && vector_matches(le, re) && approx(*lr, *rr),
-        (
-            CollidableShape::Sphere {
-                center: lc,
-                radius: lr,
-            },
-            CollidableShape::Sphere {
-                center: rc,
-                radius: rr,
-            },
-        ) => vector_matches(lc, rc) && approx(*lr, *rr),
-        (
-            CollidableShape::TaperedCapsule {
-                start: ls,
-                end: le,
-                start_radius: lsr,
-                end_radius: ler,
-            },
-            CollidableShape::TaperedCapsule {
-                start: rs,
-                end: re,
-                start_radius: rsr,
-                end_radius: rer,
-            },
-        ) => {
-            vector_matches(ls, rs)
-                && vector_matches(le, re)
-                && approx(*lsr, *rsr)
-                && approx(*ler, *rer)
-        }
-        (CollidableShape::Plane { equation: left }, CollidableShape::Plane { equation: right }) => {
-            vector_matches(left, right)
-        }
-        (
-            CollidableShape::Unknown {
-                class_name: lc,
-                kind: lk,
-            },
-            CollidableShape::Unknown {
-                class_name: rc,
-                kind: rk,
-            },
-        ) => lc == rc && lk == rk,
-        _ => false,
-    }
-}
-fn vector_matches(left: &super::Vector4, right: &super::Vector4) -> bool {
-    approx(left.x, right.x)
-        && approx(left.y, right.y)
-        && approx(left.z, right.z)
-        && approx(left.w, right.w)
-}
 fn validate_rebuild(bytes: Vec<u8>) -> io::Result<Vec<u8>> {
     let rebuilt = BphclDocument::parse(&bytes)?;
     rebuilt.validate_item_graph()?;
     Ok(bytes)
-}
-fn approx(left: f32, right: f32) -> bool {
-    (left - right).abs() <= 0.00001
 }
 fn has_cloth_name(cloths: &[super::Cloth], name: &str) -> bool {
     cloths.iter().any(|cloth| cloth.name == name)
@@ -571,6 +479,7 @@ fn invalid(message: &str) -> io::Error {
 
 #[cfg(test)]
 mod tests {
+    use super::super::CollidableShape;
     use super::*;
 
     #[test]
@@ -608,7 +517,7 @@ mod tests {
     }
 
     #[test]
-    fn standalone_collidable_policy_skips_identical_and_rejects_name_conflicts() {
+    fn standalone_collidable_policy_skips_only_exact_case_sensitive_names() {
         let target = vec![collider("Body", 1.0)];
         assert_eq!(
             collidable_policy(&target, &collider("Body", 1.0)),
@@ -616,20 +525,19 @@ mod tests {
         );
         assert_eq!(
             collidable_policy(&target, &collider("Body", 2.0)),
-            CollidablePolicy::Conflict
+            CollidablePolicy::Skip
         );
         assert_eq!(
             collidable_policy(&target, &collider("Other", 1.0)),
             CollidablePolicy::Import
         );
-        let mut different_radius = collider("Body", 1.0);
-        different_radius.shape = CollidableShape::Sphere {
-            center: Default::default(),
-            radius: 2.0,
-        };
         assert_eq!(
-            collidable_policy(&target, &different_radius),
-            CollidablePolicy::Conflict
+            collidable_policy(&target, &collider("body", 1.0)),
+            CollidablePolicy::Import
+        );
+        assert_eq!(
+            collidable_policy(&target, &collider("Link:Body", 1.0)),
+            CollidablePolicy::Import
         );
     }
 }

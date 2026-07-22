@@ -118,7 +118,9 @@ export const invoke = async (command, args = {}) => {
         || command === 'compare_internal_file_with_vanila'
         || (command === 'mutate_nested_archive' && args?.action === 'compare');
     const sourceDocumentId = activeDocumentId;
-    const parentDocumentId = isChildOpen ? activeDocumentId : null;
+    const parentDocumentId = isChildOpen
+        ? (args?.parentDocumentId || activeDocumentId)
+        : null;
     const comparisonDocumentId = isComparison ? addCleanDocument() : null;
     if (comparisonDocumentId) {
         comparisonSources.set(comparisonDocumentId, sourceDocumentId);

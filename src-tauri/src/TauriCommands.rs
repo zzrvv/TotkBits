@@ -450,8 +450,14 @@ pub fn merge_bphcl_nodes(
             .join("\n")
     };
     let text = format!(
-        "Physics merge completed.\n\nMerged: {}\n{}\n\nSkipped: {}\n{}",
-        result.imported_count, imported, result.skipped_count, skipped
+        "Physics merge completed.\n\nNodes added: {} ({} cloth, {} collidables)\nSelections merged: {}\n{}\n\nSkipped selections: {}\n{}",
+        result.imported_count,
+        result.added_cloth_count,
+        result.added_collidable_count,
+        result.imported_selection_count,
+        imported,
+        result.skipped_count,
+        skipped
     );
     let message: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
     let title: Vec<u16> = "TotkBits - Physics Merge"

@@ -53,6 +53,7 @@ export const EditorProvider = ({ children }) => {
 
   const [isSearchInSarcOpened, setIsSearchInSarcOpened] = useState(false);
   const [searchInSarcQuery, setSearchInSarcQuery] = useState("");
+  const [treeFilterQuery, setTreeFilterQuery] = useState("");
 
   const [config, setConfig] = useState({});
   const [configLoading, setConfigLoading] = useState(false);
@@ -82,7 +83,7 @@ export const EditorProvider = ({ children }) => {
     rightEditorContainerRef, rightEditorRef, rightDocumentId, setRightDocumentId,
     splitRatio, setSplitRatio,
     settings, setSettings,
-    searchInSarcQuery, setSearchInSarcQuery,
+    searchInSarcQuery, setSearchInSarcQuery, treeFilterQuery, setTreeFilterQuery,
     isSearchInSarcOpened, setIsSearchInSarcOpened,
     renamePromptMessage, setRenamePromptMessage,
     isAddPrompt, setIsAddPrompt,

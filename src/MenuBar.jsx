@@ -167,7 +167,9 @@ function MenuBarDisplay({ updateButton = null }) {
   const handleShowAllClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
-    clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery, documentSnapshots);
+    const allPaths = paths.all_paths || paths.paths;
+    setpaths({ ...paths, paths: allPaths, all_paths: allPaths });
+    setStatusText(`Showing all files (${allPaths.length})`);
   }
 
   const handleShowAddedClick = (event) => {
@@ -177,7 +179,8 @@ function MenuBarDisplay({ updateButton = null }) {
     // if (backupPaths.paths.length === 0) {
     //   setBackupPaths(paths);
     // }
-    setpaths({ paths: paths.added_paths, added_paths: paths.added_paths, modded_paths: paths.modded_paths });
+    const allPaths = paths.all_paths || paths.paths;
+    setpaths({ ...paths, paths: paths.added_paths, all_paths: allPaths });
     setStatusText(`Showing only added files (${paths.added_paths.length})`);
   }
 
@@ -187,7 +190,8 @@ function MenuBarDisplay({ updateButton = null }) {
     // if (backupPaths.paths.length === 0) {
     //   setBackupPaths(paths);
     // }
-    setpaths({ paths: paths.modded_paths, added_paths: paths.added_paths, modded_paths: paths.modded_paths });
+    const allPaths = paths.all_paths || paths.paths;
+    setpaths({ ...paths, paths: paths.modded_paths, all_paths: allPaths });
     setStatusText(`Showing only modded files (${paths.modded_paths.length})`);
   }
 
