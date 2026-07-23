@@ -632,7 +632,10 @@ mod tests {
             return;
         }
         let config = Arc::new(TotkConfig::default());
-        let zstd = Arc::new(TotkZstd::dictionaryless(config, 16));
+        let zstd = Arc::new(TotkZstd::dictionaryless(
+            config,
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+        ));
         let mut pack = PackFile::new(&source, zstd).unwrap();
         let destination =
             std::env::temp_dir().join(format!("totkbits-yaz0-save-as-{}.szs", std::process::id()));

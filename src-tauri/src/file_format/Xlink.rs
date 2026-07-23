@@ -182,7 +182,7 @@ mod tests {
         let input = fs::read(path).expect("missing ELink binary fixture");
         let zstd = Arc::new(TotkZstd::dictionaryless(
             Arc::new(TotkConfig::default()),
-            16,
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
         ));
         let converter = Xlink_rs::new(zstd).expect("construct XLink converter");
         let yaml = converter
@@ -203,7 +203,7 @@ mod tests {
         let yaml = fs::read_to_string(path).expect("missing ELink YAML fixture");
         let zstd = Arc::new(TotkZstd::dictionaryless(
             Arc::new(TotkConfig::default()),
-            16,
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
         ));
         let converter = Xlink_rs::new(zstd).expect("construct XLink converter");
         let binary = converter
@@ -227,7 +227,10 @@ mod tests {
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/elink2.Product.110.belnk.zs");
         let mut config = TotkConfig::default();
         config.romfs = romfs.to_string_lossy().into_owned();
-        let zstd = Arc::new(TotkZstd::new(Arc::new(config), 16).expect("load ZSTD dictionaries"));
+        let zstd = Arc::new(
+            TotkZstd::new(Arc::new(config), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL)
+                .expect("load ZSTD dictionaries"),
+        );
         let input = fs::read(fixture).expect("missing compressed ELink fixture");
         let converter = Xlink_rs::new(zstd).expect("construct XLink converter");
         let yaml = converter

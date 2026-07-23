@@ -948,7 +948,7 @@ mod tests {
         let source = fs::read(path).unwrap();
         let codec = crate::Zstd::TotkZstd::dictionaryless(
             std::sync::Arc::new(crate::TotkConfig::TotkConfig::default()),
-            1,
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
         );
         let compressed = codec
             .compress_with_dictionary(&source, crate::Zstd::ZstdDictionary::Empty)

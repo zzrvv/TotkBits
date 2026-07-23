@@ -21,6 +21,8 @@ use std::{env, fs};
 use zstd::dict::{DecoderDictionary, EncoderDictionary};
 use zstd::{stream::Decoder, stream::Encoder};
 
+pub const TOTK_ZSTD_COMPRESSION_LEVEL: i32 = 16;
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum TotkFileType {
     AINB,
@@ -953,7 +955,8 @@ mod yaz0_tests {
 
     #[test]
     fn dictionaryless_codec_roundtrips_empty_dictionary_zstd() {
-        let codec = TotkZstd::dictionaryless(Arc::new(TotkConfig::default()), 16);
+        let codec =
+            TotkZstd::dictionaryless(Arc::new(TotkConfig::default()), TOTK_ZSTD_COMPRESSION_LEVEL);
         let data = b"lightweight CLI compression";
         let compressed = codec.compress_empty(data).unwrap();
         assert_eq!(TotkZstd::decompress_empty(&compressed).unwrap(), data);

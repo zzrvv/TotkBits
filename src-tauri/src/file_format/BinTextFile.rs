@@ -359,7 +359,10 @@ mod bcett_tests {
         }
         let mut config = TotkConfig::default();
         config.romfs = romfs.to_string_lossy().into_owned();
-        let zstd = Arc::new(TotkZstd::new(Arc::new(config), 16).expect("load ZSTD dictionaries"));
+        let zstd = Arc::new(
+            TotkZstd::new(Arc::new(config), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL)
+                .expect("load ZSTD dictionaries"),
+        );
         let file = BymlFile::new(&sample, zstd).expect("open BCETT BYML");
         assert_eq!(file.file_data.compression, Some(ZstdDictionary::Bcett));
     }
@@ -372,7 +375,10 @@ mod bcett_tests {
         }
         let mut config = TotkConfig::default();
         config.romfs = romfs.to_string_lossy().into_owned();
-        let zstd = Arc::new(TotkZstd::new(Arc::new(config), 16).expect("load ZSTD dictionaries"));
+        let zstd = Arc::new(
+            TotkZstd::new(Arc::new(config), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL)
+                .expect("load ZSTD dictionaries"),
+        );
         let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bcett");
         let mut tested = 0;
         for entry in std::fs::read_dir(fixtures).expect("read BCETT fixtures") {

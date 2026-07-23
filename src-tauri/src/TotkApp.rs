@@ -65,18 +65,22 @@ impl Default for TotkBitsApp<'_> {
             ),
         };
         let config = Arc::new(config);
-        let (zstd, initialization_error) = match global_totk_zstd(config.clone(), 16) {
-            Ok(zstd) => (zstd, config_error),
-            Err(error) => {
-                let message = config_error.unwrap_or_else(|| {
-                    format!("Unable to load TOTK Zstandard dictionaries: {error}")
-                });
-                (
-                    Arc::new(TotkZstd::dictionaryless(config, 16)),
-                    Some(message),
-                )
-            }
-        };
+        let (zstd, initialization_error) =
+            match global_totk_zstd(config.clone(), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL) {
+                Ok(zstd) => (zstd, config_error),
+                Err(error) => {
+                    let message = config_error.unwrap_or_else(|| {
+                        format!("Unable to load TOTK Zstandard dictionaries: {error}")
+                    });
+                    (
+                        Arc::new(TotkZstd::dictionaryless(
+                            config,
+                            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+                        )),
+                        Some(message),
+                    )
+                }
+            };
         let status_text = initialization_error
             .as_ref()
             .map(|error| format!("Error: {error}"))

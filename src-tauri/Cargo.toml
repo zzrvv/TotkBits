@@ -13,13 +13,13 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 # zstud-sys = {git = "https://github.com/SolidLink95/zstud-sys-rs"}
 #BymlText
-ryml = "0.3.2"
+ryml = { version = "0.3.2", features = ["std"] }
 miow = "0.6.0"
 # meshcodec_bindings = { path = "../tmp/MeshCodec/bindings" }
 meshcodec_bindings = { git = "https://github.com/SolidLink95/MeshCodec" }
 xlink2_bindings = { git = "https://github.com/SolidLink95/xlink2" }
-roead = { git = "https://github.com/SolidLink95/roead" }
-# roead = { git = "https://github.com/SolidLink95/roead" }
+roead = { git = "https://github.com/SolidLink95/roead", features = ["yaml", "sarc", "byml"] }
+# roead = { git = "https://github.com/SolidLink95/roead", features = ["yaml", "sarc", "byml"] }
 
 regex = "1.10.4"
 # glob = "0.3"

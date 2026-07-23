@@ -116,7 +116,10 @@ impl CliCommand {
 
     fn zstd(&self) -> Result<Arc<crate::Zstd::TotkZstd<'static>>, String> {
         let config = Arc::new(TotkConfig::safe_new(false).map_err(|e| e.to_string())?);
-        Ok(Arc::new(crate::Zstd::TotkZstd::dictionaryless(config, 16)))
+        Ok(Arc::new(crate::Zstd::TotkZstd::dictionaryless(
+            config,
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+        )))
     }
 
     fn bin_to_text(&self) -> Result<(), String> {
