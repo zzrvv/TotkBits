@@ -44,7 +44,10 @@ pub fn get_string_from_data<P: AsRef<Path>>(
             .try_decompress_using(&data, ZstdDictionary::Bcett)
             .ok()?;
         (decoded, Some(ZstdDictionary::Bcett))
-    } else if data.starts_with(b"Yaz0") || lower_path.ends_with(".zs") {
+    } else if data.starts_with(b"Yaz0")
+        || data.starts_with(&[0x28, 0xb5, 0x2f, 0xfd])
+        || lower_path.ends_with(".zs")
+    {
         let (decoded, dictionary) = zstd.try_decompress_with_dictionary(&data).ok()?;
         (decoded, Some(dictionary))
     } else {
@@ -263,7 +266,10 @@ pub fn get_binary_by_filetype(
             rawdata = Xlink_rs::text_to_binary(text, file_path, zstd.clone(), zstd_dictionary)?;
         }
         TotkFileType::Evfl => {
-            rawdata = BfevFile::text_to_binary(text).ok()?;
+            rawdata = match opened_file.bfev.as_ref() {
+                Some(file) => file.save_text(text).ok()?,
+                None => BfevFile::text_to_binary(text).ok()?,
+            };
             if is_zs {
                 rawdata = zstd.compress_zs(&rawdata).ok()?;
             }

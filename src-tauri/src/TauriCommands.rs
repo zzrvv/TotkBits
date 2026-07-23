@@ -531,6 +531,34 @@ fn show_open_error(data: &SendData) {
         .show();
 }
 
+fn report_monaco_save_error(tab: &str, result: &Option<SendData>, report_missing: bool) {
+    if !matches!(tab.to_ascii_uppercase().as_str(), "TEXT" | "YAML") {
+        return;
+    }
+    let message = match result {
+        Some(data)
+            if data.tab != "ERROR"
+                && !data
+                    .status_text
+                    .trim_start()
+                    .to_ascii_lowercase()
+                    .starts_with("error") =>
+        {
+            return;
+        }
+        Some(data) if !data.status_text.trim().is_empty() => data.status_text.clone(),
+        Some(data) if !data.text.trim().is_empty() => data.text.clone(),
+        None if !report_missing => return,
+        _ => format!("Failed to save the {tab} document. No error details were returned."),
+    };
+    MessageDialog::new()
+        .set_title("TotkBits - Save error")
+        .set_description(message)
+        .set_level(rfd::MessageLevel::Error)
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
+}
+
 macro_rules! with_document_mut {
     ($handle:expr, $id:expr, $app:ident, $body:expr) => {{
         let documents = $handle.state::<DocumentState>();
@@ -883,7 +911,11 @@ pub fn save_as_click(
     documentId: String,
     save_data: SaveData,
 ) -> Option<SendData> {
-    with_document_mut!(app_handle, documentId, app, app.save_as(save_data))
+    let tab = save_data.tab.clone();
+    let result = with_document_mut!(app_handle, documentId, app, app.save_as(save_data));
+    // `None` also represents the user cancelling the Save As dialog.
+    report_monaco_save_error(&tab, &result, false);
+    result
 }
 
 #[tauri::command]
@@ -1019,9 +1051,12 @@ pub fn save_file_struct(
     documentId: String,
     save_data: SaveData,
 ) -> Option<SendData> {
-    app_handle
+    let tab = save_data.tab.clone();
+    let result = app_handle
         .state::<DocumentState>()
-        .save_document(&documentId, save_data)
+        .save_document(&documentId, save_data);
+    report_monaco_save_error(&tab, &result, true);
+    result
 }
 #[tauri::command]
 pub fn rename_internal_sarc_file(
