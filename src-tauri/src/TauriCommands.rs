@@ -868,14 +868,12 @@ pub fn update_toml_config(
 ) -> Result<SendData, String> {
     let mut config = with_document!(app_handle, documentId, app, (*app.zstd.totk_config).clone());
     config.update_from_json_data(new_config);
-    let dictionaries_available = crate::TotkConfig::TotkConfig::check_for_zsdic(&config.romfs);
     config.save().map_err(|e| e.to_string())?;
+    let status_text = app_handle
+        .state::<DocumentState>()
+        .update_runtime_config(config);
     let mut data = SendData::default();
-    data.status_text = if dictionaries_available {
-        "ZSTD available. Restart to apply backend configuration changes.".to_string()
-    } else {
-        "Settings saved. Restart to use empty-dictionary ZSTD and Yaz0 only.".to_string()
-    };
+    data.status_text = status_text;
     Ok(data)
 }
 

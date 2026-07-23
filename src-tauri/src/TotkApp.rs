@@ -12,7 +12,7 @@ use crate::Open_and_Save::{
 };
 use crate::Settings::{list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{global_totk_zstd, TotkFileType, TotkZstd, ZstdDictionary};
+use crate::Zstd::{TotkFileType, TotkZstd, ZstdDictionary};
 use rfd::{FileDialog, MessageDialog};
 use roead::byml::Byml;
 use serde::{Deserialize, Serialize};
@@ -66,8 +66,8 @@ impl Default for TotkBitsApp<'_> {
         };
         let config = Arc::new(config);
         let (zstd, initialization_error) =
-            match global_totk_zstd(config.clone(), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL) {
-                Ok(zstd) => (zstd, config_error),
+            match TotkZstd::new(config.clone(), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL) {
+                Ok(zstd) => (Arc::new(zstd), config_error),
                 Err(error) => {
                     let message = config_error.unwrap_or_else(|| {
                         format!("Unable to load TOTK Zstandard dictionaries: {error}")

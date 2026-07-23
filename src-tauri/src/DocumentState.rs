@@ -4,8 +4,10 @@ use std::{collections::HashMap, sync::Mutex};
 use crate::{
     Open_and_Save::SendData,
     TotkApp::{SaveData, TotkBitsApp},
-    Zstd::TotkFileType,
+    TotkConfig::TotkConfig,
+    Zstd::{TotkFileType, TotkZstd, TOTK_ZSTD_COMPRESSION_LEVEL},
 };
+use std::sync::Arc;
 
 #[derive(Default)]
 pub struct DocumentState {
@@ -153,6 +155,53 @@ pub struct PhysicsDocumentUpdateResult {
 }
 
 impl DocumentState {
+    pub fn update_runtime_config(&self, config: TotkConfig) -> String {
+        let config = Arc::new(config);
+        let (zstd, status) = match TotkZstd::new(config.clone(), TOTK_ZSTD_COMPRESSION_LEVEL) {
+            Ok(zstd) => (
+                Arc::new(zstd),
+                "Settings saved and applied. ZSTD dictionaries are available.".to_string(),
+            ),
+            Err(error) => (
+                Arc::new(TotkZstd::dictionaryless(
+                    config,
+                    TOTK_ZSTD_COMPRESSION_LEVEL,
+                )),
+                format!(
+                    "Settings saved and applied. Dictionary-backed ZSTD is unavailable: {error}"
+                ),
+            ),
+        };
+        let mut documents = self.documents();
+        for app in documents.values_mut() {
+            app.zstd = zstd.clone();
+            if let Some(pack) = &mut app.pack {
+                pack.set_zstd(zstd.clone());
+            }
+            if let Some(byml) = &mut app.opened_file.byml {
+                byml.zstd = zstd.clone();
+            }
+            if let Some(tag) = &mut app.opened_file.tag {
+                tag.byml.zstd = zstd.clone();
+            }
+            if let Some(restbl) = &mut app.opened_file.restbl {
+                restbl.zstd = zstd.clone();
+            }
+            if let Some(esetb) = &mut app.opened_file.esetb {
+                esetb.byml.zstd = zstd.clone();
+            }
+            if let Some(internal) = &mut app.internal_file {
+                if let Some(byml) = &mut internal.byml {
+                    byml.zstd = zstd.clone();
+                }
+                if let Some(esetb) = &mut internal.esetb {
+                    esetb.byml.zstd = zstd.clone();
+                }
+            }
+        }
+        status
+    }
+
     pub fn commit_rebuilt_physics_document(
         &self,
         request: RebuiltPhysicsDocument,

@@ -41,6 +41,16 @@ pub struct PackComparer<'a> {
 
 #[allow(dead_code)]
 impl<'a> PackComparer<'a> {
+    pub fn set_zstd(&mut self, zstd: Arc<TotkZstd<'a>>) {
+        self.zstd = zstd.clone();
+        if let Some(opened) = &mut self.opened {
+            opened.zstd = zstd.clone();
+        }
+        if let Some(vanila) = &mut self.vanila {
+            vanila.zstd = zstd;
+        }
+    }
+
     pub fn open_sarc<P: AsRef<Path>>(
         path: P,
         zstd: Arc<TotkZstd<'a>>,

@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import * as monaco from "monaco-editor";
 import { invoke } from './DocumentState';
 import { useEditorContext } from "./StateManager";
 
@@ -21,6 +22,7 @@ function OptionsEditor() {
     const {
         settings, setSettings, setStatusText, setIsOptionsOpen, setConfig,
         setConfigLoading, isOptionsOpen, config, configLoading, setIsModalOpen,
+        editorRef, rightEditorRef,
     } = useEditorContext();
 
     useEffect(() => {
@@ -63,8 +65,17 @@ function OptionsEditor() {
                 contextMenuFontSize: config["Context menu font size"],
                 theme: config["Text editor theme"],
                 minimap: config["Text editor minimap"],
-                zstd_msg: content?.status_text?.startsWith("ZSTD available") ? "" : current.zstd_msg,
+                zstd_msg: content?.status_text?.includes("dictionaries are available")
+                    ? ""
+                    : content?.status_text || current.zstd_msg,
             }));
+            monaco.editor.setTheme(config["Text editor theme"]);
+            const editorOptions = {
+                fontSize: config["font size"],
+                minimap: { enabled: config["Text editor minimap"] },
+            };
+            editorRef.current?.updateOptions(editorOptions);
+            rightEditorRef.current?.updateOptions(editorOptions);
             setIsOptionsOpen(false);
             setIsModalOpen(false);
             setStatusText(content?.status_text || "Settings saved");

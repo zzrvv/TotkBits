@@ -13,7 +13,7 @@ use zstd::zstd_safe::zstd_sys::{
 use std::collections::HashMap;
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
 //use zstd::zstd_safe::CompressionLevel;
 use std::io::{self, Read, Write};
@@ -200,19 +200,6 @@ impl Drop for ZstdCppCompressor {
             }
         }
     }
-}
-
-static TOTK_ZSTD: OnceLock<Arc<TotkZstd<'static>>> = OnceLock::new();
-
-pub fn global_totk_zstd(
-    config: Arc<TotkConfig>,
-    comp_level: i32,
-) -> io::Result<Arc<TotkZstd<'static>>> {
-    if let Some(zstd) = TOTK_ZSTD.get() {
-        return Ok(zstd.clone());
-    }
-    let zstd = Arc::new(TotkZstd::new(config, comp_level)?);
-    Ok(TOTK_ZSTD.get_or_init(|| zstd).clone())
 }
 
 pub struct TotkZstd<'a> {
