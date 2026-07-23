@@ -7,8 +7,9 @@
 mod material;
 mod skeleton;
 
+use rfd::{FileDialog, MessageDialog};
 use serde::Serialize;
-use std::{fmt, fs, path::Path};
+use std::{fmt, fs, io, path::Path};
 
 const SECTION_SIGNATURES: &[&[u8; 4]] = &[
     b"FMDL", b"FSKL", b"FVTX", b"FSHP", b"FMAT", b"FSKA", b"FSHU", b"FSHA", b"FSCN", b"FTXP",
@@ -120,6 +121,72 @@ impl fmt::Display for BfresError {
 impl std::error::Error for BfresError {}
 
 impl BfresFile {
+    /// Standalone BFRES save path for the currently read-only viewer.
+    ///
+    /// BFRES editing/serialization is not implemented yet. Once it is, both
+    /// Save and Save As should call this function with newly serialized raw
+    /// BFRES bytes.
+    #[allow(dead_code)]
+    pub fn save_bfres_version_10<P: AsRef<Path>>(
+        source_path: P,
+        bfres: &Self,
+        serialized_bfres: &[u8],
+        zstd: &crate::Zstd::TotkZstd<'_>,
+    ) -> io::Result<Option<std::path::PathBuf>> {
+        if bfres.header.version[2] != 10 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "MCPK save prompt is only available for BFRES version 10",
+            ));
+        }
+        if !serialized_bfres.starts_with(b"FRES") {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "BFRES serializer did not produce a raw FRES file",
+            ));
+        }
+
+        let compress = MessageDialog::new()
+            .set_title("BFRES version 10 compression")
+            .set_description("Compress this BFRES with MCPK?")
+            .set_level(rfd::MessageLevel::Info)
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .show()
+            == rfd::MessageDialogResult::Yes;
+
+        let source_path = source_path.as_ref();
+        let original_name = source_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("model.bfres");
+        let raw_name = original_name.strip_suffix(".mc").unwrap_or(original_name);
+        let suggested_name = if compress {
+            format!("{raw_name}.mc")
+        } else {
+            raw_name.to_owned()
+        };
+
+        let mut dialog = FileDialog::new()
+            .set_title("Save BFRES")
+            .set_file_name(suggested_name);
+        dialog = if compress {
+            dialog.add_filter("MeshCodec BFRES", &["bfres.mc", "mc"])
+        } else {
+            dialog.add_filter("BFRES", &["bfres"])
+        };
+        let Some(destination) = dialog.save_file() else {
+            return Ok(None);
+        };
+
+        let output = if compress {
+            zstd.compress_mcpk(serialized_bfres)?
+        } else {
+            serialized_bfres.to_vec()
+        };
+        fs::write(&destination, output)?;
+        Ok(Some(destination))
+    }
+
     pub fn open(
         path: &std::path::Path,
     ) -> Option<(

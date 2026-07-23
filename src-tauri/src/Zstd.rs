@@ -227,6 +227,10 @@ pub fn is_zstd(data: &[u8]) -> bool {
 }
 
 impl<'a> TotkZstd<'_> {
+    pub fn compress_mcpk(&self, data: &[u8]) -> io::Result<Vec<u8>> {
+        crate::compression::meshcodec::MeshCodec::compress(data)
+    }
+
     pub fn decompress_empty(data: &[u8]) -> io::Result<Vec<u8>> {
         if !is_zstd(data) {
             return Err(io::Error::new(
