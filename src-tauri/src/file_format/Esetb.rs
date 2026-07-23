@@ -165,10 +165,7 @@ impl<'a> Esetb<'a> {
 
     pub fn text_to_binary(&mut self, text: &str) -> io::Result<Vec<u8>> {
         self.update_from_text(text)?;
-        Ok(self
-            .byml
-            .pio
-            .to_binary(self.byml.endian.unwrap_or(roead::Endian::Little)))
+        Ok(self.to_binary())
     }
 
     pub fn save_from_text(&mut self, path: &str, text: &str) -> io::Result<()> {
@@ -184,9 +181,46 @@ pub(crate) fn serialize_preserving_original(
     original: &[u8],
     endian: roead::Endian,
 ) -> Vec<u8> {
-    if Byml::from_binary(original).is_ok_and(|original_pio| original_pio == *pio) {
-        original.to_vec()
-    } else {
-        pio.to_binary(endian)
+    if let Ok(mut original_pio) = Byml::from_binary(original) {
+        if original_pio == *pio {
+            return original.to_vec();
+        }
+
+        let replacement = pio
+            .as_map()
+            .ok()
+            .and_then(|map| match map.get(PTCL_BIN_KEY) {
+                Some(Byml::FileData(data)) => Some(data),
+                _ => None,
+            });
+        let original_ptcl =
+            original_pio
+                .as_mut_map()
+                .ok()
+                .and_then(|map| match map.remove(PTCL_BIN_KEY) {
+                    Some(Byml::FileData(data)) => Some(data),
+                    _ => None,
+                });
+        let mut without_ptcl = pio.clone();
+        if let Ok(map) = without_ptcl.as_mut_map() {
+            map.remove(PTCL_BIN_KEY);
+        }
+
+        if original_pio == without_ptcl {
+            if let (Some(original_ptcl), Some(replacement)) = (original_ptcl, replacement) {
+                if original_ptcl.len() == replacement.len() {
+                    let mut matches = original
+                        .windows(original_ptcl.len())
+                        .enumerate()
+                        .filter_map(|(offset, bytes)| (bytes == original_ptcl).then_some(offset));
+                    if let (Some(offset), None) = (matches.next(), matches.next()) {
+                        let mut patched = original.to_vec();
+                        patched[offset..offset + replacement.len()].copy_from_slice(replacement);
+                        return patched;
+                    }
+                }
+            }
+        }
     }
+    pio.to_binary(endian)
 }

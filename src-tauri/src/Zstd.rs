@@ -816,7 +816,7 @@ pub fn get_executable_dir() -> String {
 
 #[cfg(test)]
 mod yaz0_tests {
-    use super::{sha256, TotkZstd};
+    use super::{sha256, TotkZstd, TOTK_ZSTD_COMPRESSION_LEVEL};
     use crate::TotkConfig::TotkConfig;
     use std::path::Path;
     use std::sync::Arc;

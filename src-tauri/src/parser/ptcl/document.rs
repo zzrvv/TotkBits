@@ -91,13 +91,15 @@ impl Ptcl {
         let mut output = self.original_data.clone();
         for (set_name, emitters) in &changes.0 {
             for (emitter_name, emitter) in emitters {
-                if self
+                let Some(original) = self
                     .document
                     .0
                     .get(set_name)
                     .and_then(|original| original.get(emitter_name))
-                    == Some(emitter)
-                {
+                else {
+                    continue;
+                };
+                if original == emitter {
                     continue;
                 }
                 let Some(location) = self
@@ -107,7 +109,7 @@ impl Ptcl {
                     continue;
                 };
                 let _section = location.section;
-                write_emitter(&mut output, location.data, emitter)?;
+                write_emitter(&mut output, location.data, original, emitter)?;
             }
         }
         Ok(output)
@@ -180,12 +182,13 @@ where
 }
 
 fn read_emitter(data: &[u8], base: usize) -> io::Result<Emitter> {
-    let counts = read_u32x4(data, base + 0x80)?;
+    let counts = read_u32x6(data, base + 0x80)?;
     let mut animation = base + 0x680;
-    let color_anim0 = read_animation(data, &mut animation, counts[0])?;
-    let alpha_anim0 = read_animation(data, &mut animation, counts[1])?;
-    let color_anim1 = read_animation(data, &mut animation, counts[2])?;
-    let alpha_anim1 = read_animation(data, &mut animation, counts[3])?;
+    let color_anim0 = read_animation(data, &mut animation, counts[0], 1)?;
+    let alpha_anim0 = read_animation(data, &mut animation, counts[1], 1)?;
+    let color_anim1 = read_animation(data, &mut animation, counts[2], 1)?;
+    let alpha_anim1 = read_animation(data, &mut animation, counts[3], 1)?;
+    let scale_anim = read_animation(data, &mut animation, counts[5], 4)?;
     Ok(Emitter {
         const_color0: read_f32x4(data, base + 0xf48)?,
         const_color1: read_f32x4(data, base + 0xf58)?,
@@ -193,11 +196,19 @@ fn read_emitter(data: &[u8], base: usize) -> io::Result<Emitter> {
         color_anim1,
         alpha_anim0,
         alpha_anim1,
+        scale_anim,
     })
 }
 
-fn read_animation(data: &[u8], offset: &mut usize, count: u32) -> io::Result<Vec<AnimKeyFrame>> {
-    let count = if count > 8 { 8 } else { count + 1 } as usize;
+fn read_animation(
+    data: &[u8],
+    offset: &mut usize,
+    count: u32,
+    base_count: usize,
+) -> io::Result<Vec<AnimKeyFrame>> {
+    let count = (count as usize)
+        .saturating_add(base_count)
+        .min(ANIMATION_SLOT_SIZE / 16);
     let mut frames = Vec::with_capacity(count);
     for index in 0..count {
         let values = read_f32x4(data, *offset + index * 16)?;
@@ -212,26 +223,41 @@ fn read_animation(data: &[u8], offset: &mut usize, count: u32) -> io::Result<Vec
     Ok(frames)
 }
 
-fn write_emitter(data: &mut [u8], base: usize, emitter: &Emitter) -> io::Result<()> {
-    write_f32x4(data, base + 0xf48, emitter.const_color0)?;
-    write_f32x4(data, base + 0xf58, emitter.const_color1)?;
-    let counts = [
-        emitter.color_anim0.len().saturating_sub(1).min(8) as u32,
-        emitter.alpha_anim0.len().saturating_sub(1).min(8) as u32,
-        emitter.color_anim1.len().saturating_sub(1).min(8) as u32,
-        emitter.alpha_anim1.len().saturating_sub(1).min(8) as u32,
-    ];
-    for (index, value) in counts.into_iter().enumerate() {
-        write_bytes(data, base + 0x80 + index * 4, &value.to_le_bytes())?;
+fn write_emitter(
+    data: &mut [u8],
+    base: usize,
+    original: &Emitter,
+    emitter: &Emitter,
+) -> io::Result<()> {
+    if emitter.const_color0 != original.const_color0 {
+        write_f32x4(data, base + 0xf48, emitter.const_color0)?;
     }
+    if emitter.const_color1 != original.const_color1 {
+        write_f32x4(data, base + 0xf58, emitter.const_color1)?;
+    }
+    let animations = [
+        (&original.color_anim0, &emitter.color_anim0, 1, 0),
+        (&original.alpha_anim0, &emitter.alpha_anim0, 1, 1),
+        (&original.color_anim1, &emitter.color_anim1, 1, 2),
+        (&original.alpha_anim1, &emitter.alpha_anim1, 1, 3),
+        (&original.scale_anim, &emitter.scale_anim, 4, 5),
+    ];
     let mut animation = base + 0x680;
-    for frames in [
-        &emitter.color_anim0,
-        &emitter.alpha_anim0,
-        &emitter.color_anim1,
-        &emitter.alpha_anim1,
-    ] {
-        for (index, frame) in frames.iter().take(8).enumerate() {
+    for (original_frames, frames, minimum, count_index) in animations {
+        if original_frames == frames {
+            animation += ANIMATION_SLOT_SIZE;
+            continue;
+        }
+        if !(minimum..=8).contains(&frames.len()) {
+            return Err(invalid(&format!(
+                "animation must contain {minimum} to 8 keyframes, found {}",
+                frames.len()
+            )));
+        }
+        let count = (frames.len() - minimum) as u32;
+        write_bytes(data, base + 0x80 + count_index * 4, &count.to_le_bytes())?;
+        write_bytes(data, animation, &[0; ANIMATION_SLOT_SIZE])?;
+        for (index, frame) in frames.iter().enumerate() {
             let at = animation + index * 16;
             for (component, value) in frame
                 .value
@@ -262,10 +288,12 @@ fn read_string(data: &[u8], offset: usize, max_len: usize) -> io::Result<String>
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
-fn read_u32x4(data: &[u8], offset: usize) -> io::Result<[u32; 4]> {
+fn read_u32x6(data: &[u8], offset: usize) -> io::Result<[u32; 6]> {
     let mut reader = BinaryReader::new(data);
     reader.seek(offset)?;
     Ok([
+        reader.read_u32()?,
+        reader.read_u32()?,
         reader.read_u32()?,
         reader.read_u32()?,
         reader.read_u32()?,
@@ -314,6 +342,175 @@ mod tests {
     use std::{fs, path::PathBuf};
 
     #[test]
+    fn saved_player_beam_contains_valid_ptcl() {
+        let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repository root")
+            .join("tmp/Effect");
+        let clean_data =
+            fs::read(directory.join("PlayerBeam.Nin_NX_NVN.esetb.byml")).expect("clean ESETB");
+        let compressed =
+            fs::read(directory.join("PlayerBeam.Nin_NX_NVN.esetb.byml.zs")).expect("saved ESETB");
+        let config = crate::TotkConfig::TotkConfig::new(false).expect("TotkBits config");
+        let zstd = crate::Zstd::TotkZstd::new(
+            std::sync::Arc::new(config),
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+        )
+        .expect("TotK Zstandard dictionaries");
+        let saved_data = zstd
+            .decompress_zs(&compressed)
+            .expect("saved Zstandard stream");
+        let clean = Byml::from_binary(&clean_data).expect("clean BYML");
+        let saved = Byml::from_binary(&saved_data).expect("saved BYML");
+        fn ptcl_bin(byml: &Byml) -> &Vec<u8> {
+            byml.as_map()
+                .expect("ESETB root map")
+                .get("PtclBin")
+                .and_then(|value| match value {
+                    Byml::FileData(data) => Some(data),
+                    _ => None,
+                })
+                .expect("PtclBin")
+        }
+        let clean_ptcl = ptcl_bin(&clean);
+        let saved_ptcl = ptcl_bin(&saved);
+        let clean_parsed = Ptcl::parse(clean_ptcl).expect("clean PTCL");
+        let saved_parsed = Ptcl::parse(saved_ptcl).expect("saved PTCL");
+        eprintln!(
+            "BYML lengths clean={} saved={}; PTCL lengths clean={} saved={}; PTCL differing bytes={}",
+            clean_data.len(),
+            saved_data.len(),
+            clean_ptcl.len(),
+            saved_ptcl.len(),
+            clean_ptcl
+                .iter()
+                .zip(saved_ptcl)
+                .filter(|(left, right)| left != right)
+                .count()
+        );
+        let mut changed_emitters = 0;
+        for (set_name, clean_emitters) in &clean_parsed.document.0 {
+            for (emitter_name, clean_emitter) in clean_emitters {
+                let saved_emitter = &saved_parsed.document.0[set_name][emitter_name];
+                if clean_emitter != saved_emitter {
+                    changed_emitters += 1;
+                    eprintln!(
+                        "changed {set_name}/{emitter_name}: color0 {:?} -> {:?}; color1 {:?} -> {:?}; animations_changed={}",
+                        clean_emitter.const_color0,
+                        saved_emitter.const_color0,
+                        clean_emitter.const_color1,
+                        saved_emitter.const_color1,
+                        clean_emitter.color_anim0 != saved_emitter.color_anim0
+                            || clean_emitter.alpha_anim0 != saved_emitter.alpha_anim0
+                            || clean_emitter.color_anim1 != saved_emitter.color_anim1
+                            || clean_emitter.alpha_anim1 != saved_emitter.alpha_anim1
+                            || clean_emitter.scale_anim != saved_emitter.scale_anim
+                    );
+                    assert_eq!(set_name, "Obj_MasterBeam");
+                    assert_eq!(emitter_name, "Glow");
+                    assert_eq!(clean_emitter.color_anim0, saved_emitter.color_anim0);
+                    assert_eq!(clean_emitter.alpha_anim0, saved_emitter.alpha_anim0);
+                    assert_eq!(clean_emitter.color_anim1, saved_emitter.color_anim1);
+                    assert_eq!(clean_emitter.alpha_anim1, saved_emitter.alpha_anim1);
+                    assert_eq!(clean_emitter.scale_anim, saved_emitter.scale_anim);
+                }
+            }
+        }
+        assert_eq!(changed_emitters, 1);
+
+        let repaired = crate::file_format::Esetb::serialize_preserving_original(
+            &saved,
+            &clean_data,
+            roead::Endian::Little,
+        );
+        assert_eq!(repaired.len(), clean_data.len());
+        let repaired_byml = Byml::from_binary(&repaired).expect("repaired BYML");
+        assert_eq!(ptcl_bin(&repaired_byml), saved_ptcl);
+        let recompressed = zstd
+            .compress_zs(&repaired)
+            .expect("recompress repaired ESETB");
+        assert_eq!(
+            zstd.decompress_zs(&recompressed)
+                .expect("decompress repaired ESETB"),
+            repaired
+        );
+    }
+
+    #[test]
+    fn const_colors_edit_only_their_own_binary_fields() {
+        let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("repository root")
+            .join("tmp/Effect");
+        let mut tested_emitters = 0;
+
+        for entry in fs::read_dir(directory).expect("Effect samples directory") {
+            let path = entry.expect("Effect sample").path();
+            if !path.is_file() || !path.to_string_lossy().ends_with(".esetb.byml") {
+                continue;
+            }
+            let byml = Byml::from_binary(&fs::read(&path).expect("Effect sample data"))
+                .unwrap_or_else(|error| panic!("{}: invalid BYML: {error}", path.display()));
+            let ptcl_data = byml
+                .as_map()
+                .expect("ESETB root map")
+                .get("PtclBin")
+                .and_then(|value| match value {
+                    Byml::FileData(data) => Some(data),
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("{}: missing PtclBin", path.display()));
+            let ptcl = Ptcl::parse(ptcl_data)
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+
+            for ((set_name, emitter_name), location) in &ptcl.locations {
+                for (field_offset, replacement, color_index) in [
+                    (0xf48, [0.125, 0.25, 0.5, 1.0], 0),
+                    (0xf58, [1.0, 0.5, 0.25, 0.125], 1),
+                ] {
+                    let mut edited = ptcl.document.clone();
+                    let emitter = edited
+                        .0
+                        .get_mut(set_name)
+                        .and_then(|emitters| emitters.get_mut(emitter_name))
+                        .expect("located emitter");
+                    if color_index == 0 {
+                        emitter.const_color0 = replacement;
+                    } else {
+                        emitter.const_color1 = replacement;
+                    }
+
+                    let actual = ptcl.apply_document(&edited).unwrap_or_else(|error| {
+                        panic!("{}: failed to edit const color: {error}", path.display())
+                    });
+                    let mut expected = ptcl_data.clone();
+                    write_f32x4(&mut expected, location.data + field_offset, replacement).unwrap();
+                    assert_eq!(
+                        actual,
+                        expected,
+                        "{}: const_color{color_index} modified unrelated PTCL bytes",
+                        path.display()
+                    );
+                    let reparsed = Ptcl::parse(&actual).unwrap_or_else(|error| {
+                        panic!(
+                            "{}: const color edit corrupted PTCL: {error}",
+                            path.display()
+                        )
+                    });
+                    assert_eq!(
+                        reparsed.document,
+                        edited,
+                        "{}: const_color{color_index} did not round trip",
+                        path.display()
+                    );
+                }
+                tested_emitters += 1;
+            }
+        }
+        assert!(tested_emitters > 0, "no emitters were tested");
+    }
+
+    #[test]
     fn parses_and_losslessly_reapplies_all_effect_samples() {
         let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -323,7 +520,7 @@ mod tests {
             .expect("Effect samples directory")
             .filter_map(Result::ok)
             .map(|entry| entry.path())
-            .filter(|path| path.is_file())
+            .filter(|path| path.is_file() && path.to_string_lossy().ends_with(".esetb.byml"))
             .collect();
         paths.sort();
         assert!(!paths.is_empty(), "no Effect samples found");
@@ -369,6 +566,29 @@ mod tests {
                     .find_map(|emitters| emitters.values_mut().next())
                 {
                     emitter.const_color0[0] += 0.125;
+                    for frames in [
+                        &mut emitter.color_anim0,
+                        &mut emitter.alpha_anim0,
+                        &mut emitter.color_anim1,
+                        &mut emitter.alpha_anim1,
+                    ] {
+                        frames[0].value[0] += 0.125;
+                        if frames.len() < 8 {
+                            let mut added = frames.last().unwrap().clone();
+                            added.keyframe += 1.0;
+                            frames.push(added);
+                        } else {
+                            frames.pop();
+                        }
+                    }
+                    emitter.scale_anim[0].value[0] += 0.125;
+                    if emitter.scale_anim.len() < 8 {
+                        let mut added = emitter.scale_anim.last().unwrap().clone();
+                        added.keyframe += 1.0;
+                        emitter.scale_anim.push(added);
+                    } else {
+                        emitter.scale_anim.pop();
+                    }
                     let edited_binary = ptcl.apply_document(&edited).unwrap_or_else(|error| {
                         panic!("{}: failed to apply edit: {error}", path.display())
                     });
@@ -404,7 +624,7 @@ mod tests {
             .expect("Effect samples directory")
             .filter_map(Result::ok)
             .map(|entry| entry.path())
-            .filter(|path| path.is_file())
+            .filter(|path| path.is_file() && path.to_string_lossy().ends_with(".esetb.byml"))
             .collect();
         paths.sort();
         assert!(!paths.is_empty(), "no Effect samples found");

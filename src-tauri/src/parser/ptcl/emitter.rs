@@ -9,6 +9,7 @@ pub struct Emitter {
     pub color_anim1: Vec<AnimKeyFrame>,
     pub alpha_anim0: Vec<AnimKeyFrame>,
     pub alpha_anim1: Vec<AnimKeyFrame>,
+    pub scale_anim: Vec<AnimKeyFrame>,
 }
 
 #[derive(Clone, Debug)]
