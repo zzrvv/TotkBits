@@ -38,17 +38,8 @@ pub fn get_string_from_data<P: AsRef<Path>>(
     zstd: Arc<TotkZstd>,
 ) -> Option<(InternalFile, String)> {
     let path = filepath.as_ref().to_string_lossy().into_owned();
-    let lower_path = path.to_ascii_lowercase();
-    let (data, dictionary) = if is_banc_path(&path) {
-        let decoded = zstd
-            .try_decompress_using(&data, ZstdDictionary::Bcett)
-            .ok()?;
-        (decoded, Some(ZstdDictionary::Bcett))
-    } else if data.starts_with(b"Yaz0")
-        || data.starts_with(&[0x28, 0xb5, 0x2f, 0xfd])
-        || lower_path.ends_with(".zs")
-    {
-        let (decoded, dictionary) = zstd.try_decompress_with_dictionary(&data).ok()?;
+    let (data, dictionary) = if data.starts_with(b"Yaz0") || crate::Zstd::is_zstd(&data) {
+        let (decoded, dictionary) = zstd.try_decompress_for_path(&path, &data).ok()?;
         (decoded, Some(dictionary))
     } else {
         (data, None)
@@ -602,6 +593,87 @@ impl SendData {
     }
 }
 
+pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
+    path: P,
+    zstd: Arc<TotkZstd>,
+) -> Option<(OpenedFile, SendData)> {
+    let path = path.as_ref();
+    let file_name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
+    let uncompressed_name = file_name.strip_suffix(".zs").unwrap_or(&file_name);
+
+    let result = if file_name.starts_with("tag.product") {
+        TagProduct::open_tag(path, zstd)
+    } else if file_name.ends_with(".belnk") || file_name.ends_with(".belnk.zs") {
+        Xlink_rs::open_xlink(path, zstd)
+    } else if file_name.ends_with(".esetb.byml") || file_name.ends_with(".esetb.byml.zs") {
+        Esetb::open_esetb(path, zstd)
+    } else if uncompressed_name.ends_with(".rsizetable")
+        || uncompressed_name.ends_with(".restbl")
+        || uncompressed_name.ends_with(".rstb")
+        || uncompressed_name.ends_with(".rsizetable")
+        || uncompressed_name.ends_with(".rstbl.byml")
+    {
+        Restbl::open_restbl(path, zstd)
+    } else if uncompressed_name.ends_with(".asb") {
+        AsbFile::open_asb(path, zstd)
+    } else if uncompressed_name.ends_with(".ainb") {
+        AinbFile::open_ainb(path, zstd)
+    } else if uncompressed_name.ends_with(".bfevfl") {
+        BfevFile::open_bfev(path, zstd)
+    } else if uncompressed_name.ends_with(".msbt") || uncompressed_name.ends_with(".msyt") {
+        MsbtFile::open_mstb(path)
+    } else if uncompressed_name.ends_with(".bphcl") {
+        crate::file_format::bphcl::BphclFile::open(path)
+    } else if uncompressed_name.ends_with(".hkcl") {
+        crate::file_format::hkcl::HkclFile::open(path)
+    } else if uncompressed_name.ends_with(".bphhb") {
+        crate::file_format::bphhb::BphhbFile::open(path)
+    } else if uncompressed_name.ends_with(".bfres") || file_name.ends_with(".bfres.mc") {
+        crate::file_format::Model3D::bfres::BfresFile::open(path)
+    } else if uncompressed_name.ends_with(".fbx") {
+        crate::parser::fbx::FbxFile::open(path)
+    } else if uncompressed_name.ends_with(".bntx")
+        || uncompressed_name.ends_with(".dds")
+        || uncompressed_name.ends_with(".png")
+        || uncompressed_name.ends_with(".jpg")
+        || uncompressed_name.ends_with(".jpeg")
+        || uncompressed_name.ends_with(".tga")
+        || uncompressed_name.ends_with(".bmp")
+    {
+        crate::file_format::Image::ImageDocument::open(path, &zstd)
+    } else if uncompressed_name.ends_with(".baamp")
+        || uncompressed_name.ends_with(".bparam")
+        || uncompressed_name.ends_with(".aamp")
+    {
+        crate::file_format::SimpleOpeners::AampFile::open_aamp(path)
+    } else if uncompressed_name.ends_with(".byml")
+        || uncompressed_name.ends_with(".bgyml")
+        || uncompressed_name.ends_with(".sbyml")
+        || uncompressed_name.starts_with("gamedatalist")
+    {
+        BymlFile::open_byml(path, zstd)
+    } else if uncompressed_name.ends_with(".yaml")
+        || uncompressed_name.ends_with(".yml")
+        || uncompressed_name.ends_with(".json")
+        || uncompressed_name.ends_with(".txt")
+    {
+        crate::file_format::SimpleOpeners::TextFile::open_text(path)
+    } else {
+        None
+    };
+
+    if let Some((opened_file, _)) = &result {
+        println!(
+            "[GUESS] [OPEN] {} type: {:?}",
+            opened_file.path.full_path, opened_file.file_type
+        );
+    } else {
+        println!("[GUESS] [OPEN] FAILED TO OPEN {}", path.display());
+    }
+
+    result
+}
+
 pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     path: P,
     zstd: Arc<TotkZstd>,
@@ -611,7 +683,8 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
         "[OPEN ROUTER] beginning disk opener chain for {} (RSTB follows Xlink, TagProduct, and Esetb)",
         file_name.display()
     );
-    Xlink_rs::open_xlink(file_name, zstd.clone())
+    open_file_from_disk_name_guess(file_name, zstd.clone())
+        .or_else(|| Xlink_rs::open_xlink(file_name, zstd.clone()))
         // .or_else(|| GameDataList::open(&file_name, zstd.clone()))
         .or_else(|| TagProduct::open_tag(&file_name, zstd.clone()))
         .or_else(|| Esetb::open_esetb(&file_name, zstd.clone()))
@@ -620,30 +693,12 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
         .or_else(|| AinbFile::open_ainb(&file_name, zstd.clone()))
         .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
         .or_else(|| MsbtFile::open_mstb(file_name))
-        .or_else(|| {
-            // Experimental 3D viewers are intentionally disabled in release builds.
-            #[cfg(debug_assertions)]
-            return crate::file_format::Model3D::bfres::BfresFile::open(file_name);
-            #[cfg(not(debug_assertions))]
-            None
-        })
-        .or_else(|| {
-            // Experimental 3D viewers are intentionally disabled in release builds.
-            #[cfg(debug_assertions)]
-            return crate::parser::fbx::FbxFile::open(file_name);
-            #[cfg(not(debug_assertions))]
-            None
-        })
+        .or_else(|| crate::file_format::Model3D::bfres::BfresFile::open(file_name))
+        .or_else(|| crate::parser::fbx::FbxFile::open(file_name))
         // Structured formats must run before the generic image detector. In
         // particular, many BFEVFL files use the shared `.zs` compression suffix.
         .or_else(|| BfevFile::open_bfev(&file_name, zstd.clone()))
-        .or_else(|| {
-            // Experimental image viewers are intentionally disabled in release builds.
-            #[cfg(debug_assertions)]
-            return crate::file_format::Image::ImageDocument::open(file_name, &zstd);
-            #[cfg(not(debug_assertions))]
-            None
-        })
+        .or_else(|| crate::file_format::Image::ImageDocument::open(file_name, &zstd))
         .or_else(|| crate::file_format::bphcl::BphclFile::open(file_name))
         .or_else(|| crate::file_format::hkcl::HkclFile::open(file_name))
         .or_else(|| crate::file_format::bphhb::BphhbFile::open(file_name))

@@ -126,6 +126,10 @@ impl BfresFile {
         crate::file_format::BinTextFile::OpenedFile<'static>,
         crate::Open_and_Save::SendData,
     )> {
+        #[cfg(not(debug_assertions))]
+        {
+            None
+        }
         let source = fs::read(path).ok()?;
         let has_supported_extension = path.extension().is_some_and(|extension| {
             extension.eq_ignore_ascii_case("bfres") || extension.eq_ignore_ascii_case("mc")

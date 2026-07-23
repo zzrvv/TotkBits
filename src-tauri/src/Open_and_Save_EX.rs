@@ -50,17 +50,22 @@ pub fn open_internal_file<'a>(
     zstd: Arc<TotkZstd<'a>>,
 ) -> io::Result<OpenResult<'a>> {
     let path = path.as_ref().to_string_lossy().into_owned();
-    let forced_dictionary = is_banc_path(&path).then_some(ZstdDictionary::Bcett);
-    let is_zstandard = bytes.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]);
-    let (decoded, compression) =
-        if let Some(dictionary) = forced_dictionary.filter(|_| is_zstandard) {
-            (
-                zstd.try_decompress_using(bytes, dictionary)?,
-                Compression::Zstandard(dictionary),
-            )
+    let (decoded, compression) = if bytes.starts_with(b"Yaz0") || crate::Zstd::is_zstd(bytes) {
+        let alignment = bytes
+            .starts_with(b"Yaz0")
+            .then(|| TotkZstd::yaz0_alignment(bytes));
+        let (decoded, dictionary) = zstd.try_decompress_for_path(&path, bytes)?;
+        let compression = if dictionary == ZstdDictionary::Yaz0 {
+            Compression::Yaz0 {
+                alignment: alignment.unwrap_or_default(),
+            }
         } else {
-            Compression::detect_and_decode(bytes, &zstd)?
+            Compression::Zstandard(dictionary)
         };
+        (decoded, compression)
+    } else {
+        (bytes.to_vec(), Compression::None)
+    };
     let mut result = dispatch_internal(&path, decoded, zstd)?;
     result.file.compression = compression;
     Ok(result)

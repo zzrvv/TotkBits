@@ -219,8 +219,21 @@ pub enum ZstdDictionary {
     Yaz0,
 }
 
+pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
+
+#[inline]
+pub fn is_zstd(data: &[u8]) -> bool {
+    data.starts_with(&ZSTD_MAGIC)
+}
+
 impl<'a> TotkZstd<'_> {
     pub fn decompress_empty(data: &[u8]) -> io::Result<Vec<u8>> {
+        if !is_zstd(data) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "input does not have Zstandard frame magic",
+            ));
+        }
         let dictionary = DecoderDictionary::copy(&[]);
         let mut decoder = Decoder::with_prepared_dictionary(data, &dictionary)?;
         let mut decompressed = Vec::new();
@@ -287,24 +300,49 @@ impl<'a> TotkZstd<'_> {
         if data.starts_with(b"Yaz0") {
             return Self::decompress_yaz0(data).map(|data| (data, ZstdDictionary::Yaz0));
         }
-        let dicts = [
-            (ZstdDictionary::Zs, self.decompressor.zs.as_deref()),
-            (ZstdDictionary::Pack, self.decompressor.packzs.as_deref()),
-            (
-                ZstdDictionary::Empty,
-                Some(self.decompressor.empty.as_ref()),
-            ),
-            (ZstdDictionary::Bcett, self.decompressor.bcett.as_deref()),
+        self.try_decompress_zstd_ordered(data, None)
+    }
+
+    pub fn try_decompress_for_path(
+        &self,
+        path: impl AsRef<Path>,
+        data: &[u8],
+    ) -> Result<(Vec<u8>, ZstdDictionary), io::Error> {
+        if data.starts_with(b"Yaz0") {
+            return Self::decompress_yaz0(data).map(|data| (data, ZstdDictionary::Yaz0));
+        }
+        self.try_decompress_zstd_ordered(data, preferred_dictionary_for_path(path))
+    }
+
+    fn try_decompress_zstd_ordered(
+        &self,
+        data: &[u8],
+        preferred: Option<ZstdDictionary>,
+    ) -> Result<(Vec<u8>, ZstdDictionary), io::Error> {
+        if !is_zstd(data) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "input does not have Zstandard frame magic",
+            ));
+        }
+        let defaults = [
+            ZstdDictionary::Zs,
+            ZstdDictionary::Pack,
+            ZstdDictionary::Empty,
+            ZstdDictionary::Bcett,
         ];
-        for (kind, dict) in dicts {
-            if let Some(dict) = dict {
-                if let Ok(dec_data) = self.decompressor.decompress(data, dict) {
-                    return Ok((dec_data, kind));
-                }
+        let mut attempted = Vec::with_capacity(defaults.len());
+        for kind in preferred.into_iter().chain(defaults) {
+            if kind == ZstdDictionary::Yaz0 || attempted.contains(&kind) {
+                continue;
+            }
+            attempted.push(kind);
+            if let Ok(decoded) = self.try_decompress_using(data, kind) {
+                return Ok((decoded, kind));
             }
         }
         Err(io::Error::new(
-            io::ErrorKind::Other,
+            io::ErrorKind::InvalidData,
             "Unable to decompress with any dictionary!",
         ))
     }
@@ -314,12 +352,27 @@ impl<'a> TotkZstd<'_> {
         data: &[u8],
         dictionary: ZstdDictionary,
     ) -> Result<Vec<u8>, io::Error> {
+        if dictionary == ZstdDictionary::Yaz0 {
+            if !data.starts_with(b"Yaz0") {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "input does not have Yaz0 magic",
+                ));
+            }
+            return Self::decompress_yaz0(data);
+        }
+        if !is_zstd(data) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "input does not have Zstandard frame magic",
+            ));
+        }
         let dict = match dictionary {
             ZstdDictionary::Zs => self.decompressor.zs.as_deref(),
             ZstdDictionary::Pack => self.decompressor.packzs.as_deref(),
             ZstdDictionary::Empty => Some(self.decompressor.empty.as_ref()),
             ZstdDictionary::Bcett => self.decompressor.bcett.as_deref(),
-            ZstdDictionary::Yaz0 => return Self::decompress_yaz0(data),
+            ZstdDictionary::Yaz0 => unreachable!(),
         }
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "dictionary is unavailable"))?;
         self.decompressor.decompress(data, dict)
@@ -464,6 +517,26 @@ impl<'a> TotkZstd<'_> {
     }
 }
 
+pub fn preferred_dictionary_for_path(path: impl AsRef<Path>) -> Option<ZstdDictionary> {
+    let name = path
+        .as_ref()
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    if name.starts_with("bcett") || name.ends_with(".bcett.byml.zs") {
+        Some(ZstdDictionary::Bcett)
+    } else if name.starts_with("pack") || name.ends_with(".pack.zs") {
+        Some(ZstdDictionary::Pack)
+    } else if name.starts_with("empty") {
+        Some(ZstdDictionary::Empty)
+    } else if name.starts_with("zs") || name.ends_with(".zs") {
+        Some(ZstdDictionary::Zs)
+    } else {
+        None
+    }
+}
+
 pub struct ZsDic {
     pub zs_data: Option<Vec<u8>>,
     pub bcett_data: Option<Vec<u8>>,
@@ -562,6 +635,12 @@ impl<'a> ZstdDecompressor<'_> {
     }
 
     fn decompress(&self, data: &[u8], ddict: &DecoderDictionary) -> Result<Vec<u8>, io::Error> {
+        if !is_zstd(data) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "input does not have Zstandard frame magic",
+            ));
+        }
         if let Ok(decoder) = &mut Decoder::with_prepared_dictionary(data, ddict) {
             let mut decompressed: Vec<u8> = Vec::new();
             if let Ok(_) = decoder.read_to_end(&mut decompressed) {
@@ -803,8 +882,12 @@ pub fn get_executable_dir() -> String {
 
 #[cfg(test)]
 mod yaz0_tests {
-    use super::{sha256, TotkZstd, TOTK_ZSTD_COMPRESSION_LEVEL};
+    use super::{
+        is_zstd, preferred_dictionary_for_path, sha256, TotkZstd, ZstdDictionary,
+        TOTK_ZSTD_COMPRESSION_LEVEL,
+    };
     use crate::TotkConfig::TotkConfig;
+    use std::io;
     use std::path::Path;
     use std::sync::Arc;
 
@@ -947,5 +1030,44 @@ mod yaz0_tests {
         let data = b"lightweight CLI compression";
         let compressed = codec.compress_empty(data).unwrap();
         assert_eq!(TotkZstd::decompress_empty(&compressed).unwrap(), data);
+    }
+
+    #[test]
+    fn recognizes_only_standard_zstd_frame_magic() {
+        assert!(is_zstd(&[0x28, 0xB5, 0x2F, 0xFD, 0]));
+        assert!(!is_zstd(b"Yaz0"));
+        assert!(!is_zstd(b"plain text"));
+    }
+
+    #[test]
+    fn filename_selects_preferred_dictionary() {
+        assert_eq!(
+            preferred_dictionary_for_path("Map.bcett.byml.zs"),
+            Some(ZstdDictionary::Bcett)
+        );
+        assert_eq!(
+            preferred_dictionary_for_path("Actor.pack.zs"),
+            Some(ZstdDictionary::Pack)
+        );
+        assert_eq!(
+            preferred_dictionary_for_path("PackAnything"),
+            Some(ZstdDictionary::Pack)
+        );
+        assert_eq!(
+            preferred_dictionary_for_path("Anything.zs"),
+            Some(ZstdDictionary::Zs)
+        );
+        assert_eq!(preferred_dictionary_for_path("Anything.byml"), None);
+    }
+
+    #[test]
+    fn dictionary_decompression_rejects_non_zstd_before_decoding() {
+        let codec =
+            TotkZstd::dictionaryless(Arc::new(TotkConfig::default()), TOTK_ZSTD_COMPRESSION_LEVEL);
+        let error = codec
+            .try_decompress_using(b"not compressed", ZstdDictionary::Empty)
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert!(error.to_string().contains("frame magic"));
     }
 }
