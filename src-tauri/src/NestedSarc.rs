@@ -13,7 +13,7 @@ use crate::{
 #[derive(Clone, Copy, Debug)]
 enum NestedEncoding {
     Raw,
-    Yaz0,
+    Yaz0(u32),
     ZstdPack,
     Zstd,
 }
@@ -57,7 +57,7 @@ impl NestedArchive {
             (
                 roead::yaz0::decompress(data)
                     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?,
-                NestedEncoding::Yaz0,
+                NestedEncoding::Yaz0(crate::Zstd::TotkZstd::yaz0_alignment(data)),
             )
         } else if let Ok(raw) = zstd.decompressor.decompress_pack(data) {
             (raw, NestedEncoding::ZstdPack)
@@ -180,7 +180,9 @@ impl NestedArchive {
         let raw = writer.to_binary();
         match encoding {
             NestedEncoding::Raw => Ok(raw),
-            NestedEncoding::Yaz0 => Ok(roead::yaz0::compress(&raw)),
+            NestedEncoding::Yaz0(alignment) => {
+                crate::Zstd::TotkZstd::compress_yaz0_with_alignment(&raw, alignment)
+            }
             NestedEncoding::ZstdPack => zstd.compress_pack(&raw),
             NestedEncoding::Zstd => zstd.compress_zs(&raw),
         }

@@ -56,6 +56,7 @@ impl<'a> Esetb<'a> {
             file_type: TotkFileType::Esetb,
             data: data.to_vec(),
             compression: None,
+            yaz0_alignment: 0,
         };
         let pio = Byml::from_binary(data).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         let mut byml = BymlFile {

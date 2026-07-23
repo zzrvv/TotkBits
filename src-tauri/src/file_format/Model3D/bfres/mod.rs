@@ -142,6 +142,7 @@ impl BfresFile {
         opened.file_type = crate::Zstd::TotkFileType::Bfres;
         opened.path = crate::Settings::Pathlib::new(path);
         opened.bfres = Some(file);
+        opened.bfres_data = Some(source);
 
         let mut data = crate::Open_and_Save::SendData::default();
         data.path = crate::Settings::Pathlib::new(path);
@@ -245,7 +246,8 @@ impl BfresFile {
             let section_name = if &signature == b"FREL" {
                 None
             } else if header.target_address_size != 4 {
-                u64_at(data, offset + 8, endian)
+                let name_field = offset + if header.version[2] <= 8 { 16 } else { 8 };
+                u64_at(data, name_field, endian)
                     .ok()
                     .and_then(|pointer| read_string(data, pointer))
             } else {
@@ -264,7 +266,13 @@ impl BfresFile {
             return Err(BfresError::new(0, "no BFRES resource sections found"));
         }
         let materials = material::parse_materials(data, &sections, endian, header.version[2]);
-        let render = parse_render_graph(data, endian, header.file_size as usize, &sections)?;
+        let render = parse_render_graph(
+            data,
+            endian,
+            header.file_size as usize,
+            &sections,
+            header.version[2],
+        )?;
         Ok(Self {
             header,
             name,
@@ -304,33 +312,47 @@ fn parse_render_graph(
     endian: Endian,
     logical_file_size: usize,
     sections: &[BfresSection],
+    version_major: u8,
 ) -> Result<BfresRenderGraph, BfresError> {
     if endian != Endian::Little {
         return Ok(BfresRenderGraph::default());
     }
-    let buffer_info = u64_at(data, 0xB0, endian)? as usize;
-    let external_flags = byte_at(data, 0xEE).unwrap_or(0);
-    let buffer_base = if buffer_info != 0 && buffer_info + 16 <= data.len() {
-        u64_at(data, buffer_info + 8, endian)? as usize
-    } else if external_flags & 1 != 0 {
-        logical_file_size + 288
+    let buffer_base = if version_major <= 8 {
+        let memory_pool = u64_at(data, 0x90, endian)? as usize;
+        u64_at(data, memory_pool + 8, endian)? as usize
     } else {
-        return Ok(BfresRenderGraph::default());
+        let buffer_info = u64_at(data, 0xB0, endian)? as usize;
+        let external_flags = byte_at(data, 0xEE).unwrap_or(0);
+        if buffer_info != 0 && buffer_info + 16 <= data.len() {
+            u64_at(data, buffer_info + 8, endian)? as usize
+        } else if external_flags & 1 != 0 {
+            logical_file_size + 288
+        } else {
+            return Ok(BfresRenderGraph::default());
+        }
     };
+    // BFRES 8 stores an additional name pointer after each FVTX/FSHP
+    // signature. Later versions removed it, shifting the remaining fields
+    // eight bytes toward the start of each structure.
+    let resource_field_offset = usize::from(version_major <= 8) * 8;
     let mut streams = std::collections::HashMap::new();
     for section in sections
         .iter()
         .filter(|section| &section.signature == b"FVTX")
     {
         let offset = section.offset as usize;
-        if let Ok(stream) = parse_vertex_stream(data, offset, buffer_base, endian) {
+        if let Ok(stream) =
+            parse_vertex_stream(data, offset, buffer_base, endian, resource_field_offset)
+        {
             streams.insert(offset, stream);
         }
     }
     let (bones, matrix_to_bone) = sections
         .iter()
         .find(|section| &section.signature == b"FSKL")
-        .map(|section| skeleton::parse_skeleton(data, section.offset as usize, endian))
+        .map(|section| {
+            skeleton::parse_skeleton(data, section.offset as usize, endian, version_major)
+        })
         .transpose()?
         .unwrap_or_default();
     let mut meshes = Vec::new();
@@ -338,14 +360,17 @@ fn parse_render_graph(
         .iter()
         .filter(|section| &section.signature == b"FSHP")
     {
-        let mut parsed = parse_shape(
+        let Ok(mut parsed) = parse_shape(
             data,
             section,
             buffer_base,
             endian,
             &streams,
             &matrix_to_bone,
-        )?;
+            resource_field_offset,
+        ) else {
+            continue;
+        };
         meshes.append(&mut parsed);
     }
     let mut names = std::collections::HashMap::<String, usize>::new();
@@ -368,15 +393,16 @@ fn parse_vertex_stream(
     offset: usize,
     buffer_base: usize,
     endian: Endian,
+    field_offset: usize,
 ) -> Result<VertexStream, BfresError> {
-    let attr_offset = u64_at(data, offset + 8, endian)? as usize;
-    let sizes_offset = u64_at(data, offset + 48, endian)? as usize;
-    let strides_offset = u64_at(data, offset + 56, endian)? as usize;
-    let relative_buffer = u32_at(data, offset + 72, endian)? as usize;
-    let attr_count = byte_at(data, offset + 76)? as usize;
-    let buffer_count = byte_at(data, offset + 77)? as usize;
-    let vertex_count = u32_at(data, offset + 80, endian)? as usize;
-    let alignment = u16_at(data, offset + 86, endian)? as usize;
+    let attr_offset = u64_at(data, offset + 8 + field_offset, endian)? as usize;
+    let sizes_offset = u64_at(data, offset + 48 + field_offset, endian)? as usize;
+    let strides_offset = u64_at(data, offset + 56 + field_offset, endian)? as usize;
+    let relative_buffer = u32_at(data, offset + 72 + field_offset, endian)? as usize;
+    let attr_count = byte_at(data, offset + 76 + field_offset)? as usize;
+    let buffer_count = byte_at(data, offset + 77 + field_offset)? as usize;
+    let vertex_count = u32_at(data, offset + 80 + field_offset, endian)? as usize;
+    let alignment = u16_at(data, offset + 86 + field_offset, endian)? as usize;
     let mut attributes = Vec::with_capacity(attr_count);
     for index in 0..attr_count {
         let entry = attr_offset + index * 16;
@@ -422,16 +448,18 @@ fn parse_shape(
     endian: Endian,
     streams: &std::collections::HashMap<usize, VertexStream>,
     matrix_to_bone: &[u16],
+    field_offset: usize,
 ) -> Result<Vec<BfresMesh>, BfresError> {
     let offset = section.offset as usize;
-    let vertex_offset = u64_at(data, offset + 16, endian)? as usize;
-    let mesh_offset = u64_at(data, offset + 24, endian)? as usize;
-    let skin_offset = u64_at(data, offset + 32, endian)? as usize;
-    let material_index = u16_at(data, offset + 82, endian)?;
-    let bone_index = u16_at(data, offset + 84, endian)?;
-    let skin_count = u16_at(data, offset + 88, endian)? as usize;
-    let vertex_skin_count = byte_at(data, offset + 90)?;
-    let mesh_count = byte_at(data, offset + 91)? as usize;
+    let vertex_offset = u64_at(data, offset + 16 + field_offset, endian)? as usize;
+    let mesh_offset = u64_at(data, offset + 24 + field_offset, endian)? as usize;
+    let skin_offset = u64_at(data, offset + 32 + field_offset, endian)? as usize;
+    let scalar_offset = if field_offset == 0 { 0 } else { 12 };
+    let material_index = u16_at(data, offset + 82 + scalar_offset, endian)?;
+    let bone_index = u16_at(data, offset + 84 + scalar_offset, endian)?;
+    let skin_count = u16_at(data, offset + 88 + scalar_offset, endian)? as usize;
+    let vertex_skin_count = byte_at(data, offset + 90 + scalar_offset)?;
+    let mesh_count = byte_at(data, offset + 91 + scalar_offset)? as usize;
     let stream = streams
         .get(&vertex_offset)
         .ok_or_else(|| BfresError::new(offset + 16, "shape references unknown FVTX"))?;
@@ -850,6 +878,46 @@ mod tests {
     #[test]
     fn rejects_non_bfres_data() {
         assert!(BfresFile::from_bytes(b"not a bfres file").is_err());
+    }
+
+    #[test]
+    fn parses_mario_zombie_regression_sample() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_ss/MarioZombie.bfres");
+        if !path.is_file() {
+            return;
+        }
+        let file = BfresFile::from_path(&path)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        assert!(!file.materials.is_empty());
+        assert!(file
+            .materials
+            .iter()
+            .any(|material| !material.texture_slots.is_empty()));
+        assert!(!file.render.meshes.is_empty());
+        assert!(file
+            .render
+            .meshes
+            .iter()
+            .all(|mesh| !mesh.positions.is_empty() && !mesh.indices.is_empty()));
+        assert_eq!(file.render.bones.len(), 45);
+        assert_eq!(file.render.bones[0].parent_index, -1);
+        assert!(file
+            .render
+            .bones
+            .iter()
+            .skip(1)
+            .any(|bone| bone.parent_index >= 0));
+        let eyes = file
+            .render
+            .meshes
+            .iter()
+            .find(|mesh| mesh.material_index == 1)
+            .expect("missing one-bone eye mesh");
+        assert_eq!(eyes.vertex_skin_count, 1);
+        assert!(eyes
+            .bone_indices
+            .iter()
+            .all(|indices| indices[0] < file.render.bones.len() as u16));
     }
 
     #[cfg(windows)]

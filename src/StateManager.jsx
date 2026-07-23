@@ -43,7 +43,7 @@ export const EditorProvider = ({ children }) => {
                       label1: '', label2: '', isTiedToMonaco: false, lang: 'yaml'
                      }); //compare files content
 
-  const [settings, setSettings] = useState({ argv1: '', 
+  const [settings, setSettings] = useState({ argv1: '', argv: [],
     fontSize: 14, 
     theme: 'vs-dark', 
     minimap: false, 

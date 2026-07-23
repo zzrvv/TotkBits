@@ -18,7 +18,7 @@ celGradient.generateMipmaps = false;
 celGradient.needsUpdate = true;
 
 // Keep a small cache so switching documents does not reparse BFRES or decode
-// all referenced TexToGo textures again. Models are read-only in this viewer.
+// all referenced embedded/externally resolved textures again. Models are read-only in this viewer.
 const modelInspectionCache = new Map();
 const cacheModelInspection = (path, value) => {
     modelInspectionCache.delete(path);
@@ -73,6 +73,7 @@ function useResolvedTextures(entries) {
             const texture = loader.load(entry.dataUrl);
             texture.name = entry.name;
             texture.flipY = false;
+            texture.colorSpace = THREE.NoColorSpace;
             texture.wrapS = THREE.RepeatWrapping;
             texture.wrapT = THREE.RepeatWrapping;
             loaded[entry.name] = texture;
@@ -101,10 +102,10 @@ function materialTextures(material, textures) {
     if (emission) emission.colorSpace = THREE.SRGBColorSpace;
     if (base) base.channel = 0;
     const normal = find('Normal');
-    // Three maps channel 0 to `uv` and channel 1 to `uv1`. Every mesh exposes
-    // uv1 (falling back to uv when only one layer exists), so normal maps can
-    // consistently use the second layer without breaking single-UV models.
-    if (normal) normal.channel = 1;
+    // BFRES material sampler `_n0` uses the primary material UV set. Assigning
+    // it to Three's uv1 channel makes tangent-space normals sample unrelated
+    // coordinates on models that actually contain a second UV layer.
+    if (normal) normal.channel = 0;
     return {
         base,
         normal,
@@ -121,7 +122,7 @@ function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, wei
     Object.values(textures).filter(Boolean).forEach((texture) => {
         texture.channel = usesMaterialUvs ? 0 : uvIndex;
     });
-    if (usesMaterialUvs && textures.normal) textures.normal.channel = 1;
+    if (usesMaterialUvs && textures.normal) textures.normal.channel = 0;
     const geometry = useMemo(() => {
         const result = new THREE.BufferGeometry();
         const positions = new Float32Array(mesh.positions.flat());
@@ -227,6 +228,8 @@ function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, wei
         <mesh geometry={geometry} visible={!mesh.hidden} onClick={(event) => { event.stopPropagation(); onSelect(mesh); }} castShadow receiveShadow>
             {viewMode === 'normal'
                 ? <meshNormalMaterial wireframe={false} side={THREE.DoubleSide} />
+                : viewMode === 'blank'
+                    ? <meshStandardMaterial color="#aeb8c2" roughness={0.8} metalness={0} side={THREE.DoubleSide} />
                 : viewMode === 'normalMap' && textures.normal
                     ? <meshBasicMaterial key={`normal-${uvIndex}`} map={textures.normal} side={THREE.DoubleSide} />
                 : viewMode === 'specularMap' && textures.specular
@@ -248,7 +251,10 @@ function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, wei
         {viewMode === 'default' && weightBone >= 0 && !mesh.hidden && <mesh geometry={geometry} renderOrder={2}>
             <meshBasicMaterial vertexColors transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
         </mesh>}
-        {mesh.selected && <lineSegments geometry={selectedEdges} renderOrder={20}><lineBasicMaterial color="#ffffff" depthTest={false} /></lineSegments>}
+        {mesh.selected && !mesh.hidden && ['default', 'diffuse'].includes(viewMode) && <mesh geometry={geometry} renderOrder={19}>
+            <meshBasicMaterial color="#00d9ff" transparent opacity={0.22} depthTest={false} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>}
+        {mesh.selected && !mesh.hidden && <lineSegments geometry={selectedEdges} renderOrder={20}><lineBasicMaterial color="#00e5ff" depthTest={false} transparent opacity={1} /></lineSegments>}
         {showNormals && <lineSegments geometry={normalLines}><lineBasicMaterial color="#55e6ff" depthTest={false} transparent opacity={0.8} /></lineSegments>}
     </group>;
 }
@@ -313,6 +319,8 @@ function ResourceTree({ bfres, title, onSection, onMesh, onBone, onModel, onCont
     const textures = sections.filter((section) => ['FTXP', 'FTEX', 'BNTX'].includes(String.fromCharCode(...section.signature)));
     const meshes = bfres?.render?.meshes || [];
     const resolvedTextures = bfres?.resolvedTextures || [];
+    const embeddedTextures = resolvedTextures.filter((texture) => texture.source === 'embedded');
+    const texToGoTextures = resolvedTextures.filter((texture) => texture.source !== 'embedded');
     const bones = bfres?.render?.bones || [];
     const node = (name, detail, action, key, kind) => <button type="button" className="bfres-tree-node" onClick={action} onContextMenu={(event) => onContext(event, kind, name)} key={key} title={name}>
         {kind === 'object' && <input type="checkbox" checked={!hiddenMeshes.includes(name)} onClick={(event) => event.stopPropagation()} onChange={() => onToggleMesh(name)} />}<span>{name || 'Unnamed'}</span><small>{detail}</small>
@@ -338,10 +346,13 @@ function ResourceTree({ bfres, title, onSection, onMesh, onBone, onModel, onCont
                     <Folder label="Skeleton" detail={bones.length}>{boneNodes(-1)}</Folder>
                 </Folder>
             </Folder>
-            <Folder label="Textures" detail={textures.length}>{textures.map((section) => node(section.name, 'Texture', () => onSection(section), `texture-${section.offset}`))}</Folder>
+            <Folder label="Textures" detail={textures.length + embeddedTextures.length}>
+                {textures.map((section) => node(section.name, 'Texture', () => onSection(section), `texture-${section.offset}`))}
+                {embeddedTextures.map((texture) => node(texture.name, `${texture.width} × ${texture.height}`, () => onSection(texture, 'texture'), `embedded-texture-${texture.name}`))}
+            </Folder>
             <Folder label="Animations" detail={(bfres?.sections || []).filter((section) => ['FSKA', 'FSHU', 'FSHA', 'FVIS', 'FMAA'].includes(String.fromCharCode(...section.signature))).length} />
             <Folder label="Embedded Files" />
-            <Folder label="TexToGo" detail={resolvedTextures.length}>{resolvedTextures.map((texture) => node(texture.name, `${texture.width} × ${texture.height}`, () => onSection(texture, 'texture'), `textogo-${texture.name}`))}</Folder>
+            <Folder label="TexToGo" detail={texToGoTextures.length}>{texToGoTextures.map((texture) => node(texture.name, `${texture.width} × ${texture.height}`, () => onSection(texture, 'texture'), `textogo-${texture.name}`))}</Folder>
         </Folder>
     </nav>;
 }
@@ -478,7 +489,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 setBfres(value);
                 if (value.materials) {
                     const requested = new Set(value.materials.flatMap((material) => material.texture_slots.map((slot) => slot.name))).size;
-                    setStatusText(`Loaded ${value.resolvedTextures?.length || 0} of ${requested} referenced TexToGo textures`);
+                    setStatusText(`Loaded ${value.resolvedTextures?.length || 0} of ${requested} referenced textures`);
                 }
                 const initial = value.sections.find((section) => String.fromCharCode(...section.signature) === 'FMDL') || value.sections[0];
                 setSelected(initial || null);
@@ -534,7 +545,8 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <div className="bfres-toolbar-row bfres-toolbar-controls">
                 <label className="bfres-shading-select">Shading:
                 <select value={viewMode} onChange={(event) => { setViewMode(event.target.value); if (event.target.value === 'selectedBoneWeights' && weightBone < 0) setWeightBone(0); }}>
-                    <option value="default">Default</option>
+<option value="default">Default</option>
+<option value="blank">Blank</option>
 <option value="diffuse">Diffuse</option>
 <option value="normalMap">NormalMap</option>
 <option value="specularMap">SpecularMap</option>

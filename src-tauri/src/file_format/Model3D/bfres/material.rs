@@ -27,10 +27,10 @@ pub fn parse_materials(
         .filter(|section| &section.signature == b"FMAT")
         .map(|section| {
             let offset = section.offset as usize;
-            let (names_pointer_offset, count_offset) = if version_major >= 10 {
-                (32, 163)
-            } else {
-                (48, 179)
+            let (names_pointer_offset, count_offset) = match version_major {
+                0..=8 => (56, 168),
+                9 => (48, 179),
+                _ => (32, 163),
             };
             let names = u64_at(data, offset + names_pointer_offset, endian).unwrap_or(0) as usize;
             let count = data.get(offset + count_offset).copied().unwrap_or(0) as usize;

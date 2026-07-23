@@ -297,6 +297,7 @@ impl<'a> TotkBitsApp<'a> {
             self.opened_file.file_type = TotkFileType::Bfres;
             self.opened_file.path = data.path.clone();
             self.opened_file.bfres = Some(bfres);
+            self.opened_file.bfres_data = Some(bytes);
             let mut internal = InternalFile::new(path.clone());
             internal.file_type = TotkFileType::Bfres;
             self.internal_file = Some(internal);
@@ -1368,7 +1369,11 @@ impl<'a> TotkBitsApp<'a> {
             }
         } else {
             let fullpath = self.opened_file.path.full_path.clone();
-            let rawdata: Vec<u8> = get_binary_by_filetype(
+            let original_was_compressed = self.zstd.totk_config.ask_for_compression
+                && fs::read(&fullpath)
+                    .ok()
+                    .is_some_and(|bytes| self.zstd.try_decompress(&bytes).is_ok());
+            let mut rawdata: Vec<u8> = get_binary_by_filetype(
                 self.opened_file.file_type,
                 text,
                 self.opened_file.endian.unwrap_or(roead::Endian::Little),
@@ -1379,6 +1384,22 @@ impl<'a> TotkBitsApp<'a> {
                 None,
                 false,
             )?;
+            if original_was_compressed
+                && MessageDialog::new()
+                    .set_title("Save compression")
+                    .set_description(format!(
+                        "{} was opened as a compressed file.\n\nCompress the saved file?",
+                        self.opened_file.path.name
+                    ))
+                    .set_level(rfd::MessageLevel::Info)
+                    .set_buttons(rfd::MessageButtons::YesNo)
+                    .show()
+                    == rfd::MessageDialogResult::No
+            {
+                if let Ok(decompressed) = self.zstd.try_decompress(&rawdata) {
+                    rawdata = decompressed;
+                }
+            }
             if rawdata.is_empty() {
                 data.status_text =
                     format!("Error: Failed to save {}", &self.opened_file.path.full_path);

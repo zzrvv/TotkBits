@@ -1,7 +1,7 @@
 import { open } from '@tauri-apps/plugin-shell';
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import "./App.css";
-import { addFilesFromDirRecursivelyToRoot, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, extractRootFolderClick, fetchAndSetEditorContent, openFolderContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
+import { addFilesFromDirRecursivelyToRoot, clearSearchInSarcClick, closeAllFilesClick, editConfigFileClick, editInternalSarcFile, extractFileClick, extractRootFolderClick, fetchAndSetEditorContent, OpenFileFromPath, openFolderContent, restartApp, saveAsFileClick, saveFileClick, useExitApp } from './ButtonClicks';
 import { ImageButton } from "./Buttons";
 import CommandsHelp from './CommandsHelp';
 import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
@@ -30,6 +30,7 @@ function MenuBarDisplay({ updateButton = null }) {
   } = useEditorContext();
 
   const [showDropdown, setShowDropdown] = useState({ file: false, view: false, tools: false, compare: false, about: false });
+  const [recentFiles, setRecentFiles] = useState([]);
   const [isCommandsOpen, setIsCommandsOpen] = useState(false);
   const dropdownRefs = useRef({ file: null, view: null, tools: null, compare: null, about: null });
 
@@ -277,6 +278,13 @@ function MenuBarDisplay({ updateButton = null }) {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  useEffect(() => {
+    invoke('get_recent_files').then(setRecentFiles).catch(() => setRecentFiles([]));
+    const updateRecentFiles = (event) => setRecentFiles(event.detail || []);
+    window.addEventListener('totkbits:recent-files-changed', updateRecentFiles);
+    return () => window.removeEventListener('totkbits:recent-files-changed', updateRecentFiles);
+  }, []);
   const iconSize = '20px';
   const blankIcon = 'menu/blank.png';
   let isSaveEnabled = true;
@@ -295,6 +303,20 @@ function MenuBarDisplay({ updateButton = null }) {
 
   const fileMenuItems = [
     { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.png', shortcut: 'Ctrl+O' },
+    {
+      label: 'Recent',
+      icon: blankIcon,
+      shortcut: '',
+      children: recentFiles.map((path) => ({
+        label: path,
+        title: path,
+        onClick: async (event) => {
+          event.stopPropagation();
+          closeMenu();
+          await OpenFileFromPath(path, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+        },
+      })),
+    },
     { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
     { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S', condition: isSaveEnabled },
     { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S', condition: isSaveEnabled },
@@ -351,18 +373,36 @@ function MenuBarDisplay({ updateButton = null }) {
             File
             <div className="dropdown-content" style={{ display: showDropdown.file ? 'block' : 'none' }}>
               {fileMenuItems.filter(item => item.condition !== false).map((item, id) => (
-                <li
-                  key={id}
-                  className="menu-item"
-                  onClick={item.onClick}
-                  style={menuItemStyle}
-                >
-                  <div style={menuDivStyle}>
-                    <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
-                    {item.label}
-                  </div>
-                  <span style={menuSpanStyle}>{item.shortcut}</span>
-                </li>
+                <div key={id} className={item.children ? 'menu-submenu-host' : undefined}>
+                  <li
+                    className="menu-item"
+                    onClick={item.onClick}
+                    style={menuItemStyle}
+                  >
+                    <div style={menuDivStyle}>
+                      <img src={item.icon} alt={item.label} style={menuItemImgStyle} />
+                      {item.label}
+                    </div>
+                    <span style={menuSpanStyle}>{item.shortcut}</span>
+                    {item.children && <span className="menu-submenu-arrow" aria-hidden="true">▶</span>}
+                  </li>
+                  {item.children && (
+                    <ul className="menu-submenu">
+                      {item.children.length === 0 ? (
+                        <li className="menu-submenu-item menu-submenu-empty">No recent files</li>
+                      ) : item.children.map((child) => (
+                        <li
+                          key={child.title}
+                          className="menu-submenu-item"
+                          title={child.title}
+                          onClick={child.onClick}
+                        >
+                          {child.label}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               ))}
             </div>
           </div>

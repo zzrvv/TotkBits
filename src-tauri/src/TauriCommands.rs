@@ -18,10 +18,6 @@ use std::{
 };
 use tauri::Manager;
 use updater::TotkbitsVersion::TotkbitsVersion;
-use windows::{
-    core::PCWSTR,
-    Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONINFORMATION, MB_ICONWARNING, MB_OK},
-};
 
 #[derive(Serialize)]
 pub struct BfwavPreview {
@@ -55,6 +51,7 @@ pub struct BarsFolderReplacement {
 struct BfresResolvedTexture {
     name: String,
     path: String,
+    source: String,
     data_url: String,
     width: u32,
     height: u32,
@@ -77,14 +74,20 @@ pub fn inspect_3d_model(
 ) -> Result<serde_json::Value, String> {
     require_experimental_visuals()?;
     let documents = app_handle.state::<DocumentState>();
-    let (internal_bfres, romfs) = documents.with(&documentId, |app| {
+    let (internal_bfres, internal_bfres_data, romfs) = documents.with(&documentId, |app| {
         (
             app.opened_file.bfres.clone(),
+            app.opened_file.bfres_data.clone(),
             app.zstd.totk_config.romfs.clone(),
         )
     });
     if let Some(bfres) = internal_bfres {
-        let textures = resolve_bfres_textures(&bfres, Path::new(&romfs));
+        let textures = resolve_bfres_textures(
+            &bfres,
+            Path::new(&path),
+            internal_bfres_data.as_deref(),
+            Path::new(&romfs),
+        );
         let mut value = serde_json::to_value(bfres).map_err(|error| error.to_string())?;
         if let Some(object) = value.as_object_mut() {
             object.insert(
@@ -108,9 +111,9 @@ pub fn inspect_3d_model(
         )
         .map_err(|error| error.to_string())
     } else {
-        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(path)
+        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(&path)
             .map_err(|error| error.to_string())?;
-        let textures = resolve_bfres_textures(&bfres, Path::new(&romfs));
+        let textures = resolve_bfres_textures(&bfres, Path::new(&path), None, Path::new(&romfs));
         let mut value = serde_json::to_value(bfres).map_err(|error| error.to_string())?;
         if let Some(object) = value.as_object_mut() {
             object.insert(
@@ -124,20 +127,27 @@ pub fn inspect_3d_model(
 
 fn resolve_bfres_textures(
     bfres: &crate::file_format::Model3D::bfres::BfresFile,
+    source: &Path,
+    source_data: Option<&[u8]>,
     romfs: &Path,
 ) -> Vec<BfresResolvedTexture> {
-    if !crate::TotkConfig::TotkConfig::check_for_zsdic(romfs) {
-        return Vec::new();
-    }
-    let root = romfs.join("TexToGo");
-    if !root.is_dir() {
-        return Vec::new();
-    }
     let names: HashSet<&str> = bfres
         .materials
         .iter()
         .flat_map(|material| material.texture_slots.iter().map(|slot| slot.name.as_str()))
         .collect();
+    let mut textures = resolve_embedded_bntx_textures(source, source_data, &names);
+    let resolved_names: HashSet<String> = textures
+        .iter()
+        .map(|texture| texture.name.to_ascii_lowercase())
+        .collect();
+    if !crate::TotkConfig::TotkConfig::check_for_zsdic(romfs) {
+        return textures;
+    }
+    let root = romfs.join("TexToGo");
+    if !root.is_dir() {
+        return textures;
+    }
     let files: HashMap<String, std::path::PathBuf> = std::fs::read_dir(&root)
         .into_iter()
         .flatten()
@@ -154,8 +164,10 @@ fn resolve_bfres_textures(
             Some((logical_name.to_owned(), path))
         })
         .collect();
-    let mut textures = Vec::with_capacity(names.len());
     for name in names {
+        if resolved_names.contains(&name.to_ascii_lowercase()) {
+            continue;
+        }
         let lowercase_name = name.to_ascii_lowercase();
         let logical_name = lowercase_name
             .strip_suffix(".txtg")
@@ -169,6 +181,7 @@ fn resolve_bfres_textures(
         textures.push(BfresResolvedTexture {
             name: name.to_owned(),
             path: path.to_string_lossy().into_owned(),
+            source: "textogo".into(),
             data_url: rendered.data_url,
             width: rendered.width,
             height: rendered.height,
@@ -176,6 +189,52 @@ fn resolve_bfres_textures(
     }
     textures.sort_by(|left, right| left.name.cmp(&right.name));
     textures
+}
+
+fn resolve_embedded_bntx_textures(
+    source: &Path,
+    source_data: Option<&[u8]>,
+    referenced_names: &HashSet<&str>,
+) -> Vec<BfresResolvedTexture> {
+    let disk_data;
+    let source_data = match source_data {
+        Some(data) => data,
+        None => {
+            let Ok(data) = std::fs::read(source) else {
+                return Vec::new();
+            };
+            disk_data = data;
+            &disk_data
+        }
+    };
+    let Some(offset) = source_data.windows(4).position(|bytes| bytes == b"BNTX") else {
+        return Vec::new();
+    };
+    let data = &source_data[offset..];
+    let Ok(bntx) = crate::parser::bntx::BntxFile::parse(data) else {
+        return Vec::new();
+    };
+    let referenced: HashSet<String> = referenced_names
+        .iter()
+        .map(|name| name.to_ascii_lowercase())
+        .collect();
+    bntx.textures
+        .iter()
+        .enumerate()
+        .filter(|(_, texture)| referenced.contains(&texture.name.to_ascii_lowercase()))
+        .filter_map(|(index, texture)| {
+            let rendered =
+                crate::file_format::Image::ImageDocument::render_bntx_bytes(data, index).ok()?;
+            Some(BfresResolvedTexture {
+                name: texture.name.clone(),
+                path: format!("{}#{}", source.display(), texture.name),
+                source: "embedded".into(),
+                data_url: rendered.data_url,
+                width: rendered.width,
+                height: rendered.height,
+            })
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -398,22 +457,12 @@ pub fn validate_bphcl_merge_documents(app_handle: tauri::AppHandle) -> bool {
         return true;
     }
 
-    let message: Vec<u16> = "Open at least two BPHCL documents before using Physics Merge."
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
-    let title: Vec<u16> = "TotkBits - Physics Merge"
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
-    unsafe {
-        let _ = MessageBoxW(
-            None,
-            PCWSTR(message.as_ptr()),
-            PCWSTR(title.as_ptr()),
-            MB_OK | MB_ICONWARNING,
-        );
-    }
+    MessageDialog::new()
+        .set_title("TotkBits - Physics Merge")
+        .set_description("Open at least two BPHCL documents before using Physics Merge.")
+        .set_level(rfd::MessageLevel::Warning)
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
     false
 }
 
@@ -459,19 +508,12 @@ pub fn merge_bphcl_nodes(
         result.skipped_count,
         skipped
     );
-    let message: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
-    let title: Vec<u16> = "TotkBits - Physics Merge"
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
-    unsafe {
-        let _ = MessageBoxW(
-            None,
-            PCWSTR(message.as_ptr()),
-            PCWSTR(title.as_ptr()),
-            MB_OK | MB_ICONINFORMATION,
-        );
-    }
+    MessageDialog::new()
+        .set_title("TotkBits - Physics Merge")
+        .set_description(text)
+        .set_level(rfd::MessageLevel::Info)
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
     Ok(result)
 }
 
@@ -481,19 +523,12 @@ fn show_open_error(data: &SendData) {
     } else {
         &data.status_text
     };
-    let message: Vec<u16> = message.encode_utf16().chain(std::iter::once(0)).collect();
-    let title: Vec<u16> = "TotkBits - Open error"
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
-    unsafe {
-        let _ = MessageBoxW(
-            None,
-            PCWSTR(message.as_ptr()),
-            PCWSTR(title.as_ptr()),
-            MB_OK,
-        );
-    }
+    MessageDialog::new()
+        .set_title("TotkBits - Open error")
+        .set_description(message)
+        .set_level(rfd::MessageLevel::Error)
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
 }
 
 macro_rules! with_document_mut {
@@ -819,6 +854,13 @@ pub fn get_toml_config(app_handle: tauri::AppHandle, documentId: String) -> Resu
 }
 
 #[tauri::command]
+pub fn get_recent_files() -> Result<Vec<String>, String> {
+    crate::TotkConfig::TotkConfig::safe_new(false)
+        .map(|config| config.recent_files)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn update_toml_config(
     app_handle: tauri::AppHandle,
     documentId: String,
@@ -918,6 +960,8 @@ pub fn open_file_struct(
     if let Some(data) = &result {
         if data.tab == "ERROR" {
             show_open_error(data);
+        } else if !data.path.full_path.is_empty() {
+            let _ = crate::TotkConfig::TotkConfig::remember_recent_file(&data.path.full_path);
         }
     }
     result
@@ -950,6 +994,8 @@ pub fn open_file_from_path(
     if let Some(data) = &result {
         if data.tab == "ERROR" && !suppressErrorDialog {
             show_open_error(data);
+        } else if data.tab != "ERROR" && !data.path.full_path.is_empty() {
+            let _ = crate::TotkConfig::TotkConfig::remember_recent_file(&data.path.full_path);
         }
     }
     result
@@ -1182,10 +1228,37 @@ mod texture_resolution_tests {
         )
         .expect("failed to stage TexToGo fixture");
 
-        let textures = resolve_bfres_textures(&bfres, &root);
+        let textures = resolve_bfres_textures(
+            &bfres,
+            &workspace.join("tmp/bfres/Animal_Bull.Bull.bfres"),
+            None,
+            &root,
+        );
         let _ = std::fs::remove_dir_all(&root);
         assert_eq!(textures.len(), 1);
         assert_eq!(textures[0].name, texture_name);
+        assert_eq!(textures[0].source, "textogo");
         assert!(textures[0].data_url.starts_with("data:image/png;base64,"));
+    }
+
+    #[test]
+    fn resolves_embedded_mario_zombie_bntx_textures() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_ss/MarioZombie.bfres");
+        if !path.is_file() {
+            return;
+        }
+        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(&path).unwrap();
+        let names: HashSet<&str> = bfres
+            .materials
+            .iter()
+            .flat_map(|material| material.texture_slots.iter().map(|slot| slot.name.as_str()))
+            .collect();
+        let source_data = std::fs::read(&path).unwrap();
+        let nonexistent_archive_path = Path::new("Archive.sarc/MarioZombie.bfres");
+        let textures =
+            resolve_embedded_bntx_textures(nonexistent_archive_path, Some(&source_data), &names);
+        assert!(!textures.is_empty());
+        assert!(textures.iter().all(|texture| texture.source == "embedded"
+            && texture.data_url.starts_with("data:image/png;base64,")));
     }
 }

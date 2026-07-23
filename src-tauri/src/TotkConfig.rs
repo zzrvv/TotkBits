@@ -35,6 +35,7 @@ pub struct TotkConfig {
     pub monaco_theme: String,
     pub monaco_minimap: bool,
     pub rotation_deg: bool,
+    pub ask_for_compression: bool,
     #[serde(skip)]
     pub game_version: String,
     #[serde(skip)]
@@ -46,6 +47,7 @@ pub struct TotkConfig {
     pub botw_romfs_path: String,
     pub stop_asking_for_romfs: bool,
     pub last_romfs_prompt: u64,
+    pub recent_files: Vec<String>,
 }
 
 impl Default for TotkConfig {
@@ -60,6 +62,7 @@ impl Default for TotkConfig {
             monaco_theme: "vs-dark".into(),
             monaco_minimap: false,
             rotation_deg: false,
+            ask_for_compression: false,
             game_version: String::new(),
             game_versions: (100..130).rev().map(|e| e.to_string()).collect(),
             available_themes: vec![
@@ -72,6 +75,7 @@ impl Default for TotkConfig {
             botw_romfs_path: String::new(),
             stop_asking_for_romfs: false,
             last_romfs_prompt: 0,
+            recent_files: Vec::new(),
         }
     }
 }
@@ -176,6 +180,8 @@ impl TotkConfig {
         self.lower_float_prec =
             get_bool(&json_data, "Lower float precision", self.lower_float_prec);
         self.rotation_deg = get_bool(&json_data, "Rotation in degrees", self.rotation_deg);
+        self.ask_for_compression =
+            get_bool(&json_data, "ask for compression", self.ask_for_compression);
         self.romfs = get_string(&json_data, "romfs");
         self.botw_romfs_path = get_string(&json_data, "BOTW WIIU path (optional)");
         self.stop_asking_for_romfs = get_bool(
@@ -187,6 +193,17 @@ impl TotkConfig {
             .get("Last romfs path prompt")
             .and_then(|value| value.as_u64())
             .unwrap_or(self.last_romfs_prompt);
+        self.recent_files = json_data
+            .get("Recent files")
+            .and_then(|value| value.as_array())
+            .map(|values| {
+                values
+                    .iter()
+                    .filter_map(|value| value.as_str().map(str::to_owned))
+                    .take(5)
+                    .collect()
+            })
+            .unwrap_or_default();
 
         self.yaml_max_inl = self
             .yaml_max_inl
@@ -207,9 +224,11 @@ impl TotkConfig {
             "Text editor minimap": self.monaco_minimap,
             "Prompt on close all": self.close_all_prompt,
             "Rotation in degrees": self.rotation_deg,
+            "ask for compression": self.ask_for_compression,
             "BOTW WIIU path (optional)": self.botw_romfs_path,
             "Stop asking for romfs path": self.stop_asking_for_romfs,
             "Last romfs path prompt": self.last_romfs_prompt,
+            "Recent files": self.recent_files,
         }))
     }
 
@@ -220,8 +239,21 @@ impl TotkConfig {
             "contextMenuFontSize": self.context_menu_font_size,
             "theme": self.monaco_theme,
             "minimap": self.monaco_minimap,
+            "recentFiles": self.recent_files,
             // "Prompt on close all": self.close_all_prompt, unused in UI
         }))
+    }
+
+    pub fn remember_recent_file(path: &str) -> io::Result<Vec<String>> {
+        let normalized = path.replace("\\", "/");
+        let mut config = Self::safe_new(false)?;
+        config
+            .recent_files
+            .retain(|entry| !entry.eq_ignore_ascii_case(&normalized));
+        config.recent_files.insert(0, normalized);
+        config.recent_files.truncate(5);
+        config.save()?;
+        Ok(config.recent_files)
     }
 
     pub fn get_config_path(&mut self) -> io::Result<()> {

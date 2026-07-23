@@ -42,6 +42,77 @@ pub struct ImageSubimage {
 pub struct ImageDocument;
 
 impl ImageDocument {
+    pub fn render_bntx_bytes(data: &[u8], texture_index: usize) -> io::Result<RenderedImage> {
+        let bntx = crate::parser::bntx::BntxFile::parse(data).map_err(invalid)?;
+        let texture = bntx.textures.get(texture_index).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "BNTX texture index is out of range",
+            )
+        })?;
+        let offset = *texture.data_offsets.first().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "BNTX texture has no image data")
+        })? as usize;
+        let end = texture
+            .data_offsets
+            .get(1)
+            .copied()
+            .map(|value| value as usize)
+            .unwrap_or_else(|| offset.saturating_add(texture.image_size as usize))
+            .min(data.len());
+        let surface_data = data.get(offset..end).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "BNTX image offset is outside the file",
+            )
+        })?;
+        let (mut image, format_name) = if let Some((block_width, block_height)) =
+            super::switch_texture::astc_block_from_bntx(texture.format)
+        {
+            (
+                super::switch_texture::decode_astc(
+                    texture.width,
+                    texture.height,
+                    surface_data,
+                    block_width,
+                    block_height,
+                    texture.block_height_log2,
+                )?,
+                format!("ASTC_{block_width}x{block_height}"),
+            )
+        } else {
+            let image_format = super::switch_texture::format_from_bntx(texture.format)?;
+            (
+                super::switch_texture::decode(
+                    texture.width,
+                    texture.height,
+                    image_format,
+                    surface_data,
+                    texture.block_height_log2,
+                    texture.tile_mode == 1,
+                )?,
+                format!("{image_format:?}"),
+            )
+        };
+        super::switch_texture::apply_component_selectors(&mut image, texture.channel_types);
+        let png = super::png::encode(&image)?;
+        Ok(RenderedImage {
+            data_url: format!(
+                "data:image/png;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(png)
+            ),
+            width: texture.width,
+            height: texture.height,
+            format: "BNTX".into(),
+            mip_count: u32::from(texture.mip_count),
+            dds_type: Some(format_name),
+            entries: Vec::new(),
+            selected_index: texture_index,
+            selected_array_index: 0,
+            selected_mip_index: 0,
+        })
+    }
+
     pub fn open(
         path: &Path,
         zstd: &crate::Zstd::TotkZstd<'_>,

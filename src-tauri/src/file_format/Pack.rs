@@ -352,6 +352,8 @@ pub struct PackFile<'a> {
     pub hashes: HashMap<String, String>,
     pub sarc: Sarc<'a>,
     pub is_yaz0: bool,
+    pub yaz0_alignment: u32,
+    pub dirty: bool,
 }
 
 #[allow(dead_code)]
@@ -371,6 +373,8 @@ impl<'a> PackFile<'_> {
             hashes: HashMap::default(),
             sarc: sarc,
             is_yaz0: false,
+            yaz0_alignment: 0,
+            dirty: false,
         })
     }
 
@@ -416,6 +420,7 @@ impl<'a> PackFile<'_> {
         self.writer = candidate_writer;
         self.sarc = candidate_sarc;
         self.hashes = candidate_hashes;
+        self.dirty = true;
         Ok(())
     }
 
@@ -469,14 +474,21 @@ impl<'a> PackFile<'_> {
 
     pub fn save(&mut self, dest_file: String) -> io::Result<()> {
         makedirs(&PathBuf::from(&dest_file))?;
-        let mut data: Vec<u8> = self.writer.to_binary();
+        let raw_data = if self.dirty || self.data.is_empty() {
+            self.writer.to_binary()
+        } else {
+            self.data.clone()
+        };
+        let mut data = raw_data.clone();
         if dest_file.to_lowercase().ends_with(".zs") {
             data = self.compress(&data)?;
         } else if self.is_yaz0 {
-            data = TotkZstd::compress_yaz0(&data)?;
+            data = TotkZstd::compress_yaz0_with_alignment(&data, self.yaz0_alignment)?;
         }
         let mut file_handle: fs::File = fs::File::create(dest_file)?;
         file_handle.write_all(&data)?;
+        self.data = raw_data;
+        self.dirty = false;
         Ok(())
     }
     pub fn sarc_file_to_bytes<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
@@ -484,12 +496,13 @@ impl<'a> PackFile<'_> {
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;
         if buffer.starts_with(b"Yaz0") {
+            self.yaz0_alignment = TotkZstd::yaz0_alignment(&buffer);
             if let Ok(dec_data) = TotkZstd::decompress_yaz0(&buffer) {
                 buffer = dec_data;
                 self.is_yaz0 = true;
             }
             if is_sarc(&buffer) {
-                // self.data = buffer;
+                self.data = buffer.clone();
                 self.sarc = Sarc::new(buffer)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                 return Ok(());
@@ -501,9 +514,9 @@ impl<'a> PackFile<'_> {
             .to_lowercase()
             .ends_with(".zs")
         {
-            if let Ok(dec_data) = self.zstd.decompressor.decompress_pack(&buffer) {
+            if let Ok(dec_data) = self.zstd.decompress_pack(&buffer) {
                 if is_sarc(&dec_data) {
-                    // self.data = dec_data;
+                    self.data = dec_data.clone();
                     self.sarc = Sarc::new(dec_data)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                     self.file_type = TotkFileType::Sarc;
@@ -512,7 +525,7 @@ impl<'a> PackFile<'_> {
             }
             if let Ok(dec_data) = self.zstd.decompressor.decompress_zs(&buffer) {
                 if is_sarc(&dec_data) {
-                    // self.data = dec_data;
+                    self.data = dec_data.clone();
                     self.sarc = Sarc::new(dec_data)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                     self.file_type = TotkFileType::MalsSarc;
@@ -521,7 +534,7 @@ impl<'a> PackFile<'_> {
             }
         }
         if is_sarc(&buffer) {
-            // self.data = buffer;
+            self.data = buffer.clone();
             self.sarc =
                 Sarc::new(buffer).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
             return Ok(());
@@ -605,5 +618,34 @@ impl Default for SarcPaths {
             nested_paths: HashMap::new(),
             read_only: false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn untouched_yaz0_sarc_save_as_is_byte_exact() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_ss/yaz0/MarioZombie.szs");
+        if !source.is_file() {
+            return;
+        }
+        let config = Arc::new(TotkConfig::default());
+        let zstd = Arc::new(TotkZstd::dictionaryless(config, 16));
+        let mut pack = PackFile::new(&source, zstd).unwrap();
+        let destination =
+            std::env::temp_dir().join(format!("totkbits-yaz0-save-as-{}.szs", std::process::id()));
+
+        pack.save(destination.to_string_lossy().into_owned())
+            .unwrap();
+        let expected = fs::read(&source).unwrap();
+        let actual = fs::read(&destination).unwrap();
+        let _ = fs::remove_file(destination);
+        assert_eq!(actual, expected);
+        assert_eq!(
+            sha256(actual),
+            "CD0EB66CBED6FCA64011E6964CFB7831AF486E1B88E3D399D4375399FE64247E"
+        );
     }
 }

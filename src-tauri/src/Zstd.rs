@@ -358,6 +358,23 @@ impl<'a> TotkZstd<'_> {
     pub fn compress_yaz0(data: &[u8]) -> io::Result<Vec<u8>> {
         Ok(roead::yaz0::compress(data))
     }
+
+    pub fn compress_yaz0_with_alignment(data: &[u8], alignment: u32) -> io::Result<Vec<u8>> {
+        Ok(roead::yaz0::compress_with_options(
+            data,
+            roead::yaz0::CompressOptions {
+                alignment,
+                compression_level: 3,
+            },
+        ))
+    }
+
+    pub fn yaz0_alignment(data: &[u8]) -> u32 {
+        roead::yaz0::get_header(data)
+            .filter(|header| &header.magic == b"Yaz0")
+            .map(|header| header.data_alignment)
+            .unwrap_or(0)
+    }
     pub fn find_vanila_internal_file_path_in_romfs<P: AsRef<Path>>(
         &self,
         internal_path: P,
@@ -797,8 +814,9 @@ pub fn get_executable_dir() -> String {
 
 #[cfg(test)]
 mod yaz0_tests {
-    use super::TotkZstd;
+    use super::{sha256, TotkZstd};
     use crate::TotkConfig::TotkConfig;
+    use std::path::Path;
     use std::sync::Arc;
 
     #[test]
@@ -809,6 +827,128 @@ mod yaz0_tests {
         let compressed = TotkZstd::compress_yaz0(&data).unwrap();
         assert!(compressed.starts_with(b"Yaz0"));
         assert_eq!(TotkZstd::decompress_yaz0(&compressed).unwrap(), data);
+    }
+
+    #[test]
+    fn yaz0_matches_switch_toolbox_on_mario_zombie_fixture() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_ss/yaz0/MarioZombie.szs");
+        if !path.is_file() {
+            return;
+        }
+        let source = std::fs::read(path).unwrap();
+        let alignment = TotkZstd::yaz0_alignment(&source);
+        let raw = TotkZstd::decompress_yaz0(&source).unwrap();
+        let compressed = TotkZstd::compress_yaz0_with_alignment(&raw, alignment).unwrap();
+        assert_eq!(compressed, source);
+        assert_eq!(
+            sha256(compressed),
+            "CD0EB66CBED6FCA64011E6964CFB7831AF486E1B88E3D399D4375399FE64247E"
+        );
+    }
+
+    #[test]
+    fn yaz0_roundtrips_switch_toolbox_fixture_directory() {
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_ss/yaz0");
+        if !directory.is_dir() {
+            return;
+        }
+
+        let mut tested = 0;
+        let mut exact_matches = 0;
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if !path.is_file() {
+                continue;
+            }
+
+            let source = std::fs::read(&path).unwrap();
+            assert!(
+                source.starts_with(b"Yaz0"),
+                "{} is not a Yaz0 stream",
+                path.display()
+            );
+            let alignment = TotkZstd::yaz0_alignment(&source);
+            let raw = TotkZstd::decompress_yaz0(&source).unwrap();
+            let recompressed = TotkZstd::compress_yaz0_with_alignment(&raw, alignment).unwrap();
+            let recompressed_hash = sha256(recompressed.clone());
+            assert_eq!(
+                TotkZstd::decompress_yaz0(&recompressed).unwrap(),
+                raw,
+                "{} failed its Yaz0 round trip",
+                path.display()
+            );
+            let expected_hash = match path.file_name().and_then(|name| name.to_str()) {
+                Some("MarioZombie.szs") => {
+                    Some("CD0EB66CBED6FCA64011E6964CFB7831AF486E1B88E3D399D4375399FE64247E")
+                }
+                Some("MarioZombieEye.szs") => {
+                    Some("FDF714891282076C7C5FCE30439710F1C9F90E96306CB5D2244483B94EB1808B")
+                }
+                Some("MarioZombieFace.szs") => {
+                    Some("44E79AB1D53671153F355558176745000F5C04156E7815F1C325F1F6840ADE32")
+                }
+                _ => None,
+            };
+            if let Some(expected_hash) = expected_hash {
+                assert_eq!(
+                    recompressed_hash,
+                    expected_hash,
+                    "{} changed from the pre-optimization Yaz0 output",
+                    path.display()
+                );
+            }
+            if recompressed == source {
+                exact_matches += 1;
+            } else {
+                let first_difference = recompressed
+                    .iter()
+                    .zip(&source)
+                    .position(|(left, right)| left != right)
+                    .unwrap_or(recompressed.len().min(source.len()));
+                eprintln!(
+                    "{}: valid round trip, but level-3 output differs at byte {first_difference:#x} \
+                     (fixture {} bytes, recompressed {} bytes, fixture SHA-256 {}, \
+                     recompressed SHA-256 {})",
+                    path.display(),
+                    source.len(),
+                    recompressed.len(),
+                    sha256(source.clone()),
+                    recompressed_hash,
+                );
+            }
+            tested += 1;
+        }
+        assert!(tested > 0, "the Yaz0 fixture directory is empty");
+        eprintln!(
+            "{tested} Yaz0 fixtures passed round-trip testing; {exact_matches} exact matches"
+        );
+    }
+
+    #[test]
+    #[ignore = "diagnostic for identifying the Switch Toolbox fixture compression level"]
+    fn identify_switch_toolbox_fixture_levels() {
+        let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_ss/yaz0");
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let path = entry.unwrap().path();
+            if !path.is_file() {
+                continue;
+            }
+            let source = std::fs::read(&path).unwrap();
+            let raw = TotkZstd::decompress_yaz0(&source).unwrap();
+            let alignment = TotkZstd::yaz0_alignment(&source);
+            let matches: Vec<_> = (0..=9)
+                .filter(|level| {
+                    roead::yaz0::compress_with_options(
+                        &raw,
+                        roead::yaz0::CompressOptions {
+                            alignment,
+                            compression_level: *level,
+                        },
+                    ) == source
+                })
+                .collect();
+            eprintln!("{} exact levels: {matches:?}", path.display());
+        }
     }
 
     #[test]

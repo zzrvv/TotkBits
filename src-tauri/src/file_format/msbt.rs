@@ -7,10 +7,6 @@ use crate::{
     Zstd::{is_msyt, TotkFileType},
 };
 use std::path::Path;
-use windows::{
-    core::PCWSTR,
-    Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK},
-};
 
 pub struct MsbtFile {
     pub path: Pathlib,
@@ -100,22 +96,12 @@ impl MsbtFile {
     }
 
     fn show_missing_internal_handle() {
-        let message: Vec<u16> = "Cannot save the internal MSBT file because its parsed archive handle is missing. Close and reopen the internal file, then try again."
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
-        let title: Vec<u16> = "TotkBits - MSBT save error"
-            .encode_utf16()
-            .chain(std::iter::once(0))
-            .collect();
-        unsafe {
-            let _ = MessageBoxW(
-                None,
-                PCWSTR(message.as_ptr()),
-                PCWSTR(title.as_ptr()),
-                MB_OK | MB_ICONERROR,
-            );
-        }
+        rfd::MessageDialog::new()
+            .set_title("TotkBits - MSBT save error")
+            .set_description("Cannot save the internal MSBT file because its parsed archive handle is missing. Close and reopen the internal file, then try again.")
+            .set_level(rfd::MessageLevel::Error)
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
     }
 }
 pub fn str_endian_to_roead(endian: &str) -> roead::Endian {

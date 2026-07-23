@@ -168,7 +168,9 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
       updateEditorContent(content.text, content.lang);
       setStatusText(`Opened file: ${fullPath}`);
       setActiveTab(content.tab);
-      
+    } else if (content.tab === '3D') {
+      setStatusText(content.status_text || `Opened file: ${fullPath}`);
+      setActiveTab(content.tab);
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
       setStatusText("Unsupported file type");

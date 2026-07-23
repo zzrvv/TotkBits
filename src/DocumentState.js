@@ -163,6 +163,13 @@ export const invoke = async (command, args = {}) => {
                 updateTitle(documentId, result.path?.name || result.file_label?.split(' [')[0] || 'Document', true);
                 updateFullPath(documentId, result.path?.full_path || args?.innerPath || args?.path || '');
                 updateFileMetadata(documentId, result.file_metadata || '');
+                if (isOpen && command !== 'open_folder_struct') {
+                    tauriInvoke('get_recent_files').then((recentFiles) => {
+                        window.dispatchEvent(new CustomEvent('totkbits:recent-files-changed', {
+                            detail: recentFiles,
+                        }));
+                    }).catch(() => null);
+                }
                 // Existing open handlers update the visible pane after invoke resolves.
                 // Re-select the originating document so those updates cannot overwrite
                 // a different document if the user switched while opening.

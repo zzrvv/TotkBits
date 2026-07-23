@@ -23,6 +23,7 @@ pub struct FileData {
     pub file_type: TotkFileType,
     pub data: Vec<u8>,
     pub compression: Option<ZstdDictionary>,
+    pub yaz0_alignment: u32,
 }
 
 impl FileData {
@@ -31,6 +32,7 @@ impl FileData {
             file_type: TotkFileType::None,
             data: Vec::new(),
             compression: None,
+            yaz0_alignment: 0,
         }
     }
 }
@@ -99,7 +101,7 @@ impl<'a> BymlFile<'_> {
             Err(_) => return Err(io::Error::new(io::ErrorKind::InvalidData, "")),
         }
         if self.file_data.compression == Some(ZstdDictionary::Yaz0) {
-            data = TotkZstd::compress_yaz0(&data)?;
+            data = TotkZstd::compress_yaz0_with_alignment(&data, self.file_data.yaz0_alignment)?;
         } else if path.to_ascii_lowercase().ends_with(".zs") {
             match self.file_data.file_type {
                 TotkFileType::Byml => {
@@ -204,6 +206,7 @@ impl<'a> BymlFile<'_> {
         let mut buffer = rawdata.clone();
         let mut data = FileData::new();
         if buffer.starts_with(b"Yaz0") {
+            data.yaz0_alignment = TotkZstd::yaz0_alignment(&buffer);
             if let Ok(dec_data) = TotkZstd::decompress_yaz0(&buffer) {
                 buffer = dec_data;
                 data.compression = Some(ZstdDictionary::Yaz0);
@@ -284,6 +287,7 @@ impl<'a> BymlFile<'_> {
                 file_type: TotkFileType::Bcett,
                 data: decoded,
                 compression: Some(ZstdDictionary::Bcett),
+                yaz0_alignment: 0,
             });
         }
         Self::byml_data_to_bytes(&buffer, zstd.clone())
@@ -561,6 +565,7 @@ pub struct OpenedFile<'a> {
     pub msyt: Option<Msbt>,
     pub aamp: Option<()>,
     pub bfres: Option<crate::file_format::Model3D::bfres::BfresFile>,
+    pub bfres_data: Option<Vec<u8>>,
     pub bphcl: Option<crate::file_format::bphcl::BphclFile>,
     pub bphhb: Option<crate::file_format::bphhb::BphhbFile>,
     pub hkcl: Option<crate::file_format::hkcl::HkclFile>,
@@ -581,6 +586,7 @@ impl Default for OpenedFile<'_> {
             msyt: None,
             aamp: None,
             bfres: None,
+            bfres_data: None,
             bphcl: None,
             bphhb: None,
             hkcl: None,
@@ -609,6 +615,7 @@ impl<'a> OpenedFile<'_> {
             msyt: msyt,
             aamp: None,
             bfres: None,
+            bfres_data: None,
             bphcl: None,
             bphhb: None,
             hkcl: None,
@@ -629,6 +636,7 @@ impl<'a> OpenedFile<'_> {
             msyt: None,
             aamp: None,
             bfres: None,
+            bfres_data: None,
             bphcl: None,
             bphhb: None,
             hkcl: None,

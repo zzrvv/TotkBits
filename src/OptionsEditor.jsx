@@ -14,6 +14,7 @@ const fields = [
     { key: "Text editor minimap", label: "Show editor minimap", type: "boolean" },
     { key: "Prompt on close all", label: "Prompt before closing all", type: "boolean" },
     { key: "Rotation in degrees", label: "Display rotations in degrees", type: "boolean" },
+    { key: "ask for compression", label: "Ask for compression", type: "boolean" },
 ];
 
 function OptionsEditor() {

@@ -480,6 +480,59 @@ button {
   background-color: #515151;
 }
 
+.menu-submenu-host {
+  position: relative;
+}
+
+.menu-submenu-arrow {
+  margin-left: auto;
+  padding-left: 12px;
+  color: #ddd;
+  font-size: 10px;
+}
+
+.menu-submenu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 100%;
+  min-width: 420px;
+  max-width: min(900px, calc(100vw - 180px));
+  margin: 0;
+  padding: 2px 0;
+  list-style: none;
+  background-color: #333;
+  border: 1px solid #777;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.35);
+  z-index: 1002;
+}
+
+.menu-submenu-host:hover > .menu-submenu {
+  display: block;
+}
+
+.menu-submenu-item {
+  padding: 4px 12px;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.menu-submenu-item:hover {
+  background-color: #515151;
+}
+
+.menu-submenu-empty {
+  color: #888;
+  cursor: default;
+}
+
+.menu-submenu-empty:hover {
+  background-color: transparent;
+}
+
 
 
 /* OPTIONS EDITOR */

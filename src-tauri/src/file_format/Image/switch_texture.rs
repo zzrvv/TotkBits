@@ -192,6 +192,7 @@ pub fn encode(
 
 pub fn format_from_bntx(value: u32) -> io::Result<ImageFormat> {
     let srgb = value & 0xff == 6;
+    let snorm = value & 0xff == 2;
     match value >> 8 {
         0x02 => Ok(ImageFormat::R8Unorm),
         0x09 => Ok(ImageFormat::Rg8Unorm),
@@ -220,8 +221,16 @@ pub fn format_from_bntx(value: u32) -> io::Result<ImageFormat> {
         } else {
             ImageFormat::BC3RgbaUnorm
         }),
-        0x1d => Ok(ImageFormat::BC4RUnorm),
-        0x1e => Ok(ImageFormat::BC5RgUnorm),
+        0x1d => Ok(if snorm {
+            ImageFormat::BC4RSnorm
+        } else {
+            ImageFormat::BC4RUnorm
+        }),
+        0x1e => Ok(if snorm {
+            ImageFormat::BC5RgSnorm
+        } else {
+            ImageFormat::BC5RgUnorm
+        }),
         0x20 => Ok(if srgb {
             ImageFormat::BC7RgbaUnormSrgb
         } else {
@@ -346,6 +355,14 @@ mod component_selector_tests {
             format_from_bntx(0x2006).expect("BC7 sRGB should be supported"),
             ImageFormat::BC7RgbaUnormSrgb
         );
+    }
+
+    #[test]
+    fn maps_signed_normal_block_formats() {
+        assert_eq!(format_from_bntx(0x1d01).unwrap(), ImageFormat::BC4RUnorm);
+        assert_eq!(format_from_bntx(0x1d02).unwrap(), ImageFormat::BC4RSnorm);
+        assert_eq!(format_from_bntx(0x1e01).unwrap(), ImageFormat::BC5RgUnorm);
+        assert_eq!(format_from_bntx(0x1e02).unwrap(), ImageFormat::BC5RgSnorm);
     }
 }
 
