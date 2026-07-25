@@ -6,7 +6,8 @@ const operations = [
     ['extract_archive', '<zip|7z|rar|sarc> <input-archive> <output-directory>', 'Extract every archive entry.'],
     ['dir_to_archive', '<zip|7z|rar|sarc> <input-directory> <output-archive>', 'Build an archive from a directory.'],
     ['decompress', '<input-file> <output-file>', 'Decompress ZSTD data by trying every available dictionary.'],
-    ['compress', '<zs|pack|empty|bcett> <input-file> <output-file>', 'Compress ZSTD data with the specified dictionary.'],
+    ['decompress_dir', '-i <input-directory> -o <output-directory>', 'Recursively decompress MCPK, Yaz0, and ZSTD files, preserving relative paths. Input and output directories must differ; final .zs suffixes are removed and failures are printed to stdout.'],
+    ['compress', '<zs|pack|empty|bcett|yaz0> <input-file> <output-file>', 'Compress data with the specified format or dictionary.'],
 ];
 
 export default function CommandsHelp({ isOpen, onClose }) {
@@ -19,7 +20,8 @@ export default function CommandsHelp({ isOpen, onClose }) {
             </div>
             <p>Run TotkBits with <code>-c</code> or <code>--cli</code>. Conversion and archive commands require a type; ZSTD decompression does not.</p>
             <pre>{`Totkbits.exe --cli <operation> <type> <input> <output>
-Totkbits.exe --cli decompress <input> <output>`}</pre>
+Totkbits.exe --cli decompress <input> <output>
+Totkbits.exe --cli decompress_dir -i <input-directory> -o <output-directory>`}</pre>
             <div className="commands-help-list">
                 {operations.map(([name, args, description]) => <section key={name}>
                     <code>{name} {args}</code>
@@ -34,6 +36,7 @@ Totkbits.exe -c text_to_bin byml input.yml output.byml
 Totkbits.exe --cli extract_archive 7z input.7z output-folder
 Totkbits.exe -c dir_to_archive sarc input-folder output.pack
 Totkbits.exe --cli decompress input.pack.zs output.pack
+Totkbits.exe --cli decompress_dir -i input-folder -o decompressed-folder
 Totkbits.exe -c compress pack input.pack output.pack.zs`}</pre>
             <p><code>A successful command exits without opening the GUI. If validation or conversion fails, TotkBits reports the error and opens normally.</code></p>
             <div className="options-modal-footer"><button className="generic_button" onClick={onClose}>Close</button></div>

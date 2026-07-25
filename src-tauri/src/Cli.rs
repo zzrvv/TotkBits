@@ -48,12 +48,18 @@ impl CliCommand {
                 | "extract_archive"
                 | "dir_to_archive"
                 | "decompress"
+                | "decompress_dir"
                 | "compress"
                 | "replace_bars_from_folder"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
-        if !is_public_operation || arguments.len() != expected_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n");
+        let valid_arguments = if operation == "decompress_dir" {
+            arguments.len() == 7
+        } else {
+            arguments.len() == expected_arguments
+        };
+        if !is_public_operation || !valid_arguments {
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -71,7 +77,24 @@ impl CliCommand {
                 cwd.join(path)
             }
         };
-        if operation == "decompress" {
+        if operation == "decompress_dir" {
+            let mut input = None;
+            let mut output = None;
+            for pair in arguments[3..].chunks_exact(2) {
+                match pair[0].to_str() {
+                    Some("-i") => input = Some(absolute(&pair[1])),
+                    Some("-o") => output = Some(absolute(&pair[1])),
+                    _ => {}
+                }
+            }
+            Some(Self {
+                operation,
+                file_type: String::new(),
+                input: input.unwrap_or_default(),
+                output: output.unwrap_or_default(),
+                replacement_folder: None,
+            })
+        } else if operation == "decompress" {
             Some(Self {
                 operation,
                 file_type: String::new(),
@@ -108,6 +131,7 @@ impl CliCommand {
             "extract_archive" => self.extract_archive(),
             "dir_to_archive" => self.dir_to_archive(),
             "decompress" => self.decompress(),
+            "decompress_dir" => self.decompress_dir(),
             "compress" => self.compress(),
             "replace_bars_from_folder" => self.replace_bars_from_folder(),
             value => Err(format!("unknown CLI operation: {value}")),
@@ -116,10 +140,15 @@ impl CliCommand {
 
     fn zstd(&self) -> Result<Arc<crate::Zstd::TotkZstd<'static>>, String> {
         let config = Arc::new(TotkConfig::safe_new(false).map_err(|e| e.to_string())?);
-        Ok(Arc::new(crate::Zstd::TotkZstd::dictionaryless(
-            config,
-            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
-        )))
+        let codec =
+            crate::Zstd::TotkZstd::new(config.clone(), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL)
+                .unwrap_or_else(|_| {
+                    crate::Zstd::TotkZstd::dictionaryless(
+                        config,
+                        crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+                    )
+                });
+        Ok(Arc::new(codec))
     }
 
     fn bin_to_text(&self) -> Result<(), String> {
@@ -194,15 +223,66 @@ impl CliCommand {
 
     fn decompress(&self) -> Result<(), String> {
         let bytes = fs::read(&self.input).map_err(|e| format!("failed to read input: {e}"))?;
-        let decompressed = if crate::compression::meshcodec::MeshCodec::has_magic(&bytes) {
-            crate::compression::meshcodec::MeshCodec::decompress(&bytes)
-        } else if bytes.starts_with(b"Yaz0") {
-            crate::Zstd::TotkZstd::decompress_yaz0(&bytes)
-        } else {
-            self.zstd()?.try_decompress(&bytes)
-        }
-        .map_err(|e| format!("failed to decompress input: {e}"))?;
+        let decompressed = self
+            .zstd()?
+            .try_decompress_for_path(&self.input, &bytes)
+            .map(|(data, _)| data)
+            .or_else(|_| crate::compression::meshcodec::MeshCodec::decompress(&bytes))
+            .map_err(|e| format!("failed to decompress input: {e}"))?;
         write_output(&self.output, &decompressed)
+    }
+
+    fn decompress_dir(&self) -> Result<(), String> {
+        if self.input.as_os_str().is_empty() || self.output.as_os_str().is_empty() {
+            return Err("decompress_dir requires -i <input_dir> and -o <output_dir>".into());
+        }
+        if !self.input.is_dir() {
+            return Err(format!(
+                "input must be a directory: {}",
+                self.input.display()
+            ));
+        }
+        if paths_are_equal(&self.input, &self.output)? {
+            return Err("input and output directories cannot be the same".into());
+        }
+
+        let mut files = Vec::new();
+        collect_file_paths(&self.input, &self.input, &mut files)?;
+        let zstd = self.zstd()?;
+        let mut decompressed_count = 0usize;
+        let mut failed_count = 0usize;
+
+        for (relative, source) in files {
+            let bytes = match fs::read(&source) {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    println!("Could not decompress {}: {error}", source.display());
+                    failed_count += 1;
+                    continue;
+                }
+            };
+            let result = if crate::compression::meshcodec::MeshCodec::has_magic(&bytes) {
+                crate::compression::meshcodec::MeshCodec::decompress(&bytes)
+            } else {
+                zstd.try_decompress_for_path(&source, &bytes)
+                    .map(|(data, _)| data)
+            };
+            match result {
+                Ok(data) => {
+                    let destination = self.output.join(strip_zs_suffix(&relative));
+                    write_output(&destination, &data)?;
+                    decompressed_count += 1;
+                }
+                Err(error) => {
+                    println!("Could not decompress {}: {error}", source.display());
+                    failed_count += 1;
+                }
+            }
+        }
+        println!(
+            "Decompressed {decompressed_count} file(s); could not decompress {failed_count} file(s)"
+        );
+        Ok(())
     }
 
     fn compress(&self) -> Result<(), String> {
@@ -421,6 +501,51 @@ fn collect_directory(
         }
     }
     Ok(())
+}
+
+fn collect_file_paths(
+    root: &Path,
+    current: &Path,
+    result: &mut Vec<(PathBuf, PathBuf)>,
+) -> Result<(), String> {
+    for entry in fs::read_dir(current).map_err(|e| e.to_string())? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if path.is_dir() {
+            collect_file_paths(root, &path, result)?;
+        } else if path.is_file() {
+            let relative = path
+                .strip_prefix(root)
+                .map_err(|e| e.to_string())?
+                .to_path_buf();
+            result.push((relative, path));
+        }
+    }
+    Ok(())
+}
+
+fn strip_zs_suffix(path: &Path) -> PathBuf {
+    let mut result = path.to_path_buf();
+    let Some(name) = result
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(str::to_owned)
+    else {
+        return result;
+    };
+    if name.to_ascii_lowercase().ends_with(".zs") {
+        result.set_file_name(&name[..name.len() - 3]);
+    }
+    result
+}
+
+fn paths_are_equal(left: &Path, right: &Path) -> Result<bool, String> {
+    let left =
+        fs::canonicalize(left).map_err(|e| format!("failed to resolve input directory: {e}"))?;
+    let right = fs::canonicalize(right).unwrap_or_else(|_| right.to_path_buf());
+    Ok(left
+        .to_string_lossy()
+        .trim_end_matches(['\\', '/'])
+        .eq_ignore_ascii_case(right.to_string_lossy().trim_end_matches(['\\', '/'])))
 }
 
 fn safe_destination(root: &Path, name: &str) -> Result<PathBuf, String> {
