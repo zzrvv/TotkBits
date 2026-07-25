@@ -1,6 +1,6 @@
 mod document;
 mod fixup;
-mod header;
+pub(crate) mod header;
 mod item;
 mod item_graph;
 mod item_range;

@@ -528,13 +528,13 @@ pub fn preferred_dictionary_for_path(path: impl AsRef<Path>) -> Option<ZstdDicti
         .unwrap_or_default()
         .to_string_lossy()
         .to_ascii_lowercase();
-    if name.starts_with("bcett") || name.ends_with(".bcett.byml.zs") {
+    if name.ends_with(".bcett.byml") || name.ends_with(".bcett.byml.zs") {
         Some(ZstdDictionary::Bcett)
     } else if name.starts_with("pack") || name.ends_with(".pack.zs") {
         Some(ZstdDictionary::Pack)
-    } else if name.starts_with("empty") {
-        Some(ZstdDictionary::Empty)
-    } else if name.starts_with("zs") || name.ends_with(".zs") {
+    // } else if name.starts_with("empty") {
+    //     Some(ZstdDictionary::Empty)
+    } else if  name.ends_with(".zs") {
         Some(ZstdDictionary::Zs)
     } else {
         None

@@ -146,4 +146,21 @@ impl Pathlib {
             _ => path_str.split('.').skip(1).collect::<Vec<_>>().join("."),
         }
     }
+
+    fn is_aamp_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = path.as_ref().to_string_lossy().to_ascii_lowercase();
+
+        [
+            ".bxml",
+            ".baiprog",
+            ".bas",
+            ".baslist",
+            ".bgparamlist",
+            ".bmodellist",
+            ".bphysics",
+            ".bphyssb",
+        ]
+        .iter()
+        .any(|ext| path.ends_with(ext))
+    }
 }

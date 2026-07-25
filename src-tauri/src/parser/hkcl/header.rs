@@ -1,8 +1,10 @@
 use crate::parser::binary::{BinaryReader, Endian};
 use std::io::{self, ErrorKind};
 
-const PACKFILE_MAGIC: [u8; 8] = [0x57, 0xe0, 0xe0, 0x57, 0x10, 0xc0, 0xc0, 0x10];
+pub(crate) const PACKFILE_MAGIC: [u8; 8] = [0x57, 0xe0, 0xe0, 0x57, 0x10, 0xc0, 0xc0, 0x10];
 pub const HEADER_SIZE: usize = 0x40;
+
+
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HkclLayoutRules {

@@ -1,5 +1,9 @@
 use crate::parser::hkcl::{HkclDocument, HkclLeaf};
+use crate::parser::hkcl::header::PACKFILE_MAGIC;
+use std::io::ErrorKind;
 use std::{io, path::Path};
+
+
 
 pub struct HkclFile {
     pub source_path: Option<String>,
@@ -8,12 +12,20 @@ pub struct HkclFile {
 
 impl HkclFile {
     pub fn from_binary(data: &[u8], path: Option<&Path>) -> io::Result<Self> {
+        if !Self::is_hkcl_magic(data) {
+            return Err(io::Error::new(ErrorKind::InvalidData, "missing HKCL Havok packfile header"));
+        }
         let document = HkclDocument::parse(data)?;
         document.validate()?;
         Ok(Self {
             source_path: path.map(|path| path.to_string_lossy().into_owned()),
             document,
         })
+    }
+    
+    #[inline]
+    pub fn is_hkcl_magic(data: &[u8]) -> bool {
+        data.starts_with(&PACKFILE_MAGIC)
     }
 
     pub fn open(
