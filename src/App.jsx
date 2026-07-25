@@ -208,7 +208,7 @@ function App() {
       statusText.toLowerCase().startsWith('warning') ? 'yellow' : 'white',
   };
   const isComparerWorking = (compareData?.content1?.length ?? 0) > 0;
-  const displayButtons = activeTab === 'SARC' || activeTab === 'RSTB' || activeTab === 'YAML';
+  const displayButtons = activeTab === 'SARC' || activeTab === 'AUDIO' || activeTab === 'RSTB' || activeTab === 'YAML';
   const rootStyle = activeTab !== "COMPARER" ? {} : isComparerWorking ? {backgroundColor: "#2E303C"} : {};
   return (
     <div
@@ -284,7 +284,7 @@ function App() {
         setIsSearchInSarcOpened={setIsSearchInSarcOpened}>
       </SearchTextInSarcPrompt>
 
-      {activeTab !== '3D' && activeTab !== 'IMAGE' && activeTab !== 'AUDIO' && activeTab !== 'AMTA' && <ButtonsDisplay
+      {activeTab !== '3D' && activeTab !== 'IMAGE' && activeTab !== 'AMTA' && <ButtonsDisplay
         editorRef={editorRef}
         updateEditorContent={updateEditorContent}
         setStatusText={setStatusText}

@@ -55,26 +55,6 @@ const AudioView = ({ activeTab, setActiveTab, setStatusText, setpaths }) => {
         }
     };
 
-    const saveBars = async (saveAs = false) => {
-        setBusy(true);
-        setStatusText(saveAs ? 'Saving BARS as…' : 'Saving BARS…');
-        try {
-            const content = await invoke(saveAs ? 'save_as_click' : 'save_file_struct', {
-                saveData: { tab: 'SARC', text: '' },
-            });
-            if (!content) {
-                setStatusText(saveAs ? 'Save As cancelled' : 'BARS was not saved');
-                return;
-            }
-            if (content.sarc_paths?.paths?.length) setpaths(content.sarc_paths);
-            setStatusText(content.status_text || (saveAs ? 'Saved BARS copy' : 'Saved BARS'));
-        } catch (error) {
-            setStatusText(`BARS save failed: ${error}`);
-        } finally {
-            setBusy(false);
-        }
-    };
-
     if (activeTab !== 'AUDIO') return null;
     return <section className="audio-view">
         <button type="button" className="audio-close" title="Close audio player" onClick={close}>×</button>
@@ -89,6 +69,7 @@ const AudioView = ({ activeTab, setActiveTab, setStatusText, setpaths }) => {
             />
             <div className="audio-details">
                 <div className="audio-metadata">
+                    <span>{preview.size.toLocaleString()} bytes</span>
                     <span>{preview.sample_rate.toLocaleString()} Hz</span>
                     <span>{preview.channels} channel{preview.channels === 1 ? '' : 's'}</span>
                     <span>{preview.samples.toLocaleString()} samples</span>
@@ -98,8 +79,6 @@ const AudioView = ({ activeTab, setActiveTab, setStatusText, setpaths }) => {
                     <button type="button" disabled={busy} onClick={replace}>Replace WAV/MP3</button>
                     <button type="button" disabled={busy} onClick={() => exportAudio('wav')}>Export WAV</button>
                     <button type="button" disabled={busy} onClick={() => exportAudio('mp3')}>Export MP3</button>
-                    <button type="button" disabled={busy} onClick={() => saveBars(false)}>Save BARS</button>
-                    <button type="button" disabled={busy} onClick={() => saveBars(true)}>Save BARS As…</button>
                 </div>
             </div>
         </> : <p>Select a BFWAV or BWAV node.</p>}

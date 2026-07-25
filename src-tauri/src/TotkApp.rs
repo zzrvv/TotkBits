@@ -120,6 +120,7 @@ impl<'a> TotkBitsApp<'a> {
                 "data:audio/wav;base64,{}",
                 base64::engine::general_purpose::STANDARD.encode(wav)
             ),
+            size: bytes.len(),
             sample_rate: decoded.sample_rate,
             channels: decoded.channels.len(),
             samples: decoded.channels.first().map_or(0, Vec::len),
@@ -517,6 +518,14 @@ impl<'a> TotkBitsApp<'a> {
             data.sarc_paths.paths = archive.paths();
             data.sarc_paths.added_paths = archive.added.iter().cloned().collect();
             data.sarc_paths.modded_paths = archive.modified.iter().cloned().collect();
+            data.sarc_paths.file_type = match &archive.archive {
+                RootArchive::Bars(_) => "BARS",
+                RootArchive::Zip(_) => "ZIP",
+                RootArchive::SevenZip(_) => "7Z",
+                RootArchive::Rar(_) => "RAR",
+                RootArchive::Folder(_) => "FOLDER",
+            }
+            .into();
         } else if let Some(pack) = &self.pack {
             data.get_sarc_paths(pack);
         }
@@ -1102,7 +1111,15 @@ impl<'a> TotkBitsApp<'a> {
         None
     }
 
-    pub fn save_as(&mut self, save_data: SaveData) -> Option<SendData> {
+    pub fn save_as(&mut self, mut save_data: SaveData) -> Option<SendData> {
+        if save_data.tab == "AUDIO"
+            && self
+                .archive
+                .as_ref()
+                .is_some_and(|archive| matches!(archive.archive, RootArchive::Bars(_)))
+        {
+            save_data.tab = "SARC".into();
+        }
         //TODO: FINISH!
         let mut data = SendData::default();
         let mut dialog = SaveFileDialog::new(
@@ -1420,7 +1437,15 @@ impl<'a> TotkBitsApp<'a> {
     }
 
     // #[allow(unused_variables)]
-    pub fn save(&mut self, save_data: SaveData) -> Option<SendData> {
+    pub fn save(&mut self, mut save_data: SaveData) -> Option<SendData> {
+        if save_data.tab == "AUDIO"
+            && self
+                .archive
+                .as_ref()
+                .is_some_and(|archive| matches!(archive.archive, RootArchive::Bars(_)))
+        {
+            save_data.tab = "SARC".into();
+        }
         println!(
             "About to save {} text len {}",
             save_data.tab,

@@ -51,7 +51,7 @@ const ButtonsDisplay = () => {
     setSavingFile, documentSnapshots
   } = useEditorContext();
 
-  const displayButtons = activeTab === "SARC" || activeTab === "YAML" || activeTab === "RSTB";
+  const displayButtons = activeTab === "SARC" || activeTab === "AUDIO" || activeTab === "YAML" || activeTab === "RSTB";
 
   const handlePathToClipboard = (text) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -130,7 +130,11 @@ const ButtonsDisplay = () => {
     }
   }, []);
 
-  const imageButtonsData = activeTab === "SARC" ? [
+  const imageButtonsData = activeTab === "AUDIO" ? [
+    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
+    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
+    { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
+  ] : activeTab === "SARC" ? [
     { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
     { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },

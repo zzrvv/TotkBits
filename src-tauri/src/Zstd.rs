@@ -534,7 +534,7 @@ pub fn preferred_dictionary_for_path(path: impl AsRef<Path>) -> Option<ZstdDicti
         Some(ZstdDictionary::Pack)
     // } else if name.starts_with("empty") {
     //     Some(ZstdDictionary::Empty)
-    } else if  name.ends_with(".zs") {
+    } else if name.ends_with(".zs") {
         Some(ZstdDictionary::Zs)
     } else {
         None

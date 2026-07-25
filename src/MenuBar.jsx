@@ -304,7 +304,7 @@ function MenuBarDisplay({ updateButton = null }) {
   const fileMenuItems = [
     { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.png', shortcut: 'Ctrl+O' },
     {
-      label: 'Recent',
+      label: 'Open recent',
       icon: blankIcon,
       shortcut: '',
       children: recentFiles.map((path) => ({

@@ -201,6 +201,7 @@ impl<'a> PackComparer<'a> {
 
     pub fn get_sarc_paths(&self) -> SarcPaths {
         let mut paths = SarcPaths::default();
+        paths.file_type = "SARC".into();
         if let Some(opened) = &self.opened {
             for file in opened.sarc.files() {
                 if let Some(name) = file.name {
@@ -618,6 +619,7 @@ pub struct SarcPaths {
     pub modded_paths: Vec<String>,
     pub nested_paths: HashMap<String, Vec<String>>,
     pub read_only: bool,
+    pub file_type: String,
 }
 impl Default for SarcPaths {
     fn default() -> Self {
@@ -627,6 +629,7 @@ impl Default for SarcPaths {
             modded_paths: Vec::new(),
             nested_paths: HashMap::new(),
             read_only: false,
+            file_type: String::new(),
         }
     }
 }

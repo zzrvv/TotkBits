@@ -4,8 +4,6 @@ use std::io::{self, ErrorKind};
 pub(crate) const PACKFILE_MAGIC: [u8; 8] = [0x57, 0xe0, 0xe0, 0x57, 0x10, 0xc0, 0xc0, 0x10];
 pub const HEADER_SIZE: usize = 0x40;
 
-
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HkclLayoutRules {
     pub pointer_size: u8,

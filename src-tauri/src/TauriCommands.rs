@@ -23,6 +23,7 @@ use updater::TotkbitsVersion::TotkbitsVersion;
 pub struct BfwavPreview {
     pub path: String,
     pub data_url: String,
+    pub size: usize,
     pub sample_rate: u32,
     pub channels: usize,
     pub samples: usize,

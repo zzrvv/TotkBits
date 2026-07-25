@@ -484,7 +484,7 @@ const refreshSavedArchivePaths = (sarcPaths, setpaths, documentSnapshots, parent
   } else if (parentId && (parentModdedPath || activeDocument.fullPath)) {
     const parentSnapshot = documentSnapshots.current.get(parentId);
     if (parentSnapshot) {
-      const parentPaths = parentSnapshot.paths || { paths: [], added_paths: [], modded_paths: [] };
+      const parentPaths = parentSnapshot.paths || { paths: [], added_paths: [], modded_paths: [], file_type: '' };
       const moddedPath = parentModdedPath || activeDocument.fullPath;
       documentSnapshots.current.set(parentId, {
         ...parentSnapshot,

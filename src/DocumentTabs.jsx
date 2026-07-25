@@ -10,7 +10,7 @@ import { useEditorContext } from './StateManager';
 const emptySnapshot = () => ({
     activeTab: 'SARC', statusText: 'Ready', selectedPath: { path: '', isfile: false },
     labelTextDisplay: { sarc: '', yaml: '', rstb: '', comparer: '' },
-    paths: { paths: [], added_paths: [], modded_paths: [], nested_paths: {} },
+    paths: { paths: [], added_paths: [], modded_paths: [], nested_paths: {}, file_type: '' },
     searchInSarcQuery: '',
     treeFilterQuery: '',
     pathsFilters: { showAll: true, showAdded: false, showModded: false },

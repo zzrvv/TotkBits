@@ -2,6 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Component, Path},
+    sync::OnceLock,
 };
 
 pub mod Bars;
@@ -11,6 +12,80 @@ pub mod SevenZip;
 pub mod Zip;
 
 pub type ArchiveResult<T> = Result<T, String>;
+
+type BarsHashIndex = BTreeMap<String, BTreeMap<String, String>>;
+
+fn bars_hash_index() -> Option<&'static BarsHashIndex> {
+    static INDEX: OnceLock<Option<BarsHashIndex>> = OnceLock::new();
+    INDEX
+        .get_or_init(|| {
+            serde_json::from_str(include_str!("../../../bin/bars_bwav_sha256.json")).ok()
+        })
+        .as_ref()
+}
+
+fn bars_baseline<'a>(
+    archive_name: &str,
+    index: &'a BarsHashIndex,
+) -> Option<&'a BTreeMap<String, String>> {
+    let lower = archive_name.to_ascii_lowercase();
+    index
+        .iter()
+        .find(|(name, _)| name.to_ascii_lowercase() == lower)
+        .or_else(|| {
+            let alternate = if lower.ends_with(".bars.zs") {
+                archive_name.strip_suffix(".zs")?.to_string()
+            } else if lower.ends_with(".bars") {
+                format!("{archive_name}.zs")
+            } else {
+                return None;
+            };
+            index
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(&alternate))
+        })
+        .map(|(_, entries)| entries)
+}
+
+fn classify_bars_entries(
+    archive_name: &str,
+    entries: &BTreeMap<String, Vec<u8>>,
+    index: &BarsHashIndex,
+) -> (BTreeSet<String>, BTreeSet<String>) {
+    let Some(baseline) = bars_baseline(archive_name, index) else {
+        return (BTreeSet::new(), BTreeSet::new());
+    };
+    let mut added = BTreeSet::new();
+    let mut modified = BTreeSet::new();
+    let mut audio_count = 0;
+    for (path, bytes) in entries {
+        if !path.to_ascii_lowercase().ends_with(".bwav") {
+            continue;
+        }
+        audio_count += 1;
+        let Some(filename) = Path::new(path).file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        match baseline
+            .iter()
+            .find(|(name, _)| name.eq_ignore_ascii_case(filename))
+        {
+            None => {
+                added.insert(path.clone());
+            }
+            Some((_, expected))
+                if !crate::Zstd::sha256(bytes.clone()).eq_ignore_ascii_case(expected) =>
+            {
+                modified.insert(path.clone());
+            }
+            Some(_) => {}
+        }
+    }
+    if audio_count > 0 && added.len() == audio_count {
+        added.clear();
+    }
+    (added, modified)
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArchiveMagic {
@@ -103,13 +178,30 @@ impl ArchiveDocument {
             Some(ArchiveMagic::Bars) => RootArchive::Bars(Bars::BarsFile::from_bytes(&bytes)?),
             None => return Ok(None),
         };
-        Ok(Some(Self {
+        let mut document = Self {
             archive,
             path: path.to_string_lossy().replace('\\', "/"),
             added: BTreeSet::new(),
             modified: BTreeSet::new(),
             zstd_zs,
-        }))
+        };
+        document.refresh_bars_changes();
+        Ok(Some(document))
+    }
+    fn refresh_bars_changes(&mut self) {
+        let RootArchive::Bars(bars) = &self.archive else {
+            return;
+        };
+        let Some(index) = bars_hash_index() else {
+            return;
+        };
+        let Some(name) = Path::new(&self.path)
+            .file_name()
+            .and_then(|name| name.to_str())
+        else {
+            return;
+        };
+        (self.added, self.modified) = classify_bars_entries(name, bars.entries(), index);
     }
     pub fn paths(&self) -> Vec<String> {
         self.archive.entries().keys().cloned().collect()
@@ -183,7 +275,7 @@ impl ArchiveDocument {
             self.archive.entries_mut().insert(new.clone(), bytes);
             self.added.remove(&old);
             self.modified.remove(&old);
-            self.modified.insert(new);
+            self.added.insert(new);
         }
         Ok(keys.len())
     }
@@ -259,6 +351,7 @@ impl ArchiveDocument {
         self.path = destination.to_string_lossy().replace('\\', "/");
         self.added.clear();
         self.modified.clear();
+        self.refresh_bars_changes();
         Ok(())
     }
 }
@@ -379,6 +472,70 @@ mod tests {
         assert!(validate_entry_path("../evil").is_err());
         assert!(validate_entry_path("/evil").is_err());
         assert!(validate_entry_path("safe/file.txt").is_ok());
+    }
+
+    #[test]
+    fn classifies_bars_changes_from_filename_hashes() {
+        let original = b"original audio".to_vec();
+        let mut baseline_entries = BTreeMap::new();
+        baseline_entries.insert("same.bwav".into(), crate::Zstd::sha256(original.clone()));
+        baseline_entries.insert("changed.bwav".into(), crate::Zstd::sha256(original.clone()));
+        let mut index = BTreeMap::new();
+        index.insert("Voice.bars.zs".into(), baseline_entries);
+
+        let mut entries = BTreeMap::new();
+        entries.insert("Audio/same.bwav".into(), original);
+        entries.insert("Audio/changed.bwav".into(), b"replacement".to_vec());
+        entries.insert("Audio/added.bwav".into(), b"new".to_vec());
+        entries.insert("Meta Data/same.amta".into(), b"metadata".to_vec());
+
+        let (added, modified) = classify_bars_entries("Voice.bars", &entries, &index);
+        assert_eq!(added, BTreeSet::from(["Audio/added.bwav".into()]));
+        assert_eq!(modified, BTreeSet::from(["Audio/changed.bwav".into()]));
+    }
+
+    #[test]
+    fn does_not_highlight_when_all_bars_audio_is_added() {
+        let mut index = BTreeMap::new();
+        index.insert(
+            "Voice.bars".into(),
+            BTreeMap::from([(
+                "vanilla.bwav".into(),
+                crate::Zstd::sha256(b"vanilla".to_vec()),
+            )]),
+        );
+        let entries = BTreeMap::from([
+            ("Audio/new-a.bwav".into(), b"a".to_vec()),
+            ("Audio/new-b.bwav".into(), b"b".to_vec()),
+        ]);
+
+        let (added, modified) = classify_bars_entries("Voice.bars.zs", &entries, &index);
+        assert!(added.is_empty());
+        assert!(modified.is_empty());
+
+        let (added, modified) = classify_bars_entries("Unknown.bars", &entries, &index);
+        assert!(added.is_empty());
+        assert!(modified.is_empty());
+    }
+
+    #[test]
+    fn renamed_archive_entries_are_added_not_modified() {
+        let mut archive = Zip::ZipFile::default();
+        archive
+            .entries_mut()
+            .insert("old.bwav".into(), b"audio".to_vec());
+        let mut document = ArchiveDocument {
+            archive: RootArchive::Zip(archive),
+            path: "test.zip".into(),
+            added: BTreeSet::new(),
+            modified: BTreeSet::from(["old.bwav".into()]),
+            zstd_zs: false,
+        };
+
+        document.rename_prefix("old.bwav", "new.bwav").unwrap();
+
+        assert_eq!(document.added, BTreeSet::from(["new.bwav".into()]));
+        assert!(document.modified.is_empty());
     }
 
     #[test]
