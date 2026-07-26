@@ -5,10 +5,10 @@ use xlink2_bindings as xlink_bindings;
 
 use crate::{
     file_format::BinTextFile::OpenedFile,
+    InternalFile::InternalFile,
     Open_and_Save::SendData,
     Settings::Pathlib,
-    TotkApp::InternalFile,
-    Zstd::{is_xlink, is_xlink_path, TotkFileType, TotkZstd, ZstdDictionary},
+    Zstd::{is_xlink, TotkFileType, TotkZstd, ZstdDictionary},
 };
 
 /// A lazily-created handle to the native XLink converter.
@@ -90,9 +90,10 @@ impl<'a> Xlink_rs<'a> {
         path: P,
         data: &[u8],
         zstd: Arc<TotkZstd<'a>>,
+        compression: Option<ZstdDictionary>,
     ) -> Option<(InternalFile<'static>, String)> {
         let path = path.as_ref();
-        if !is_xlink_path(path) && !is_xlink(data) {
+        if !is_xlink(data) {
             return None;
         }
         let text = match Self::new(zstd).and_then(|xlink| xlink.binary_to_yaml(data)) {
@@ -106,6 +107,7 @@ impl<'a> Xlink_rs<'a> {
         internal.endian = Some(Endian::Little);
         internal.path = Pathlib::new(path);
         internal.file_type = TotkFileType::Xlink;
+        internal.compression = compression;
         Some((internal, text))
     }
 
@@ -136,7 +138,7 @@ impl<'a> Xlink_rs<'a> {
         let path = path.as_ref();
         let pathlib = Pathlib::new(path);
         let rawdata = std::fs::read(path).ok()?;
-        if !is_xlink_path(path) && !is_xlink(&rawdata) {
+        if !is_xlink(&rawdata) {
             return None;
         }
         print!("Is {} an XLink file? ", path.display());

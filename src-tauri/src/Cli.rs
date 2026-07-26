@@ -192,6 +192,8 @@ impl CliCommand {
             &output_name,
             &mut opened,
             None,
+            0,
+            None,
             None,
             false,
         )

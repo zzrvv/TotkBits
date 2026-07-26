@@ -1,5 +1,5 @@
 use crate::{
-    file_format::{BinTextFile::BymlFile, Esetb::Esetb},
+    file_format::{BinTextFile::BymlFile, Esetb::Esetb, TagProduct::TagProduct},
     parser::msbt::Msbt,
     Settings::Pathlib,
     Zstd::{TotkFileType, TotkZstd, ZstdDictionary},
@@ -94,6 +94,7 @@ pub enum InternalContent<'a> {
     Msbt(Msbt),
     Text,
     Aamp,
+    TagProduct(TagProduct<'a>),
     Structured,
 }
 
@@ -170,6 +171,7 @@ impl<'a> InternalFile<'a> {
         match &mut self.content {
             InternalContent::Byml(file) => file.zstd = zstd,
             InternalContent::Esetb(file) => file.byml.zstd = zstd,
+            InternalContent::TagProduct(file) => file.byml.zstd = zstd,
             _ => {}
         }
     }

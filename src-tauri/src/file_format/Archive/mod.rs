@@ -5,6 +5,8 @@ use std::{
     sync::OnceLock,
 };
 
+use crate::Zstd::ZstdDictionary;
+
 pub mod Bars;
 pub mod Folder;
 pub mod Rar;
@@ -96,6 +98,9 @@ pub enum ArchiveMagic {
 }
 
 pub fn detect_archive_magic(data: &[u8]) -> Option<ArchiveMagic> {
+    if data.is_empty() {
+        return None;
+    }
     if data.starts_with(b"PK\x03\x04")
         || data.starts_with(b"PK\x05\x06")
         || data.starts_with(b"PK\x07\x08")
@@ -125,17 +130,49 @@ pub struct ArchiveDocument {
     pub path: String,
     pub added: BTreeSet<String>,
     pub modified: BTreeSet<String>,
-    pub zstd_zs: bool,
+    pub dictionary: Option<ZstdDictionary>,
 }
 
 impl ArchiveDocument {
+    pub fn get_metadata(&self) -> String {
+        let mut res = format!("[{}]", &self.file_type());
+        if let Some(_dict) = self.dictionary {
+            if _dict == ZstdDictionary::Bcett
+                || _dict == ZstdDictionary::Empty
+                || _dict == ZstdDictionary::Pack
+                || _dict == ZstdDictionary::Zs
+            {
+                res += &format!(" [ZSTD: {:?}]", _dict);
+            } else if _dict != ZstdDictionary::None {
+                res += &format!(" [{:?}]", _dict)
+            }
+        }
+
+        res
+    }
+
+    pub fn kind(&self) -> &'static str {
+        self.file_type()
+    }
+
+    pub fn file_type(&self) -> &'static str {
+        match &self.archive {
+            RootArchive::Bars(_) => "BARS",
+            RootArchive::Zip(_) => "ZIP",
+            RootArchive::SevenZip(_) => "7Z",
+            RootArchive::Rar(_) => "RAR",
+            RootArchive::Folder(_) => "FOLDER",
+            _ => "ARCHIVE",
+        }
+    }
+
     pub fn open_folder(path: &Path) -> ArchiveResult<Self> {
         Ok(Self {
             archive: RootArchive::Folder(Folder::FolderFile::from_directory(path)?),
             path: path.to_string_lossy().replace('\\', "/"),
             added: BTreeSet::new(),
             modified: BTreeSet::new(),
-            zstd_zs: false,
+            dictionary: None,
         })
     }
     pub fn open(path: &Path) -> ArchiveResult<Option<Self>> {
@@ -147,6 +184,44 @@ impl ArchiveDocument {
     ) -> ArchiveResult<Option<Self>> {
         Self::open_impl(path, Some(zstd))
     }
+
+    pub fn from_path(
+        path: impl AsRef<Path>,
+        _dict: Option<ZstdDictionary>,
+    ) -> ArchiveResult<Option<Self>> {
+        let bytes = fs::read(path.as_ref()).unwrap_or_default();
+        Self::from_binary(&bytes, path.as_ref(), _dict)
+    }
+
+    pub fn from_binary(
+        bytes: &[u8],
+        path: impl AsRef<Path>,
+        _dict: Option<ZstdDictionary>,
+    ) -> ArchiveResult<Option<Self>> {
+        //Asume already decompressed
+        let Some(_) = detect_archive_magic(&bytes) else {
+            return Err("Not an archive".to_string());
+        };
+        let archive = match detect_archive_magic(&bytes) {
+            Some(ArchiveMagic::Zip) => RootArchive::Zip(Zip::ZipFile::from_bytes(&bytes)?),
+            Some(ArchiveMagic::SevenZip) => {
+                RootArchive::SevenZip(SevenZip::SevenZipFile::from_bytes(&bytes)?)
+            }
+            Some(ArchiveMagic::Rar) => RootArchive::Rar(Rar::RarFile::from_bytes(&bytes)?),
+            Some(ArchiveMagic::Bars) => RootArchive::Bars(Bars::BarsFile::from_bytes(&bytes)?),
+            None => return Ok(None),
+        };
+        let mut document = Self {
+            archive,
+            path: path.as_ref().to_string_lossy().to_string(),
+            added: BTreeSet::new(),
+            modified: BTreeSet::new(),
+            dictionary: _dict,
+        };
+        document.refresh_bars_changes();
+        Ok(Some(document))
+    }
+
     fn open_impl(
         path: &Path,
         zstd: Option<&crate::Zstd::TotkZstd<'_>>,
@@ -158,13 +233,14 @@ impl ArchiveDocument {
         // formats (notably BCETT BYML) need their own dictionaries and must be
         // allowed to continue to their format-specific openers.
         let lower_path = path.to_string_lossy().to_ascii_lowercase();
-        let bars_path = lower_path.ends_with(".bars") || lower_path.ends_with(".bars.zs");
-        let zstd_zs = source.starts_with(b"\x28\xB5\x2F\xFD") && zstd.is_some() && bars_path;
-        let bytes = if zstd_zs {
+        // let bars_path = lower_path.ends_with(".bars") || lower_path.ends_with(".bars.zs");
+        let dictionary = (source.starts_with(b"\x28\xB5\x2F\xFD") && zstd.is_some())
+            .then_some(ZstdDictionary::Zs);
+        let bytes = if let Some(dictionary) = dictionary {
             let decoder = zstd.ok_or("zs decompressor is unavailable")?;
             decompressed = decoder
-                .try_decompress_using(&source, crate::Zstd::ZstdDictionary::Zs)
-                .map_err(|e| format!("failed to decompress BARS with zs dictionary: {e}"))?;
+                .try_decompress_using(&source, dictionary)
+                .map_err(|e| format!("failed to decompress BARS with {dictionary:?}: {e}"))?;
             decompressed.as_slice()
         } else {
             source.as_slice()
@@ -183,7 +259,7 @@ impl ArchiveDocument {
             path: path.to_string_lossy().replace('\\', "/"),
             added: BTreeSet::new(),
             modified: BTreeSet::new(),
-            zstd_zs,
+            dictionary,
         };
         document.refresh_bars_changes();
         Ok(Some(document))
@@ -305,10 +381,12 @@ impl ArchiveDocument {
             return Ok(());
         }
         let raw = self.to_bytes()?;
-        let bytes = if self.zstd_zs {
+        let bytes = if let Some(dictionary) = self.dictionary {
             zstd.ok_or("zs compressor is unavailable")?
-                .compress_with_dictionary(&raw, crate::Zstd::ZstdDictionary::Zs)
-                .map_err(|error| format!("failed to compress BARS with zs dictionary: {error}"))?
+                .compress_with_dictionary(&raw, dictionary)
+                .map_err(|error| {
+                    format!("failed to compress archive with {dictionary:?}: {error}")
+                })?
         } else {
             raw
         };
@@ -529,7 +607,7 @@ mod tests {
             path: "test.zip".into(),
             added: BTreeSet::new(),
             modified: BTreeSet::from(["old.bwav".into()]),
-            zstd_zs: false,
+            dictionary: None,
         };
 
         document.rename_prefix("old.bwav", "new.bwav").unwrap();
@@ -555,7 +633,7 @@ mod tests {
             .expect("compressed BARS was not recognized");
         assert!(matches!(document.archive, RootArchive::Bars(_)));
         assert!(!document.paths().is_empty());
-        assert!(document.zstd_zs);
+        assert_eq!(document.dictionary, Some(ZstdDictionary::Zs));
         document
             .save_atomic_with_zstd(&path, &app.zstd)
             .expect("failed to save zs-compressed BARS");
@@ -581,7 +659,7 @@ mod tests {
             path: path.to_string_lossy().into_owned(),
             added: BTreeSet::new(),
             modified: BTreeSet::new(),
-            zstd_zs: false,
+            dictionary: None,
         };
         document
             .set("folder/original.txt", b"before".to_vec())

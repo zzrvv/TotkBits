@@ -2,9 +2,9 @@ use std::{io, path::Path, sync::Arc};
 
 use crate::{
     file_format::{BinTextFile::OpenedFile, Pack::PackComparer},
+    InternalFile::InternalFile,
     Open_and_Save::{file_from_disk_to_senddata, get_string_from_data, SendData},
     Settings::Pathlib,
-    TotkApp::InternalFile,
     Zstd::TotkZstd,
 };
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

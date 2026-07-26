@@ -11,6 +11,7 @@ use Zstd::get_executable_dir;
 mod Cli;
 mod Comparer;
 mod DocumentState;
+mod InternalFile;
 mod InternalFile_EX;
 mod NestedSarc;
 mod Open_and_Save;

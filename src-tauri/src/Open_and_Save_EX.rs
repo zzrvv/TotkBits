@@ -4,7 +4,7 @@ use crate::{
         msbt::MsbtFile,
         Ainb::AinbFile,
         BfevFile::BfevFile,
-        BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile},
+        BinTextFile::{replace_rotate_deg_to_rad, BymlFile, OpenedFile},
         Esetb::Esetb,
         GameDataList::GameDataList,
         Pack::PackComparer,
@@ -15,6 +15,7 @@ use crate::{
     },
     InternalFile_EX::{Compression, FileOrigin, InternalContent, InternalFile},
     Open_and_Save::SendData,
+    Settings::Pathlib,
     Zstd::{
         is_aamp, is_ainb, is_asb, is_byml, is_esetb, is_evfl, is_gamedatalist, is_tagproduct,
         TotkFileType, TotkZstd, ZstdDictionary,
@@ -119,10 +120,9 @@ fn dispatch_internal<'a>(
             .ok_or_else(|| invalid("invalid TagProduct"))?;
         file.file_type = TotkFileType::TagProduct;
         file.endian = Some(roead::Endian::Little);
-        return Ok(OpenResult {
-            file,
-            text: tag.to_text(),
-        });
+        let text = tag.to_text();
+        file.content = InternalContent::TagProduct(tag);
+        return Ok(OpenResult { file, text });
     }
     if is_esetb(path) {
         let esetb = Esetb::from_binary(&bytes, zstd)?;
@@ -132,7 +132,7 @@ fn dispatch_internal<'a>(
         file.content = InternalContent::Esetb(esetb);
         return Ok(OpenResult { file, text });
     }
-    if is_banc_path(path) || lower.ends_with(".byml") || lower.ends_with(".byml.zs") {
+    if Pathlib::is_banc_path(path) || lower.ends_with(".byml") || lower.ends_with(".byml.zs") {
         return open_internal_byml(file, bytes, zstd);
     }
     if lower.ends_with(".asb") || lower.ends_with(".asb.zs") || is_asb(&bytes) {
@@ -162,7 +162,7 @@ fn dispatch_internal<'a>(
             text: BfevFile::binary_to_text(&bytes)?,
         });
     }
-    if let Some((legacy, text)) = Xlink_rs::open_internal(path, &bytes, zstd.clone()) {
+    if let Some((legacy, text)) = Xlink_rs::open_internal(path, &bytes, zstd.clone(), None) {
         file.file_type = legacy.file_type;
         file.endian = legacy.endian;
         file.content = InternalContent::Structured;
@@ -180,7 +180,7 @@ fn dispatch_internal<'a>(
             text: crate::file_format::bphcl::safe_aamp_yaml(&pio)?,
         });
     }
-    if let Some((legacy, text)) = MsbtFile::open_internal(path, &bytes) {
+    if let Some((legacy, text)) = MsbtFile::open_internal(path, &bytes, None) {
         file.file_type = legacy.file_type;
         file.endian = legacy.endian;
         file.content = legacy
@@ -270,10 +270,15 @@ pub fn encode_uncompressed(
         },
         TotkFileType::ASB => AsbFile::text_to_binary(request.text, None)?,
         TotkFileType::AINB => AinbFile::text_to_binary(request.text)?,
-        TotkFileType::TagProduct => TagProduct::to_binary(request.text)?,
+        TotkFileType::TagProduct => match content.as_deref() {
+            Some(InternalContent::TagProduct(tag)) => {
+                TagProduct::to_binary(request.text, tag.rank_table_bytes())?
+            }
+            _ => return Err(invalid("TagProduct RankTable state is unavailable")),
+        },
         TotkFileType::Byml | TotkFileType::Bcett => {
             let processed;
-            let text = if is_banc_path(request.path) && zstd.totk_config.rotation_deg {
+            let text = if Pathlib::is_banc_path(request.path) && zstd.totk_config.rotation_deg {
                 processed = replace_rotate_deg_to_rad(request.text);
                 processed.as_str()
             } else {

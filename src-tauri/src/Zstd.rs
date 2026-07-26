@@ -1,5 +1,6 @@
 use crate::file_format::Pack::PackFile;
 use crate::Open_and_Save::get_string_from_data;
+use crate::Settings::Pathlib;
 use crate::TotkConfig::TotkConfig;
 use digest::Digest;
 use flate2::read::ZlibDecoder;
@@ -217,6 +218,8 @@ pub enum ZstdDictionary {
     Empty,
     Bcett,
     Yaz0,
+    Mcpk,
+    None,
 }
 
 pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
@@ -229,6 +232,15 @@ pub fn is_zstd(data: &[u8]) -> bool {
 impl<'a> TotkZstd<'_> {
     pub fn compress_mcpk(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         crate::compression::meshcodec::MeshCodec::compress(data)
+    }
+    pub fn decompress_mcpk(&self, data: &[u8]) -> io::Result<Vec<u8>> {
+        if !data.starts_with(b"MCPK") {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "input does not have MCPK magic",
+            ));
+        }
+        crate::compression::meshcodec::MeshCodec::decompress(data)
     }
 
     pub fn decompress_empty(data: &[u8]) -> io::Result<Vec<u8>> {
@@ -318,6 +330,72 @@ impl<'a> TotkZstd<'_> {
         self.try_decompress_zstd_ordered(data, preferred_dictionary_for_path(path))
     }
 
+    pub fn get_preffered_dict(file_path: impl AsRef<Path>) -> Option<ZstdDictionary> {
+        let path = file_path
+            .as_ref()
+            .to_string_lossy()
+            .into_owned()
+            .to_ascii_lowercase();
+        if Pathlib::is_rstb_path(&path) {
+            return Some(ZstdDictionary::Empty);
+        }
+        if Pathlib::is_banc_path(&path) {
+            return Some(ZstdDictionary::Bcett);
+        }
+        if Pathlib::is_bfres_path(&path) {
+            return Some(ZstdDictionary::Mcpk);
+        }
+        if Pathlib::is_sarc_path(&path) {
+            return Some(ZstdDictionary::Pack);
+        }
+        if is_tagproduct(&path)
+            || is_gamedatalist(&path)
+            || Pathlib::is_esetb_path(&path)
+            || Pathlib::is_ainb_path(&path)
+            || Pathlib::is_asb_path(&path)
+            || Pathlib::is_evfl_path(&path)
+            || Pathlib::is_xlink_path(&path)
+            || Pathlib::is_byml_path(&path)
+            || Pathlib::is_bntx_path(&path)
+            || Pathlib::is_bars_path(&path)
+        {
+            return Some(ZstdDictionary::Zs);
+        }
+        if Pathlib::is_yaz0_path(&path) {
+            return Some(ZstdDictionary::Yaz0);
+        }
+
+        None
+    }
+
+    pub fn try_decompress_all_ordered_safe(
+        &self,
+        data: &[u8],
+        file_path: impl AsRef<Path>,
+    ) -> (Vec<u8>, ZstdDictionary) {
+        self.try_decompress_all_ordered(&data, file_path.as_ref())
+            .unwrap_or((data.to_vec(), ZstdDictionary::None))
+    }
+    pub fn try_decompress_all_ordered(
+        &self,
+        data: &[u8],
+        file_path: impl AsRef<Path>,
+    ) -> Result<(Vec<u8>, ZstdDictionary), io::Error> {
+        let path = file_path.as_ref();
+        let preffered: Option<ZstdDictionary> = Self::get_preffered_dict(&path);
+        if let Some(_dict) = preffered {
+            match _dict {
+                ZstdDictionary::Mcpk => {
+                    return Ok((self.decompress_mcpk(data)?, ZstdDictionary::Mcpk));
+                }
+                ZstdDictionary::Yaz0 => {
+                    return Ok((Self::decompress_yaz0(data)?, ZstdDictionary::Yaz0));
+                }
+                _ => {}
+            }
+        }
+        self.try_decompress_zstd_ordered(data, preffered)
+    }
     fn try_decompress_zstd_ordered(
         &self,
         data: &[u8],
@@ -356,14 +434,14 @@ impl<'a> TotkZstd<'_> {
         data: &[u8],
         dictionary: ZstdDictionary,
     ) -> Result<Vec<u8>, io::Error> {
+        if dictionary == ZstdDictionary::None {
+            return Ok(data.to_vec());
+        }
         if dictionary == ZstdDictionary::Yaz0 {
-            if !data.starts_with(b"Yaz0") {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "input does not have Yaz0 magic",
-                ));
-            }
             return Self::decompress_yaz0(data);
+        }
+        if dictionary == ZstdDictionary::Mcpk {
+            return self.decompress_mcpk(data);
         }
         if !is_zstd(data) {
             return Err(io::Error::new(
@@ -377,6 +455,8 @@ impl<'a> TotkZstd<'_> {
             ZstdDictionary::Empty => Some(self.decompressor.empty.as_ref()),
             ZstdDictionary::Bcett => self.decompressor.bcett.as_deref(),
             ZstdDictionary::Yaz0 => unreachable!(),
+            ZstdDictionary::Mcpk => unreachable!(),
+            ZstdDictionary::None => unreachable!(),
         }
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "dictionary is unavailable"))?;
         self.decompressor.decompress(data, dict)
@@ -393,10 +473,18 @@ impl<'a> TotkZstd<'_> {
             ZstdDictionary::Empty => self.compress_empty(data),
             ZstdDictionary::Bcett => self.compress_bcett(data),
             ZstdDictionary::Yaz0 => Self::compress_yaz0(data),
+            ZstdDictionary::Mcpk => self.compress_mcpk(data),
+            ZstdDictionary::None => Ok(data.to_vec()),
         }
     }
 
     pub fn decompress_yaz0(data: &[u8]) -> io::Result<Vec<u8>> {
+        if !data.starts_with(b"Yaz0") {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "input does not have Yaz0 magic",
+            ));
+        }
         roead::yaz0::decompress(data)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
@@ -833,12 +921,6 @@ pub fn is_tagproduct<P: AsRef<Path>>(path: P) -> bool {
 }
 
 #[inline]
-pub fn is_xlink_path<P: AsRef<Path>>(path: P) -> bool {
-    let path = path.as_ref().to_string_lossy().to_ascii_lowercase();
-    path.ends_with(".belnk") || path.ends_with(".belnk.zs")
-}
-
-#[inline]
 pub fn is_little_endian(data: &[u8]) -> bool {
     data.len() >= 14 && data.get(12..14) == Some(&[0xFF, 0xFE])
 }
@@ -860,7 +942,6 @@ pub fn is_esetb<P: AsRef<Path>>(path: P) -> bool {
     let tmp = path.as_ref().to_string_lossy().to_ascii_lowercase();
     tmp.ends_with(".esetb.byml") || tmp.ends_with(".esetb.byml.zs")
 }
-
 pub fn get_executable_dir() -> String {
     if cfg!(debug_assertions) {
         let cwd = env::current_dir()

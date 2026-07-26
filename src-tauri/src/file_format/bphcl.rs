@@ -106,6 +106,30 @@ pub struct BphclFile {
     pub document: BphclDocument,
 }
 impl BphclFile {
+    pub fn open_internal(
+        data: &[u8],
+        path: &str,
+        outer_path: Option<&str>,
+    ) -> Option<(
+        crate::file_format::BinTextFile::OpenedFile<'static>,
+        crate::InternalFile::InternalFile<'static>,
+        crate::Open_and_Save::SendData,
+    )> {
+        let file = Self::from_binary(data, Some(Path::new(path))).ok()?;
+        let status = match outer_path {
+            Some(outer) => format!("Opened {path} inside {outer}"),
+            None => format!("Opened {path} from archive"),
+        };
+        let send_data = file.send_data(Path::new(path), status).ok()?;
+        let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
+        opened.file_type = crate::Zstd::TotkFileType::Bphcl;
+        opened.path = crate::Settings::Pathlib::new(path);
+        opened.bphcl = Some(file);
+        let mut internal = crate::InternalFile::InternalFile::new(path.into());
+        internal.file_type = crate::Zstd::TotkFileType::Bphcl;
+        Some((opened, internal, send_data))
+    }
+
     pub fn send_data(
         &self,
         path: &Path,

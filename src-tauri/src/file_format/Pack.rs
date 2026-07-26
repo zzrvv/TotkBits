@@ -14,7 +14,7 @@ use std::sync::Arc;
 use crate::Open_and_Save::SendData;
 use crate::Settings::{exe_relative_path, makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd};
+use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd, ZstdDictionary};
 
 // use super::SarcEntriesData::get_sarc_entries_data;
 
@@ -51,35 +51,67 @@ impl<'a> PackComparer<'a> {
         }
     }
 
-    pub fn open_sarc<P: AsRef<Path>>(
+    pub fn open_sarc_bytes<P: AsRef<Path>>(
         path: P,
+        rawdata: &[u8],
         zstd: Arc<TotkZstd<'a>>,
     ) -> Option<(Self, crate::Open_and_Save::SendData)> {
         let mut data = SendData::default();
         let path_ref = path.as_ref();
         print!("Is {:?} a sarc? ", &path_ref.display());
         let pathlib_var = Pathlib::new(path_ref);
-        if let Ok(sarc) = PackFile::new(path_ref, zstd.clone()) {
-            let e_s = if sarc.endian == roead::Endian::Little {
-                " [LE]"
-            } else {
-                " [BE]"
-            };
-            let yaz0_s = if sarc.is_yaz0 { " [Yaz0] " } else { " " };
-            if let Some(pack) = PackComparer::from_pack(sarc, zstd.clone()) {
-                println!(" yes!");
-                data.get_sarc_paths(&pack);
-                data.status_text =
-                    format!("Opened {}", &path_ref.to_string_lossy().replace("\\", "/"));
-                data.path = pathlib_var.clone();
-                data.tab = "SARC".to_string();
-                data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, yaz0_s, e_s);
-                return Some((pack, data));
-            }
-        }
-        println!(" no");
+        let Ok(sarc) = PackFile::from_binary(&rawdata, zstd.clone()) else {
+            println!(" no!");
+            return None;
+        };
 
-        None
+
+        println!(" yes!");
+        data.status_text =
+            format!("Opened {}", &path_ref.to_string_lossy().replace("\\", "/"));
+        data.path = pathlib_var.clone();
+        data.tab = "SARC".to_string();
+        // data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, &sarc., e_s);
+        let Some(pack) = PackComparer::from_pack(sarc, zstd.clone()) else {
+            println!(" no!");
+            return None;
+        };
+        data.get_sarc_paths(&pack);
+        return Some((pack, data));
+    }
+
+    pub fn open_sarc<P: AsRef<Path>>(
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(Self, crate::Open_and_Save::SendData)> {
+        let rawdata = fs::read(path.as_ref()).ok()?;
+        return Self::open_sarc_bytes(path.as_ref(), &rawdata, zstd.clone());
+
+        // let mut data = SendData::default();
+        // let path_ref = path.as_ref();
+        // print!("Is {:?} a sarc? ", &path_ref.display());
+        // let pathlib_var = Pathlib::new(path_ref);
+        // if let Ok(sarc) = PackFile::new(path_ref, zstd.clone()) {
+        //     let e_s = if sarc.endian == roead::Endian::Little {
+        //         " [LE]"
+        //     } else {
+        //         " [BE]"
+        //     };
+        //     let yaz0_s = if sarc.is_yaz0 { " [Yaz0] " } else { " " };
+        //     if let Some(pack) = PackComparer::from_pack(sarc, zstd.clone()) {
+        //         println!(" yes!");
+        //         data.get_sarc_paths(&pack);
+        //         data.status_text =
+        //             format!("Opened {}", &path_ref.to_string_lossy().replace("\\", "/"));
+        //         data.path = pathlib_var.clone();
+        //         data.tab = "SARC".to_string();
+        //         data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, yaz0_s, e_s);
+        //         return Some((pack, data));
+        //     }
+        // }
+        // println!(" no");
+
+        // None
     }
     pub fn from_pack(pack: PackFile<'a>, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         let config = zstd.clone().totk_config.clone();
@@ -502,6 +534,57 @@ impl<'a> PackFile<'_> {
         self.dirty = false;
         Ok(())
     }
+
+    // pub fn to_senddata(&self) -> SendData {
+    //     let mut data = SendData::default();
+    //     data.get_sarc_paths(self);
+    //     data.status_text =
+    //         format!("Opened {}", &path_ref.to_string_lossy().replace("\\", "/"));
+    //     data.path = pathlib_var.clone();
+    //     data.tab = "SARC".to_string();
+    //     data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, yaz0_s, e_s);
+
+    //     data
+    // }
+
+    pub fn from_binary(data: &[u8], zstd: Arc<TotkZstd<'a>>) -> io::Result<PackFile<'a>> {
+        let (rawdata, compression) = if is_sarc(&data) {
+            (data.to_vec(), ZstdDictionary::None)
+        } else {
+            zstd.try_decompress_all_ordered_safe(data, "some_example.pack.zs")
+        };
+        if !is_sarc(&rawdata) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "ERROR: Not a sarc data",
+            ));
+        }
+        let res_rawdata = rawdata.clone();
+        let sarc =
+            Sarc::new(rawdata).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let writer = SarcWriter::from_sarc(&sarc);
+        let ftype = match compression {
+            ZstdDictionary::Pack => TotkFileType::Sarc,
+            ZstdDictionary::Zs => TotkFileType::MalsSarc,
+            _ => TotkFileType::Sarc,
+        };
+        let isyaz0 = compression == ZstdDictionary::Yaz0;
+        Ok(PackFile {
+            path: Pathlib::default(),
+            totk_config: zstd.clone().totk_config.clone(),
+            zstd: zstd.clone(),
+            data: res_rawdata,
+            file_type: ftype,
+            endian: sarc.endian(),
+            writer: writer,
+            hashes: HashMap::default(),
+            sarc,
+            is_yaz0: isyaz0,
+            yaz0_alignment: 0,
+            dirty: false,
+        })
+    }
+
     pub fn sarc_file_to_bytes<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
         let mut f_handle: fs::File = fs::File::open(&path)?;
         let mut buffer: Vec<u8> = Vec::new();

@@ -7,6 +7,30 @@ pub struct BphhbFile {
 }
 
 impl BphhbFile {
+    pub fn open_internal(
+        data: &[u8],
+        path: &str,
+        outer_path: Option<&str>,
+    ) -> Option<(
+        crate::file_format::BinTextFile::OpenedFile<'static>,
+        crate::InternalFile::InternalFile<'static>,
+        crate::Open_and_Save::SendData,
+    )> {
+        let file = Self::from_binary(data, Some(Path::new(path))).ok()?;
+        let status = match outer_path {
+            Some(outer) => format!("Opened {path} inside {outer}"),
+            None => format!("Opened {path} from archive"),
+        };
+        let send_data = file.send_data(Path::new(path), status).ok()?;
+        let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
+        opened.file_type = crate::Zstd::TotkFileType::Bphhb;
+        opened.path = crate::Settings::Pathlib::new(path);
+        opened.bphhb = Some(file);
+        let mut internal = crate::InternalFile::InternalFile::new(path.into());
+        internal.file_type = crate::Zstd::TotkFileType::Bphhb;
+        Some((opened, internal, send_data))
+    }
+
     pub fn from_binary(data: &[u8], path: Option<&Path>) -> io::Result<Self> {
         let document = BphhbDocument::parse(data)?;
         document.validate()?;
@@ -22,7 +46,7 @@ impl BphhbFile {
         crate::file_format::BinTextFile::OpenedFile<'static>,
         crate::Open_and_Save::SendData,
     )> {
-        if !is_bphhb_path(path) {
+        if !crate::Settings::Pathlib::is_bphhb_path(path) {
             return None;
         }
         let bytes = std::fs::read(path).ok()?;
@@ -72,19 +96,14 @@ impl BphhbFile {
     }
 }
 
-fn is_bphhb_path(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("bphhb"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn disk_opener_requires_bphhb_extension() {
-        assert!(is_bphhb_path(Path::new("bones.bphhb")));
-        assert!(is_bphhb_path(Path::new("bones.BPHHB")));
-        assert!(!is_bphhb_path(Path::new("bones.bphcl")));
+        assert!(crate::Settings::Pathlib::is_bphhb_path("bones.bphhb"));
+        assert!(crate::Settings::Pathlib::is_bphhb_path("bones.BPHHB"));
+        assert!(!crate::Settings::Pathlib::is_bphhb_path("bones.bphcl"));
     }
 }

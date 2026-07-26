@@ -147,7 +147,7 @@ impl Pathlib {
         }
     }
 
-    fn is_aamp_path<P: AsRef<Path>>(path: P) -> bool {
+    pub fn is_aamp_path<P: AsRef<Path>>(path: P) -> bool {
         let path = path.as_ref().to_string_lossy().to_ascii_lowercase();
 
         [
@@ -162,5 +162,92 @@ impl Pathlib {
         ]
         .iter()
         .any(|ext| path.ends_with(ext))
+    }
+
+    pub fn is_banc_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".bcett.byml") || path.ends_with(".bcett.byml.zs")
+    }
+
+    pub fn is_rstb_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".resourcesizetable.product")
+            || path.ends_with(".resourcesizetable.product.zs")
+    }
+
+    pub fn is_bars_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".bars") || path.ends_with(".bars.zs")
+    }
+
+    pub fn is_byml_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".byml") || path.ends_with(".byml.zs")
+    }
+
+    pub fn is_bfres_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".bfres") || path.ends_with(".bfres.mc")
+    }
+
+    pub fn is_sarc_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".sarc")
+            || path.ends_with(".sarc.zs")
+            || path.ends_with(".pack")
+            || path.ends_with(".pack.zs")
+    }
+
+    pub fn is_bntx_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".bntx") || path.ends_with(".bntx.zs")
+    }
+
+    pub fn is_yaz0_path<P: AsRef<Path>>(path: P) -> bool {
+        Self::get_ext_last(path)
+            .chars()
+            .next()
+            .is_some_and(|character| character.eq_ignore_ascii_case(&'s'))
+    }
+
+    pub fn is_xlink_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".belnk") || path.ends_with(".belnk.zs")
+    }
+
+    pub fn is_ainb_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".ainb") || path.ends_with(".ainb.zs")
+    }
+
+    pub fn is_asb_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".asb") || path.ends_with(".asb.zs")
+    }
+
+    pub fn is_evfl_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".bfevfl") || path.ends_with(".bfevfl.zs")
+    }
+
+    pub fn is_esetb_path<P: AsRef<Path>>(path: P) -> bool {
+        let path = Self::lowercase(path);
+        path.ends_with(".esetb.byml") || path.ends_with(".esetb.byml.zs")
+    }
+
+    pub fn is_bphhb_path<P: AsRef<Path>>(path: P) -> bool {
+        path.as_ref()
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("bphhb"))
+    }
+
+    pub fn is_hkcl_path<P: AsRef<Path>>(path: P) -> bool {
+        path.as_ref()
+            .extension()
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("hkcl"))
+    }
+
+    fn lowercase<P: AsRef<Path>>(path: P) -> String {
+        path.as_ref().to_string_lossy().to_ascii_lowercase()
     }
 }

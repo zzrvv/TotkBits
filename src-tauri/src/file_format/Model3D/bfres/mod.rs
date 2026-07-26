@@ -121,6 +121,41 @@ impl fmt::Display for BfresError {
 impl std::error::Error for BfresError {}
 
 impl BfresFile {
+    pub fn open_internal(
+        bytes: Vec<u8>,
+        path: &str,
+        outer_path: Option<&str>,
+    ) -> Option<(
+        crate::file_format::BinTextFile::OpenedFile<'static>,
+        crate::InternalFile::InternalFile<'static>,
+        crate::Open_and_Save::SendData,
+    )> {
+        #[cfg(not(debug_assertions))]
+        {
+            return None;
+        }
+        let bfres = Self::from_bytes(&bytes).ok()?;
+        let mut data = crate::Open_and_Save::SendData::default();
+        data.path = crate::Settings::Pathlib::new(path);
+        data.file_label = format!("{} [BFRES]", data.path.name);
+        data.file_metadata = "[BFRES] [3D]".into();
+        data.status_text = match outer_path {
+            Some(outer) => format!("Opened {path} inside {outer}"),
+            None => format!("Opened {path} from archive"),
+        };
+        data.tab = "3D".into();
+        data.read_only = true;
+
+        let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
+        opened.file_type = crate::Zstd::TotkFileType::Bfres;
+        opened.path = data.path.clone();
+        opened.bfres = Some(bfres);
+        opened.bfres_data = Some(bytes);
+        let mut internal = crate::InternalFile::InternalFile::new(path.into());
+        internal.file_type = crate::Zstd::TotkFileType::Bfres;
+        Some((opened, internal, data))
+    }
+
     /// Standalone BFRES save path for the currently read-only viewer.
     ///
     /// BFRES editing/serialization is not implemented yet. Once it is, both

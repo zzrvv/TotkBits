@@ -1,10 +1,10 @@
 use crate::{
     file_format::BinTextFile::OpenedFile,
     parser::{binary::Endian as BinaryEndian, msbt::Msbt},
+    InternalFile::InternalFile,
     Open_and_Save::SendData,
     Settings::Pathlib,
-    TotkApp::InternalFile,
-    Zstd::{is_msyt, TotkFileType},
+    Zstd::{is_msyt, TotkFileType, ZstdDictionary},
 };
 use std::path::Path;
 
@@ -61,13 +61,18 @@ impl MsbtFile {
         Some((opened, sent))
     }
 
-    pub fn open_internal(path: &str, data: &[u8]) -> Option<(InternalFile<'static>, String)> {
+    pub fn open_internal(
+        path: &str,
+        data: &[u8],
+        compression: Option<ZstdDictionary>,
+    ) -> Option<(InternalFile<'static>, String)> {
         let (parsed, text, endian) = Self::parse(data)?;
         let mut internal = InternalFile::default();
         internal.path = Pathlib::new(path);
         internal.endian = Some(endian);
         internal.file_type = TotkFileType::Msbt;
         internal.msyt = Some(parsed);
+        internal.compression = compression;
         Some((internal, text))
     }
 
@@ -129,8 +134,8 @@ mod tests {
         let Some((_path, data)) = sample() else {
             return;
         };
-        let (opened, text) =
-            MsbtFile::open_internal("ActorMsg/Attachment.msbt", &data).expect("open internal MSBT");
+        let (opened, text) = MsbtFile::open_internal("ActorMsg/Attachment.msbt", &data, None)
+            .expect("open internal MSBT");
         assert_eq!(opened.file_type, TotkFileType::Msbt);
         assert!(text.starts_with("%%%\r\n"));
         assert!(opened.msyt.is_some());

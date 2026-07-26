@@ -197,6 +197,9 @@ impl DocumentState {
                 if let Some(esetb) = &mut internal.esetb {
                     esetb.byml.zstd = zstd.clone();
                 }
+                if let Some(tag) = &mut internal.tag {
+                    tag.byml.zstd = zstd.clone();
+                }
             }
         }
         status
@@ -901,7 +904,7 @@ impl DocumentState {
                 path.clone(),
                 crate::Zstd::TotkFileType::Aamp,
             );
-            let mut internal = crate::TotkApp::InternalFile::new(path.clone());
+            let mut internal = crate::InternalFile::InternalFile::new(path.clone());
             internal.file_type = crate::Zstd::TotkFileType::Aamp;
             child.internal_file = Some(internal);
             child.internal_parent = Some(crate::TotkApp::InternalParentLink {

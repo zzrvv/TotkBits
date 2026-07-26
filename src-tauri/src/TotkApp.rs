@@ -1,10 +1,9 @@
 use crate::file_format::Archive::{ArchiveDocument, RootArchive};
 use crate::file_format::Audio::{self, Bfwav};
-use crate::file_format::BinTextFile::{BymlFile, OpenedFile};
-use crate::file_format::Esetb::Esetb;
-use crate::file_format::Pack::{PackComparer, SarcPaths};
-use crate::parser::msbt::Msbt;
+use crate::file_format::BinTextFile::OpenedFile;
+use crate::file_format::Pack::{self, PackComparer, PackFile, SarcPaths};
 use crate::Comparer::DiffComparer;
+use crate::InternalFile::InternalFile;
 use crate::NestedSarc::{NestedArchive, NestedArchives};
 use crate::Open_and_Save::{
     check_if_save_in_romfs, file_from_disk_to_senddata, get_binary_by_filetype,
@@ -34,6 +33,35 @@ pub struct InternalParentLink {
     pub document_id: String,
     pub outer_path: Option<String>,
     pub inner_path: String,
+}
+
+fn apply_compression_preference(
+    mut bytes: Vec<u8>,
+    name: &str,
+    compression: Option<ZstdDictionary>,
+    zstd: &TotkZstd<'_>,
+) -> Vec<u8> {
+    let Some(compression) = compression else {
+        return bytes;
+    };
+    if !zstd.totk_config.ask_for_compression {
+        return bytes;
+    }
+    if MessageDialog::new()
+        .set_title("Save compression")
+        .set_description(format!(
+            "{name} was opened with {compression:?} compression.\n\nCompress the saved file?"
+        ))
+        .set_level(rfd::MessageLevel::Info)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show()
+        == rfd::MessageDialogResult::No
+    {
+        if let Ok(decompressed) = zstd.try_decompress_using(&bytes, compression) {
+            bytes = decompressed;
+        }
+    }
+    bytes
 }
 
 pub struct TotkBitsApp<'a> {
@@ -284,27 +312,36 @@ impl<'a> TotkBitsApp<'a> {
         path: String,
         bytes: Vec<u8>,
     ) -> Option<SendData> {
-        #[cfg(debug_assertions)]
-        if let Ok(bfres) = crate::file_format::Model3D::bfres::BfresFile::from_bytes(&bytes) {
-            let status = match &outer_path {
-                Some(outer) => format!("Opened {path} inside {outer}"),
-                None => format!("Opened {path} from archive"),
-            };
-            let mut data = SendData::default();
-            data.path = Pathlib::new(&path);
-            data.file_label = format!("{} [BFRES]", data.path.name);
-            data.file_metadata = "[BFRES] [3D]".into();
-            data.status_text = status;
-            data.tab = "3D".into();
-            data.read_only = true;
-
-            self.opened_file = OpenedFile::default();
-            self.opened_file.file_type = TotkFileType::Bfres;
-            self.opened_file.path = data.path.clone();
-            self.opened_file.bfres = Some(bfres);
-            self.opened_file.bfres_data = Some(bytes);
-            let mut internal = InternalFile::new(path.clone());
-            internal.file_type = TotkFileType::Bfres;
+        // Handle INTERNAL FILE
+        let specialized: Option<(OpenedFile<'_>, InternalFile<'_>, SendData)> =
+            crate::file_format::Model3D::bfres::BfresFile::open_internal(
+                bytes.clone(),
+                &path,
+                outer_path.as_deref(),
+            )
+            .or_else(|| {
+                crate::file_format::bphhb::BphhbFile::open_internal(
+                    &bytes,
+                    &path,
+                    outer_path.as_deref(),
+                )
+            })
+            .or_else(|| {
+                crate::file_format::hkcl::HkclFile::open_internal(
+                    &bytes,
+                    &path,
+                    outer_path.as_deref(),
+                )
+            })
+            .or_else(|| {
+                crate::file_format::bphcl::BphclFile::open_internal(
+                    &bytes,
+                    &path,
+                    outer_path.as_deref(),
+                )
+            });
+        if let Some((opened, internal, data)) = specialized {
+            self.opened_file = opened;
             self.internal_file = Some(internal);
             self.internal_parent = Some(InternalParentLink {
                 document_id: parent_document_id,
@@ -313,76 +350,7 @@ impl<'a> TotkBitsApp<'a> {
             });
             return Some(data);
         }
-        // if path.to_ascii_lowercase().ends_with(".bphhb") {
-        if let Ok(bphhb) =
-            crate::file_format::bphhb::BphhbFile::from_binary(&bytes, Some(Path::new(&path)))
-        {
-            let status = match &outer_path {
-                Some(outer) => format!("Opened {path} inside {outer}"),
-                None => format!("Opened {path} from archive"),
-            };
-            let data = bphhb.send_data(Path::new(&path), status).ok()?;
-            self.opened_file = OpenedFile::default();
-            self.opened_file.file_type = TotkFileType::Bphhb;
-            self.opened_file.path = Pathlib::new(&path);
-            self.opened_file.bphhb = Some(bphhb);
-            let mut internal = InternalFile::new(path.clone());
-            internal.file_type = TotkFileType::Bphhb;
-            self.internal_file = Some(internal);
-            self.internal_parent = Some(InternalParentLink {
-                document_id: parent_document_id,
-                outer_path,
-                inner_path: path,
-            });
-            return Some(data);
-        }
-        // }
-        // if path.to_ascii_lowercase().ends_with(".hkcl") {
-        if let Ok(hkcl) =
-            crate::file_format::hkcl::HkclFile::from_binary(&bytes, Some(Path::new(&path)))
-        {
-            let status = match &outer_path {
-                Some(outer) => format!("Opened {path} inside {outer}"),
-                None => format!("Opened {path} from archive"),
-            };
-            let data = hkcl.send_data(Path::new(&path), status).ok()?;
-            self.opened_file = OpenedFile::default();
-            self.opened_file.file_type = TotkFileType::Hkcl;
-            self.opened_file.path = Pathlib::new(&path);
-            self.opened_file.hkcl = Some(hkcl);
-            let mut internal = InternalFile::new(path.clone());
-            internal.file_type = TotkFileType::Hkcl;
-            self.internal_file = Some(internal);
-            self.internal_parent = Some(InternalParentLink {
-                document_id: parent_document_id,
-                outer_path,
-                inner_path: path,
-            });
-            return Some(data);
-        }
-        // }
-        if let Ok(bphcl) =
-            crate::file_format::bphcl::BphclFile::from_binary(&bytes, Some(Path::new(&path)))
-        {
-            let status = match &outer_path {
-                Some(outer) => format!("Opened {path} inside {outer}"),
-                None => format!("Opened {path} from archive"),
-            };
-            let data = bphcl.send_data(Path::new(&path), status).ok()?;
-            self.opened_file = OpenedFile::default();
-            self.opened_file.file_type = TotkFileType::Bphcl;
-            self.opened_file.path = Pathlib::new(&path);
-            self.opened_file.bphcl = Some(bphcl);
-            let mut internal = InternalFile::new(path.clone());
-            internal.file_type = TotkFileType::Bphcl;
-            self.internal_file = Some(internal);
-            self.internal_parent = Some(InternalParentLink {
-                document_id: parent_document_id,
-                outer_path,
-                inner_path: path,
-            });
-            return Some(data);
-        }
+        // Handle TEXT INTERNAL FILE
         let Some((internal, text)) = get_string_from_data(path.clone(), bytes, self.zstd.clone())
         else {
             return self.initialization_error_data();
@@ -397,7 +365,7 @@ impl<'a> TotkBitsApp<'a> {
             None => format!("Opened {path} from archive"),
         };
         data.get_file_label(internal.file_type, internal.endian);
-        data.set_file_metadata(internal.file_type, internal.zstd_dictionary);
+        data.set_file_metadata(internal.file_type, internal.compression);
         self.opened_file = OpenedFile::default();
         self.internal_file = Some(internal);
         self.internal_parent = Some(InternalParentLink {
@@ -410,17 +378,27 @@ impl<'a> TotkBitsApp<'a> {
 
     pub fn internal_binary(&mut self, text: &str) -> Option<Vec<u8>> {
         let internal = self.internal_file.as_ref()?;
-        get_binary_by_filetype(
+        let compression = internal.compression;
+        let name = internal.path.name.clone();
+        let bytes = get_binary_by_filetype(
             internal.file_type,
             text,
             internal.endian.unwrap_or(roead::Endian::Little),
             self.zstd.clone(),
             &internal.path.full_path,
             &mut self.opened_file,
-            internal.zstd_dictionary,
+            internal.compression,
+            internal.yaz0_alignment,
             internal.msyt.as_ref(),
+            internal.tag.as_ref(),
             true,
-        )
+        )?;
+        Some(apply_compression_preference(
+            bytes,
+            &name,
+            compression,
+            &self.zstd,
+        ))
     }
 
     pub fn update_child_entry(
@@ -508,24 +486,13 @@ impl<'a> TotkBitsApp<'a> {
         data.tab = "SARC".to_string();
         data.status_text = status;
         if let Some(archive) = &self.archive {
+            data.file_metadata = archive.get_metadata();
             data.path = Pathlib::new(archive.path.clone());
-            let kind = if matches!(archive.archive, RootArchive::Folder(_)) {
-                "Folder"
-            } else {
-                "Archive"
-            };
-            data.file_label = format!("{} [{kind}]", data.path.name);
+            data.file_label = format!("{} [{}]", data.path.name, archive.kind());
             data.sarc_paths.paths = archive.paths();
             data.sarc_paths.added_paths = archive.added.iter().cloned().collect();
             data.sarc_paths.modded_paths = archive.modified.iter().cloned().collect();
-            data.sarc_paths.file_type = match &archive.archive {
-                RootArchive::Bars(_) => "BARS",
-                RootArchive::Zip(_) => "ZIP",
-                RootArchive::SevenZip(_) => "7Z",
-                RootArchive::Rar(_) => "RAR",
-                RootArchive::Folder(_) => "FOLDER",
-            }
-            .into();
+            data.sarc_paths.file_type = archive.file_type().into();
         } else if let Some(pack) = &self.pack {
             data.get_sarc_paths(pack);
         }
@@ -808,17 +775,28 @@ impl<'a> TotkBitsApp<'a> {
         zstd: Arc<TotkZstd>,
         dest_file: &str,
     ) -> Option<Vec<u8>> {
-        get_binary_by_filetype(
+        let compression = self.opened_file.compression;
+        let yaz0_alignment = self.opened_file.yaz0_alignment;
+        let name = self.opened_file.path.name.clone();
+        let bytes = get_binary_by_filetype(
             self.opened_file.file_type,
             text,
             self.opened_file.endian.unwrap_or(roead::Endian::Little),
             zstd.clone(),
             dest_file,
             &mut self.opened_file,
+            compression,
+            yaz0_alignment,
             None,
             None,
             false,
-        )
+        )?;
+        Some(apply_compression_preference(
+            bytes,
+            &name,
+            compression,
+            &self.zstd,
+        ))
     }
 
     pub fn extract_file(&mut self, internal_path: String) -> Option<SendData> {
@@ -1173,16 +1151,23 @@ impl<'a> TotkBitsApp<'a> {
                             )
                         };
                         if let Some(rawdata) = rawdata {
-                            let mut file = fs::File::create(&dest_file).ok()?;
-                            file.write_all(&rawdata).ok()?;
+                            let save_result = fs::File::create(&dest_file)
+                                .and_then(|mut file| file.write_all(&rawdata));
+                            if let Err(error) = save_result {
+                                data.tab = "ERROR".into();
+                                data.status_text =
+                                    format!("Saving failed for {dest_file}: {error}");
+                                return Some(data);
+                            }
                             data.tab = "YAML".to_string();
                             data.status_text = format!("Saved {}", &dest_file);
                             data.path = Pathlib::new(dest_file.clone());
                             self.opened_file.path = Pathlib::new(dest_file);
                         } else {
+                            data.tab = "ERROR".into();
                             data.status_text = format!(
-                                "Error: Failed to save [{:?}] {}",
-                                self.opened_file.file_type, &dest_file
+                                "Saving failed: unable to encode {dest_file} as the remembered {:?} file type.",
+                                self.opened_file.file_type
                             );
                         }
                     }
@@ -1302,10 +1287,18 @@ impl<'a> TotkBitsApp<'a> {
                 self.zstd.clone(),
                 &inner_path,
                 &mut self.opened_file,
-                internal_file.zstd_dictionary,
+                internal_file.compression,
+                internal_file.yaz0_alignment,
                 internal_file.msyt.as_ref(),
+                internal_file.tag.as_ref(),
                 true,
             )?;
+            let rawdata = apply_compression_preference(
+                rawdata,
+                &internal_file.path.name,
+                internal_file.compression,
+                &self.zstd,
+            );
             let archive = self.nested_archives.get_mut(&outer_path)?;
             archive.set(&inner_path, rawdata);
             self.flush_nested_chain(&outer_path).ok()?;
@@ -1329,10 +1322,18 @@ impl<'a> TotkBitsApp<'a> {
                     self.zstd.clone(),
                     &path,
                     &mut self.opened_file,
-                    internal_file.zstd_dictionary,
+                    internal_file.compression,
+                    internal_file.yaz0_alignment,
                     internal_file.msyt.as_ref(),
+                    internal_file.tag.as_ref(),
                     true,
                 )?;
+                let rawdata = apply_compression_preference(
+                    rawdata,
+                    &internal_file.path.name,
+                    internal_file.compression,
+                    &self.zstd,
+                );
                 self.archive.as_mut()?.set(&path, rawdata).ok()?;
                 data.tab = "YAML".into();
                 data.status_text = format!("Updated {path} in archive (save archive to write it)");
@@ -1348,10 +1349,18 @@ impl<'a> TotkBitsApp<'a> {
                         self.zstd.clone(),
                         &path,
                         &mut self.opened_file,
-                        internal_file.zstd_dictionary,
+                        internal_file.compression,
+                        internal_file.yaz0_alignment,
                         internal_file.msyt.as_ref(),
+                        internal_file.tag.as_ref(),
                         true,
                     )?;
+                    let rawdata = apply_compression_preference(
+                        rawdata,
+                        &internal_file.path.name,
+                        internal_file.compression,
+                        &self.zstd,
+                    );
                     if rawdata.is_empty() {
                         data.status_text =
                             format!("Error: Failed to save {} for {}", &path, &opened.path.name);
@@ -1386,37 +1395,34 @@ impl<'a> TotkBitsApp<'a> {
             }
         } else {
             let fullpath = self.opened_file.path.full_path.clone();
-            let original_was_compressed = self.zstd.totk_config.ask_for_compression
-                && fs::read(&fullpath)
-                    .ok()
-                    .is_some_and(|bytes| self.zstd.try_decompress(&bytes).is_ok());
-            let mut rawdata: Vec<u8> = get_binary_by_filetype(
+            let compression = self.opened_file.compression;
+            let yaz0_alignment = self.opened_file.yaz0_alignment;
+            let Some(mut rawdata) = get_binary_by_filetype(
                 self.opened_file.file_type,
                 text,
                 self.opened_file.endian.unwrap_or(roead::Endian::Little),
                 self.zstd.clone(),
                 &fullpath,
                 &mut self.opened_file,
+                compression,
+                yaz0_alignment,
                 None,
                 None,
                 false,
-            )?;
-            if original_was_compressed
-                && MessageDialog::new()
-                    .set_title("Save compression")
-                    .set_description(format!(
-                        "{} was opened as a compressed file.\n\nCompress the saved file?",
-                        self.opened_file.path.name
-                    ))
-                    .set_level(rfd::MessageLevel::Info)
-                    .set_buttons(rfd::MessageButtons::YesNo)
-                    .show()
-                    == rfd::MessageDialogResult::No
-            {
-                if let Ok(decompressed) = self.zstd.try_decompress(&rawdata) {
-                    rawdata = decompressed;
-                }
-            }
+            ) else {
+                data.tab = "ERROR".into();
+                data.status_text = format!(
+                    "Saving failed: unable to encode {} as the remembered {:?} file type.",
+                    self.opened_file.path.full_path, self.opened_file.file_type
+                );
+                return Some(data);
+            };
+            rawdata = apply_compression_preference(
+                rawdata,
+                &self.opened_file.path.name,
+                compression,
+                &self.zstd,
+            );
             if rawdata.is_empty() {
                 data.status_text =
                     format!("Error: Failed to save {}", &self.opened_file.path.full_path);
@@ -1424,8 +1430,16 @@ impl<'a> TotkBitsApp<'a> {
                 // println!("{:?}", &data);
                 return Some(data);
             } else {
-                let mut file = fs::File::create(&self.opened_file.path.full_path).ok()?;
-                file.write_all(&rawdata).ok()?;
+                let save_result = fs::File::create(&self.opened_file.path.full_path)
+                    .and_then(|mut file| file.write_all(&rawdata));
+                if let Err(error) = save_result {
+                    data.tab = "ERROR".into();
+                    data.status_text = format!(
+                        "Saving failed for {}: {error}",
+                        self.opened_file.path.full_path
+                    );
+                    return Some(data);
+                }
                 data.tab = "YAML".to_string();
                 data.status_text = format!("Saved {}", &self.opened_file.path.full_path);
                 // println!("{:?}", &data);
@@ -1977,86 +1991,74 @@ impl<'a> TotkBitsApp<'a> {
     pub fn open_from_path(&mut self, file_name: String) -> Option<SendData> {
         println!("[OPEN] requested path: {file_name}");
         let mut data = SendData::default();
-        let dictionary = if file_name.to_ascii_lowercase().ends_with(".zs") {
-            fs::read(&file_name)
-                .ok()
-                .and_then(|bytes| self.zstd.try_decompress_with_dictionary(&bytes).ok())
-                .map(|(_, dictionary)| dictionary)
-        } else {
-            None
-        };
-        //let file_name = file.to_string_lossy().to_string().replace("\\", "/");
-        if check_if_filepath_valid(&file_name) {
-            println!(
-                "[OPEN] path validation succeeded; trying archive routes before disk opener chain"
-            );
-            if let Some((pack, mut data)) = PackComparer::open_sarc(&file_name, self.zstd.clone()) {
-                self.pack = Some(pack);
-                self.internal_file = None;
-                data.set_file_metadata(TotkFileType::Sarc, dictionary);
-                return Some(data);
-            }
-            match ArchiveDocument::open_with_zstd(Path::new(&file_name), &self.zstd) {
-                Ok(Some(archive)) => {
-                    let is_bars = matches!(archive.archive, RootArchive::Bars(_));
-                    self.pack = None;
-                    self.internal_file = None;
-                    self.opened_file = OpenedFile::default();
-                    self.archive = Some(archive);
-                    let mut data = self.archive_send_data(format!("Opened archive {file_name}"));
-                    if is_bars {
-                        data.file_metadata = if self.archive.as_ref().is_some_and(|v| v.zstd_zs) {
-                            "[Bars] [ZSTD: Zs]".into()
-                        } else {
-                            "[Bars]".into()
-                        };
-                    } else {
-                        data.set_file_metadata(TotkFileType::Sarc, dictionary);
-                    }
-                    return Some(data);
-                }
-                Ok(None) => {}
-                Err(error) => {
-                    data.tab = "ERROR".into();
-                    data.status_text = format!("Error: {error}");
-                    return Some(data);
-                }
-            }
-            let res = file_from_disk_to_senddata(&file_name, self.zstd.clone());
-            if let Some((opened, mut data)) = res {
-                println!(
-                    "[OPEN] disk opener chain succeeded with {:?}",
-                    opened.file_type
-                );
-                self.archive = None;
-                if opened.file_type != TotkFileType::Bntx {
-                    data.set_file_metadata(opened.file_type, dictionary);
-                }
-                self.opened_file = opened;
-                self.internal_file = None;
-                return Some(data);
-            }
-            // let res = open_tag(file_name.clone(), self.zstd.clone())
-            //     .or_else(|| open_esetb(file_name.clone(), self.zstd.clone()))
-            //     .or_else(|| open_restbl(file_name.clone(), self.zstd.clone()))
-            //     .or_else(|| open_asb(file_name.clone(), self.zstd.clone()))
-            //     .or_else(|| open_ainb(file_name.clone(), self.zstd.clone()))
-            //     .or_else(|| open_byml(file_name.clone(), self.zstd.clone()))
-            //     .or_else(|| open_msbt(file_name.clone()))
-            //     .or_else(|| open_aamp(file_name.clone()))
-            //     .or_else(|| open_text(file_name.clone()))
-            //     .map(|(opened_file, data)| {
-            //         self.opened_file = opened_file;
-            //         self.internal_file = None;
-            //         data
-            //     });
-            // if res.is_some() {
-            //     return res;
-            // }
-        } else {
-            println!("[OPEN] path validation failed for {file_name}");
-            return None;
+        let rawdata = fs::read(&file_name).ok().unwrap_or_default();
+        let (source, compression) = self.zstd.try_decompress_all_ordered_safe(&rawdata, &file_name);
+
+        println!("[COMPRESSION] Type \"{:?}\" requested path: {file_name}", compression);
+        let yaz0_alignment = TotkZstd::yaz0_alignment(&source);
+       //let file_name = file.to_string_lossy().to_string().replace("\\", "/");
+        // if check_if_filepath_valid(&file_name) {
+        println!(
+            "[OPEN] path validation succeeded; trying archive routes before disk opener chain"
+        );
+
+        if let Some((pack, mut data)) = PackComparer::open_sarc(&file_name, self.zstd.clone()) {
+            self.pack = Some(pack);
+            self.internal_file = None;
+            data.set_file_metadata(TotkFileType::Sarc, Some(compression));
+            return Some(data);
         }
+        if let Ok(archive) = ArchiveDocument::from_binary(&source, &file_name, Some(compression)) {
+            if let Some(archive) = archive {
+                self.pack = None;
+                self.internal_file = None;
+                self.opened_file = OpenedFile::default();
+                self.archive = Some(archive);
+                let data = self.archive_send_data(format!("Opened archive {file_name}"));
+                return Some(data);
+            }
+            data.tab = "ERROR".into();
+            data.status_text = format!("Error: {} Something went wrong in archive opening", &file_name);
+            return Some(data);
+        }
+
+        let res = file_from_disk_to_senddata(&file_name, self.zstd.clone());
+        if let Some((mut opened, mut data)) = res {
+            println!(
+                "[OPEN] disk opener chain succeeded with {:?}",
+                opened.file_type
+            );
+            self.archive = None;
+            if opened.file_type != TotkFileType::Bntx {
+                data.set_file_metadata(opened.file_type, Some(compression));
+            }
+            opened.compression = Some(compression);
+            opened.yaz0_alignment = yaz0_alignment;
+            self.opened_file = opened;
+            self.internal_file = None;
+            return Some(data);
+        }
+        // let res = open_tag(file_name.clone(), self.zstd.clone())
+        //     .or_else(|| open_esetb(file_name.clone(), self.zstd.clone()))
+        //     .or_else(|| open_restbl(file_name.clone(), self.zstd.clone()))
+        //     .or_else(|| open_asb(file_name.clone(), self.zstd.clone()))
+        //     .or_else(|| open_ainb(file_name.clone(), self.zstd.clone()))
+        //     .or_else(|| open_byml(file_name.clone(), self.zstd.clone()))
+        //     .or_else(|| open_msbt(file_name.clone()))
+        //     .or_else(|| open_aamp(file_name.clone()))
+        //     .or_else(|| open_text(file_name.clone()))
+        //     .map(|(opened_file, data)| {
+        //         self.opened_file = opened_file;
+        //         self.internal_file = None;
+        //         data
+        //     });
+        // if res.is_some() {
+        //     return res;
+        // }
+        // } else {
+        //     println!("[OPEN] path validation failed for {file_name}");
+        //     return None;
+        // }
         println!("[OPEN] all routes failed for {file_name}");
         data.tab = "ERROR".to_string();
         data.status_text = format!("Error: Failed to open {}", &file_name);
@@ -2229,61 +2231,6 @@ impl<'a> TotkBitsApp<'a> {
         }
 
         Some(data)
-    }
-}
-
-pub struct InternalFile<'a> {
-    pub path: Pathlib,
-    pub file_type: TotkFileType,
-    pub endian: Option<roead::Endian>,
-    pub byml: Option<BymlFile<'a>>,
-    pub msyt: Option<Msbt>,
-    pub text: Option<String>,
-    pub aamp: Option<String>,
-    pub esetb: Option<Esetb<'a>>,
-    pub zstd_dictionary: Option<ZstdDictionary>,
-}
-
-impl Default for InternalFile<'_> {
-    fn default() -> Self {
-        Self {
-            path: Pathlib::default(),
-            file_type: TotkFileType::None,
-            endian: None,
-            byml: None,
-            msyt: None,
-            text: None,
-            aamp: None,
-            esetb: None,
-            zstd_dictionary: None,
-        }
-    }
-}
-
-impl InternalFile<'_> {
-    #[allow(dead_code)]
-    pub fn new(path: String) -> Self {
-        let path = Pathlib::new(path);
-        Self {
-            path,
-            file_type: TotkFileType::None,
-            endian: None,
-            byml: None,
-            msyt: None,
-            text: None,
-            aamp: None,
-            esetb: None,
-            zstd_dictionary: None,
-        }
-    }
-
-    pub fn get_monaco_lang(&self) -> String {
-        match self.file_type {
-            TotkFileType::Xlink => "xlink".into(),
-            TotkFileType::TagProduct => "json".into(),
-            TotkFileType::Evfl => "json".into(),
-            _ => "yaml".into(),
-        }
     }
 }
 

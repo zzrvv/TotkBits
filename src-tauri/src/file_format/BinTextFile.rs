@@ -158,10 +158,7 @@ impl<'a> BymlFile<'_> {
         full_path: P,
     ) -> io::Result<BymlFile<'a>> {
         let pio = Byml::from_binary(&data.data);
-        let mut file_type = data.file_type;
-        if is_banc_path(&full_path) {
-            file_type = TotkFileType::Bcett;
-        }
+        let file_type = data.file_type;
         match pio {
             Ok(ok_pio) => Ok(BymlFile {
                 endian: BymlFile::get_endiannes(&data.data),
@@ -275,34 +272,28 @@ impl<'a> BymlFile<'_> {
         let mut f_handle: fs::File = fs::File::open(path)?;
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;
-        if is_banc_path(path) && !is_byml(&buffer) {
-            let decoded = zstd.decompressor.decompress_bcett(&buffer)?;
-            if !is_byml(&decoded) {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "BCETT dictionary decompression did not produce BYML",
-                ));
-            }
-            return Ok(FileData {
-                file_type: TotkFileType::Bcett,
-                data: decoded,
-                compression: Some(ZstdDictionary::Bcett),
-                yaz0_alignment: 0,
-            });
+        let (rawdata, compression) = zstd.try_decompress_all_ordered_safe(&buffer, &path);
+        println!("[BYML] Binary comp dict {:?}, is byml? {}", &compression, is_byml(&rawdata));
+        
+        if !is_byml(&rawdata) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("File {} is not a byml file", &path.display())
+            ));
         }
-        Self::byml_data_to_bytes(&buffer, zstd.clone())
+        let ftype = if compression==ZstdDictionary::Bcett {TotkFileType::Bcett} else {TotkFileType::Byml};
+
+        return Ok(FileData {
+            file_type: ftype,
+            data: rawdata,
+            compression: Some(compression),
+            yaz0_alignment: 0,
+        });
     }
 
     pub fn is_banc(&self) -> bool {
-        self.path
-            .full_path
-            .to_ascii_lowercase()
-            .ends_with(".bcett.byml")
-            || self
-                .path
-                .full_path
-                .to_ascii_lowercase()
-                .ends_with(".bcett.byml.zs")
+        return self.file_type == TotkFileType::Bcett
+        // Pathlib::is_banc_path(&self.path.full_path)
     }
 
     pub fn to_string(&self) -> String {
@@ -330,15 +321,6 @@ impl<'a> BymlFile<'_> {
         // process_inline_content(Byml::to_text(&self.pio), self.zstd.totk_config.yaml_max_inl)
         text
     }
-}
-
-pub fn is_banc_path<P: AsRef<Path>>(path: P) -> bool {
-    let path = path
-        .as_ref()
-        .to_str()
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    path.ends_with(".bcett.byml") || path.ends_with(".bcett.byml.zs")
 }
 
 #[cfg(test)]
@@ -565,6 +547,8 @@ pub fn bytes_to_file(data: Vec<u8>, path: &str) -> io::Result<()> {
 pub struct OpenedFile<'a> {
     pub file_type: TotkFileType,
     pub path: Pathlib,
+    pub compression: Option<ZstdDictionary>,
+    pub yaz0_alignment: u32,
     pub byml: Option<BymlFile<'a>>,
     pub endian: Option<roead::Endian>,
     // pub msyt: Option<MsbtFile>,
@@ -588,6 +572,8 @@ impl Default for OpenedFile<'_> {
         Self {
             file_type: TotkFileType::None,
             path: Pathlib::default(),
+            compression: None,
+            yaz0_alignment: 0,
             byml: None,
             endian: None,
             msyt: None,
@@ -618,6 +604,8 @@ impl<'a> OpenedFile<'_> {
         Self {
             file_type: file_type,
             path: Pathlib::new(path),
+            compression: None,
+            yaz0_alignment: 0,
             byml: None,
             endian: endian,
             msyt: msyt,
@@ -640,6 +628,8 @@ impl<'a> OpenedFile<'_> {
         Self {
             file_type: file_type,
             path: Pathlib::new(path),
+            compression: None,
+            yaz0_alignment: 0,
             byml: None,
             endian: None,
             msyt: None,

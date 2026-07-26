@@ -6,13 +6,13 @@ use crate::Settings::Pathlib;
 use crate::Zstd::{is_tagproduct, TotkFileType, TotkZstd};
 //use byteordered::Endianness;
 //use indexmap::IndexMap;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use bitvec::prelude::*;
 
 use roead::byml::{self, Byml};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 
 use std::io;
@@ -166,8 +166,8 @@ impl<'a> TagProduct<'a> {
     #[allow(dead_code)]
     pub fn save(&mut self, path: String, text: &str) -> io::Result<()> {
         //let mut f_handle = OpenOptions::new().write(true).open(&path)?;
-        let mut data: Vec<u8> =
-            Self::to_binary(text).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let mut data: Vec<u8> = Self::to_binary(text, self.rank_table_bytes())
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
         if path.to_ascii_lowercase().ends_with(".zs") {
             data = self
@@ -182,7 +182,7 @@ impl<'a> TagProduct<'a> {
         Ok(())
     }
 
-    pub fn to_binary(text: &str) -> io::Result<Vec<u8>> {
+    pub fn to_binary(text: &str, rank_table: &[u8]) -> io::Result<Vec<u8>> {
         //let data: Config = serde_yaml::from_str(text)?;
         //Header
         // let _res : Byml = Byml::from_text("{}").unwrap();
@@ -197,12 +197,6 @@ impl<'a> TagProduct<'a> {
                 "TagList contains duplicate tags",
             ));
         }
-        let rank_table = BASE64.decode(&json_data.RankTable).map_err(|error| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("RankTable is not valid base64: {error}"),
-            )
-        })?;
         //PathList
         let mut sorted_paths: Vec<_> = json_data.PathList.iter().collect();
         sorted_paths.sort_by(|(left, _), (right, _)| {
@@ -262,7 +256,10 @@ impl<'a> TagProduct<'a> {
                     "BitTable".to_string().into(),
                     Byml::BinaryData(bit_table_bytes),
                 );
-                x.insert("RankTable".to_string().into(), Byml::BinaryData(rank_table));
+                x.insert(
+                    "RankTable".to_string().into(),
+                    Byml::BinaryData(rank_table.to_vec()),
+                );
                 x.insert("TagList".to_string().into(), Byml::Array(tag_list));
             }
             // TotK Tag.Product files use BYML version 7. Roead's writer supports
@@ -283,9 +280,13 @@ impl<'a> TagProduct<'a> {
         let json_data = TagJsonOutput {
             PathList: AlphabeticalPathList(&self.actor_tag_data),
             TagList: &self.tag_list,
-            RankTable: BASE64.encode(self.rank_table.as_binary_data().unwrap_or_default()),
+            RankTable: rank_table_sha256(self.rank_table_bytes()),
         };
         serde_json::to_string_pretty(&json_data).unwrap_or(String::from("{}"))
+    }
+
+    pub fn rank_table_bytes(&self) -> &[u8] {
+        self.rank_table.as_binary_data().unwrap_or_default()
     }
 
     pub fn parse(&mut self) -> Result<(), roead::Error> {
@@ -386,6 +387,10 @@ impl<'a> TagProduct<'a> {
     }
 }
 
+fn rank_table_sha256(rank_table: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(rank_table))
+}
+
 #[allow(dead_code)]
 pub fn sort_hashmap(h: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<String>> {
     let mut map: HashMap<String, Vec<String>> = HashMap::new();
@@ -410,17 +415,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn text_writer_preserves_rank_table_and_tag_matrix() {
+    fn text_writer_uses_backend_rank_table_and_preserves_tag_matrix() {
         let text = r#"{
             "PathList": {
                 "Work/Actor/Enemy|Enemy_Bokoblin|.engine__actor__ActorParam.gyml": ["ZTag"],
                 "Work/Actor/Enemy|Enemy_Bokoblin_Junior|.engine__actor__ActorParam.gyml": ["ATag", "ZTag"]
             },
             "TagList": ["ZTag", "ATag"],
-            "RankTable": "AAEC/w=="
+            "RankTable": "this editor value is read-only and ignored"
         }"#;
 
-        let binary = TagProduct::to_binary(text).expect("TagProduct should serialize");
+        let binary =
+            TagProduct::to_binary(text, &[0, 1, 2, 255]).expect("TagProduct should serialize");
         assert_eq!(&binary[..4], &[b'Y', b'B', 7, 0]);
 
         let root = Byml::from_binary(&binary).expect("written BYML should parse");
@@ -438,14 +444,18 @@ mod tests {
         // Two entries by two tags, packed continuously and LSB-first:
         // first row 10, second row 11 => 0b1110.
         assert_eq!(map["BitTable"].as_binary_data().unwrap(), &[0b1110]);
+        assert_eq!(
+            rank_table_sha256(&[0, 1, 2, 255]),
+            "3d1f57c984978ef98a18378c8166c1cb8ede02c03eeb6aee7e2f121dfeee3e56"
+        );
     }
 
     #[test]
     fn text_writer_rejects_invalid_paths_and_unknown_tags() {
         let invalid_path = r#"{"PathList":{"only|two":[]},"TagList":[],"RankTable":""}"#;
-        assert!(TagProduct::to_binary(invalid_path).is_err());
+        assert!(TagProduct::to_binary(invalid_path, &[]).is_err());
 
         let unknown_tag = r#"{"PathList":{"a|b|c":["missing"]},"TagList":[],"RankTable":""}"#;
-        assert!(TagProduct::to_binary(unknown_tag).is_err());
+        assert!(TagProduct::to_binary(unknown_tag, &[]).is_err());
     }
 }
