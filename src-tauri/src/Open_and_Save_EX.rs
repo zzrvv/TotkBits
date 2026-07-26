@@ -269,7 +269,7 @@ pub fn encode_uncompressed(
             _ => return Err(invalid("ESETB state is unavailable")),
         },
         TotkFileType::ASB => AsbFile::text_to_binary(request.text, None)?,
-        TotkFileType::AINB => AinbFile::text_to_binary(request.text)?,
+        TotkFileType::AINB => AinbFile::text_to_binary(request.text, None)?,
         TotkFileType::TagProduct => match content.as_deref() {
             Some(InternalContent::TagProduct(tag)) => {
                 TagProduct::to_binary(request.text, tag.rank_table_bytes())?
@@ -351,7 +351,7 @@ pub fn open_file_from_disk<'a>(
         .or_else(|| {
             #[cfg(debug_assertions)]
             {
-                crate::file_format::Model3D::bfres::BfresFile::open(path)
+                crate::file_format::Model3D::bfres::BfresFile::open(path, zstd.clone())
             }
             #[cfg(not(debug_assertions))]
             {

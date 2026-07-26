@@ -100,32 +100,12 @@ impl<'a> BymlFile<'_> {
             Ok(rawdata) => data = rawdata,
             Err(_) => return Err(io::Error::new(io::ErrorKind::InvalidData, "")),
         }
-        if self.file_data.compression == Some(ZstdDictionary::Yaz0) {
-            data = TotkZstd::compress_yaz0_with_alignment(&data, self.file_data.yaz0_alignment)?;
-        } else if path.to_ascii_lowercase().ends_with(".zs") {
-            match self.file_data.file_type {
-                TotkFileType::Byml => {
-                    data = self
-                        .zstd
-                        .cpp_compressor
-                        // .compressor
-                        .compress_zs(&data)?;
-                }
-                TotkFileType::Bcett => {
-                    data = self
-                        .zstd
-                        .cpp_compressor
-                        // .compressor
-                        .compress_bcett(&data)?;
-                }
-                _ => {
-                    data = self
-                        .zstd
-                        // .compressor
-                        .cpp_compressor
-                        .compress_zs(&data)?;
-                }
-            }
+        if let Some(compression) = self.file_data.compression {
+            data = if compression == ZstdDictionary::Yaz0 {
+                TotkZstd::compress_yaz0_with_alignment(&data, self.file_data.yaz0_alignment)?
+            } else {
+                self.zstd.compress_with_dictionary(&data, compression)?
+            };
         }
         //f_handle.write_all(&data);
         bytes_to_file(data, &path)?;
@@ -273,15 +253,23 @@ impl<'a> BymlFile<'_> {
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;
         let (rawdata, compression) = zstd.try_decompress_all_ordered_safe(&buffer, &path);
-        println!("[BYML] Binary comp dict {:?}, is byml? {}", &compression, is_byml(&rawdata));
-        
+        println!(
+            "[BYML] Binary comp dict {:?}, is byml? {}",
+            &compression,
+            is_byml(&rawdata)
+        );
+
         if !is_byml(&rawdata) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("File {} is not a byml file", &path.display())
+                format!("File {} is not a byml file", &path.display()),
             ));
         }
-        let ftype = if compression==ZstdDictionary::Bcett {TotkFileType::Bcett} else {TotkFileType::Byml};
+        let ftype = if compression == ZstdDictionary::Bcett {
+            TotkFileType::Bcett
+        } else {
+            TotkFileType::Byml
+        };
 
         return Ok(FileData {
             file_type: ftype,
@@ -292,7 +280,7 @@ impl<'a> BymlFile<'_> {
     }
 
     pub fn is_banc(&self) -> bool {
-        return self.file_type == TotkFileType::Bcett
+        return self.file_type == TotkFileType::Bcett;
         // Pathlib::is_banc_path(&self.path.full_path)
     }
 
@@ -528,6 +516,12 @@ pub fn replace_rotate_deg_to_rad(input: &str) -> String {
 }
 
 pub fn bytes_to_file(data: Vec<u8>, path: &str) -> io::Result<()> {
+    if data.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "refusing to write an empty save result",
+        ));
+    }
     let f = fs::File::create(&path); //TODO check if the ::create is sufficient
     match f {
         Ok(mut f_handle) => {
@@ -550,6 +544,7 @@ pub struct OpenedFile<'a> {
     pub compression: Option<ZstdDictionary>,
     pub yaz0_alignment: u32,
     pub byml: Option<BymlFile<'a>>,
+    pub ainb: Option<crate::parser::ainb::AinbDocument>,
     pub endian: Option<roead::Endian>,
     // pub msyt: Option<MsbtFile>,
     pub msyt: Option<Msbt>,
@@ -575,6 +570,7 @@ impl Default for OpenedFile<'_> {
             compression: None,
             yaz0_alignment: 0,
             byml: None,
+            ainb: None,
             endian: None,
             msyt: None,
             aamp: None,
@@ -607,6 +603,7 @@ impl<'a> OpenedFile<'_> {
             compression: None,
             yaz0_alignment: 0,
             byml: None,
+            ainb: None,
             endian: endian,
             msyt: msyt,
             aamp: None,
@@ -631,6 +628,7 @@ impl<'a> OpenedFile<'_> {
             compression: None,
             yaz0_alignment: 0,
             byml: None,
+            ainb: None,
             endian: None,
             msyt: None,
             aamp: None,
@@ -652,6 +650,7 @@ impl<'a> OpenedFile<'_> {
         self.file_type = TotkFileType::None;
         self.path = Pathlib::default();
         self.byml = None;
+        self.ainb = None;
         self.endian = None;
         self.msyt = None;
         self.aamp = None;

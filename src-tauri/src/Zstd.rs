@@ -373,8 +373,10 @@ impl<'a> TotkZstd<'_> {
         data: &[u8],
         file_path: impl AsRef<Path>,
     ) -> (Vec<u8>, ZstdDictionary) {
-        self.try_decompress_all_ordered(&data, file_path.as_ref())
-            .unwrap_or((data.to_vec(), ZstdDictionary::None))
+        let res = self
+            .try_decompress_all_ordered(&data, file_path.as_ref())
+            .unwrap_or((data.to_vec(), ZstdDictionary::None));
+        res
     }
     pub fn try_decompress_all_ordered(
         &self,
@@ -383,17 +385,35 @@ impl<'a> TotkZstd<'_> {
     ) -> Result<(Vec<u8>, ZstdDictionary), io::Error> {
         let path = file_path.as_ref();
         let preffered: Option<ZstdDictionary> = Self::get_preffered_dict(&path);
+        let mut tried = ZstdDictionary::None;
         if let Some(_dict) = preffered {
             match _dict {
                 ZstdDictionary::Mcpk => {
-                    return Ok((self.decompress_mcpk(data)?, ZstdDictionary::Mcpk));
+                    if let Ok(newdata) = self.decompress_mcpk(data) {
+                        return Ok((newdata, ZstdDictionary::Mcpk));
+                    }
+                    tried = ZstdDictionary::Mcpk;
                 }
                 ZstdDictionary::Yaz0 => {
-                    return Ok((Self::decompress_yaz0(data)?, ZstdDictionary::Yaz0));
+                    if let Ok(newdata) = Self::decompress_yaz0(data) {
+                        return Ok((newdata, ZstdDictionary::Yaz0));
+                    }
+                    tried = ZstdDictionary::Yaz0;
                 }
                 _ => {}
             }
         }
+        if tried != ZstdDictionary::Mcpk {
+            if let Ok(newdata) = self.decompress_mcpk(data) {
+                return Ok((newdata, ZstdDictionary::Mcpk));
+            }
+        }
+        if tried != ZstdDictionary::Yaz0 {
+            if let Ok(newdata) = Self::decompress_yaz0(data) {
+                return Ok((newdata, ZstdDictionary::Yaz0));
+            }
+        }
+
         self.try_decompress_zstd_ordered(data, preffered)
     }
     fn try_decompress_zstd_ordered(

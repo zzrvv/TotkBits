@@ -21,10 +21,6 @@ impl ExeWrapper {
         Self { exe, args }
     }
 
-    pub fn dotnet_new() -> Self {
-        Self::new("bin/cs/DotNetWrapper.exe".into(), Vec::new())
-    }
-
     pub fn binary_to_string(&self, data: &[u8], operation: String) -> io::Result<String> {
         let output = self.run(&operation, data)?;
         String::from_utf8(output.stdout)

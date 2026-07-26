@@ -9,7 +9,7 @@ use crate::file_format::BinTextFile::OpenedFile;
 use crate::parser::rstb::ResourceSizeTable;
 use crate::Open_and_Save::SendData;
 use crate::Settings::{list_files_recursively, Pathlib};
-use crate::Zstd::{is_restbl, TotkFileType, TotkZstd};
+use crate::Zstd::{is_restbl, TotkFileType, TotkZstd, ZstdDictionary};
 use flate2::read::ZlibDecoder;
 // use serde_json::to_string_pretty;
 
@@ -34,6 +34,7 @@ pub struct Restbl<'a> {
     // buffer: Arc<Vec<u8>>, // Use Arc to share ownership
     pub table: ResourceSizeTable,
     pub hash_table: Vec<String>,
+    pub compression: Option<ZstdDictionary>,
 }
 
 impl<'a> Restbl<'_> {
@@ -152,9 +153,7 @@ impl<'a> Restbl<'_> {
         let mut f_handle = File::open(&path).ok()?;
         let mut buffer = Vec::new();
         f_handle.read_to_end(&mut buffer).ok()?;
-        if !is_restbl(&buffer) {
-            buffer = zstd.decompressor.decompress_zs(&buffer).ok()?;
-        }
+        let (buffer, compression) = zstd.try_decompress_all_ordered_safe(&buffer, &path);
         if !is_restbl(&buffer) {
             return None; //invalid rstb
         }
@@ -170,6 +169,7 @@ impl<'a> Restbl<'_> {
                     zstd: zstd.clone(),
                     table: t,
                     hash_table: Default::default(),
+                    compression: (compression != ZstdDictionary::None).then_some(compression),
                 };
                 //TODO: check if self function works
                 new_restbl.hash_table = new_restbl.get_restb_entries(&path).unwrap_or_default();
@@ -193,11 +193,16 @@ impl<'a> Restbl<'_> {
             .table
             .to_bytes()
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        let mut f = File::create(&path)?;
-        if path.to_lowercase().ends_with(".zs") {
-            // buffer = self.zstd.compressor.compress_empty(&buffer)?;
-            buffer = self.zstd.compress_empty(&buffer)?;
+        if let Some(compression) = self.compression {
+            buffer = self.zstd.compress_with_dictionary(&buffer, compression)?;
         }
+        if buffer.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "refusing to save an empty RSTB",
+            ));
+        }
+        let mut f = File::create(&path)?;
         f.write_all(&buffer)?;
         Ok(())
     }

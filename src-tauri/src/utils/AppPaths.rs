@@ -187,7 +187,7 @@ impl Pathlib {
 
     pub fn is_bfres_path<P: AsRef<Path>>(path: P) -> bool {
         let path = Self::lowercase(path);
-        path.ends_with(".bfres") || path.ends_with(".bfres.mc")
+        path.ends_with(".bfres") || path.ends_with(".bfres.mc") || path.ends_with(".bfres.zs")
     }
 
     pub fn is_sarc_path<P: AsRef<Path>>(path: P) -> bool {

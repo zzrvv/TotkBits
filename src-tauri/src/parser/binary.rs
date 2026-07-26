@@ -245,6 +245,10 @@ impl BinaryWriter {
             self.data.resize(position, 0);
         }
     }
+    pub fn truncate(&mut self, position: usize) {
+        self.data.truncate(position);
+        self.position = self.position.min(position);
+    }
     pub fn align(&mut self, alignment: usize) -> io::Result<()> {
         if alignment == 0 {
             return Err(io::Error::new(

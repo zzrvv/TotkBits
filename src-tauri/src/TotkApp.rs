@@ -35,6 +35,80 @@ pub struct InternalParentLink {
     pub inner_path: String,
 }
 
+fn known_internal_magic(data: &[u8]) -> Option<&'static str> {
+    if crate::Zstd::is_byml(data) {
+        Some("BYML")
+    } else if crate::Zstd::is_sarc(data) {
+        Some("SARC")
+    } else if crate::Zstd::is_aamp(data) {
+        Some("AAMP")
+    } else if crate::Zstd::is_msyt(data) {
+        Some("MSBT")
+    } else if crate::Zstd::is_ainb(data) {
+        Some("AINB")
+    } else if crate::Zstd::is_xlink(data) {
+        Some("Xlink")
+    } else if crate::Zstd::is_asb(data) {
+        Some("ASB")
+    } else if crate::Zstd::is_evfl(data) {
+        Some("BFEVFL")
+    } else if crate::Zstd::is_restbl(data) {
+        Some("RSTB")
+    } else if data.starts_with(b"FRES") {
+        Some("BFRES")
+    } else if data.starts_with(b"Phive\0") {
+        Some("BPHCL")
+    } else if crate::file_format::hkcl::HkclFile::is_hkcl_magic(data) {
+        Some("HKCL")
+    } else if data.starts_with(b"BNTX") {
+        Some("BNTX")
+    } else if data.starts_with(b"DDS ") {
+        Some("DDS")
+    } else if data.starts_with(b"\x89PNG\r\n\x1A\n") {
+        Some("PNG")
+    } else if data.starts_with(b"PK\x03\x04") {
+        Some("ZIP")
+    } else if data.starts_with(b"7z\xBC\xAF\x27\x1C") {
+        Some("7-Zip")
+    } else if data.starts_with(b"Rar!\x1A\x07") {
+        Some("RAR")
+    } else if data.starts_with(b"BARS") {
+        Some("BARS")
+    } else if data.starts_with(b"Yaz0") {
+        Some("Yaz0")
+    } else if crate::Zstd::is_zstd(data) {
+        Some("Zstandard")
+    } else if data.starts_with(b"MCPK") {
+        Some("MCPK")
+    } else {
+        None
+    }
+}
+
+fn internal_open_error(path: &str, bytes: &[u8], zstd: &TotkZstd<'_>) -> SendData {
+    let (decoded, _) = zstd.try_decompress_all_ordered_safe(bytes, path);
+    let recognized = known_internal_magic(&decoded).or_else(|| known_internal_magic(bytes));
+    let mut data = SendData::default();
+    data.tab = "ERROR".into();
+    data.status_text = match recognized {
+        Some(format) => {
+            format!("Error: {path} has recognized {format} magic bytes, but its parser failed.")
+        }
+        None => {
+            let magic = bytes
+                .iter()
+                .take(8)
+                .map(|byte| format!("{byte:02X}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!(
+                "Error: {path} does not match the magic bytes of any supported format (first bytes: {magic})."
+            )
+        }
+    };
+    data
+}
+
 fn apply_compression_preference(
     mut bytes: Vec<u8>,
     name: &str,
@@ -351,9 +425,12 @@ impl<'a> TotkBitsApp<'a> {
             return Some(data);
         }
         // Handle TEXT INTERNAL FILE
-        let Some((internal, text)) = get_string_from_data(path.clone(), bytes, self.zstd.clone())
+        let Some((internal, text)) =
+            get_string_from_data(path.clone(), bytes.clone(), self.zstd.clone())
         else {
-            return self.initialization_error_data();
+            return self
+                .initialization_error_data()
+                .or_else(|| Some(internal_open_error(&path, &bytes, &self.zstd)));
         };
         let mut data = SendData::default();
         data.text = text;
@@ -390,6 +467,7 @@ impl<'a> TotkBitsApp<'a> {
             internal.compression,
             internal.yaz0_alignment,
             internal.msyt.as_ref(),
+            internal.ainb.as_ref(),
             internal.tag.as_ref(),
             true,
         )?;
@@ -789,6 +867,7 @@ impl<'a> TotkBitsApp<'a> {
             yaz0_alignment,
             None,
             None,
+            None,
             false,
         )?;
         Some(apply_compression_preference(
@@ -1151,6 +1230,13 @@ impl<'a> TotkBitsApp<'a> {
                             )
                         };
                         if let Some(rawdata) = rawdata {
+                            if rawdata.is_empty() {
+                                data.tab = "ERROR".into();
+                                data.status_text = format!(
+                                    "Saving failed for {dest_file}: encoder returned no bytes"
+                                );
+                                return Some(data);
+                            }
                             let save_result = fs::File::create(&dest_file)
                                 .and_then(|mut file| file.write_all(&rawdata));
                             if let Err(error) = save_result {
@@ -1225,12 +1311,14 @@ impl<'a> TotkBitsApp<'a> {
                                     data.tab = "SARC".to_string();
                                     data.status_text = format!("Saved SARC {}", &dest_file);
                                     data.path = Pathlib::new(dest_file.clone());
-                                    self.opened_file.path = Pathlib::new(dest_file);
                                 }
-                                Err(_) => {
+                                Err(error) => {
                                     println!("ERROR SAVING SARC {}", &dest_file);
-                                    data.status_text =
-                                        format!("Error: Failed to save SARC {}", &dest_file);
+                                    data.tab = "ERROR".into();
+                                    data.status_text = format!(
+                                        "Error: Failed to save SARC {}: {}",
+                                        &dest_file, error
+                                    );
                                 }
                             }
                         }
@@ -1290,6 +1378,7 @@ impl<'a> TotkBitsApp<'a> {
                 internal_file.compression,
                 internal_file.yaz0_alignment,
                 internal_file.msyt.as_ref(),
+                internal_file.ainb.as_ref(),
                 internal_file.tag.as_ref(),
                 true,
             )?;
@@ -1325,6 +1414,7 @@ impl<'a> TotkBitsApp<'a> {
                     internal_file.compression,
                     internal_file.yaz0_alignment,
                     internal_file.msyt.as_ref(),
+                    internal_file.ainb.as_ref(),
                     internal_file.tag.as_ref(),
                     true,
                 )?;
@@ -1352,6 +1442,7 @@ impl<'a> TotkBitsApp<'a> {
                         internal_file.compression,
                         internal_file.yaz0_alignment,
                         internal_file.msyt.as_ref(),
+                        internal_file.ainb.as_ref(),
                         internal_file.tag.as_ref(),
                         true,
                     )?;
@@ -1406,6 +1497,7 @@ impl<'a> TotkBitsApp<'a> {
                 &mut self.opened_file,
                 compression,
                 yaz0_alignment,
+                None,
                 None,
                 None,
                 false,
@@ -1531,11 +1623,11 @@ impl<'a> TotkBitsApp<'a> {
                                         format!("Saved SARC {}", &opened.path.full_path);
                                 }
                                 Err(err) => {
+                                    data.tab = "ERROR".into();
                                     data.status_text = format!(
-                                        "Error: Failed to save SARC {}",
-                                        &opened.path.full_path
+                                        "Error: Failed to save SARC {}: {}",
+                                        &opened.path.full_path, err
                                     );
-                                    eprintln!("{:?}", err);
                                 }
                             }
                             // } else {
@@ -1991,12 +2083,24 @@ impl<'a> TotkBitsApp<'a> {
     pub fn open_from_path(&mut self, file_name: String) -> Option<SendData> {
         println!("[OPEN] requested path: {file_name}");
         let mut data = SendData::default();
-        let rawdata = fs::read(&file_name).ok().unwrap_or_default();
-        let (source, compression) = self.zstd.try_decompress_all_ordered_safe(&rawdata, &file_name);
+        let rawdata = match fs::read(&file_name) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                data.tab = "ERROR".into();
+                data.status_text = format!("Unable to read {file_name}: {error}");
+                return Some(data);
+            }
+        };
+        let (source, compression) = self
+            .zstd
+            .try_decompress_all_ordered_safe(&rawdata, &file_name);
 
-        println!("[COMPRESSION] Type \"{:?}\" requested path: {file_name}", compression);
+        println!(
+            "[COMPRESSION] Type \"{:?}\" requested path: {file_name}",
+            compression
+        );
         let yaz0_alignment = TotkZstd::yaz0_alignment(&source);
-       //let file_name = file.to_string_lossy().to_string().replace("\\", "/");
+        //let file_name = file.to_string_lossy().to_string().replace("\\", "/");
         // if check_if_filepath_valid(&file_name) {
         println!(
             "[OPEN] path validation succeeded; trying archive routes before disk opener chain"
@@ -2005,6 +2109,7 @@ impl<'a> TotkBitsApp<'a> {
         if let Some((pack, mut data)) = PackComparer::open_sarc(&file_name, self.zstd.clone()) {
             self.pack = Some(pack);
             self.internal_file = None;
+            data.path = Pathlib::new(&file_name);
             data.set_file_metadata(TotkFileType::Sarc, Some(compression));
             return Some(data);
         }
@@ -2018,7 +2123,10 @@ impl<'a> TotkBitsApp<'a> {
                 return Some(data);
             }
             data.tab = "ERROR".into();
-            data.status_text = format!("Error: {} Something went wrong in archive opening", &file_name);
+            data.status_text = format!(
+                "Error: {} Something went wrong in archive opening",
+                &file_name
+            );
             return Some(data);
         }
 
@@ -2029,6 +2137,9 @@ impl<'a> TotkBitsApp<'a> {
                 opened.file_type
             );
             self.archive = None;
+            let disk_path = Pathlib::new(&file_name);
+            opened.path = disk_path.clone();
+            data.path = disk_path;
             if opened.file_type != TotkFileType::Bntx {
                 data.set_file_metadata(opened.file_type, Some(compression));
             }

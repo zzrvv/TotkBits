@@ -763,12 +763,26 @@ pub fn edit_internal_file(
     parentDocumentId: String,
     path: String,
 ) -> Option<SendData> {
-    app_handle.state::<DocumentState>().open_internal_child(
+    let result = app_handle.state::<DocumentState>().open_internal_child(
         &parentDocumentId,
         &documentId,
         None,
-        path,
-    )
+        path.clone(),
+    );
+    let result = result.or_else(|| {
+        let mut data = SendData::default();
+        data.tab = "ERROR".into();
+        data.status_text = format!(
+            "Error: unable to open archive entry {path}. The entry is missing, unsupported, or invalid."
+        );
+        Some(data)
+    });
+    if let Some(data) = &result {
+        if data.tab == "ERROR" {
+            show_open_error(data);
+        }
+    }
+    result
 }
 
 #[tauri::command]
@@ -809,15 +823,22 @@ pub fn edit_nested_sarc_file(
     outerPath: String,
     innerPath: String,
 ) -> SendData {
-    app_handle
+    let display_path = format!("{outerPath}::{innerPath}");
+    let result = app_handle
         .state::<DocumentState>()
         .open_internal_child(&parentDocumentId, &documentId, Some(outerPath), innerPath)
         .unwrap_or_else(|| {
             let mut data = SendData::default();
             data.tab = "ERROR".into();
-            data.status_text = "Error: unsupported or missing nested entry".into();
+            data.status_text = format!(
+                "Error: unable to open archive entry {display_path}. The entry is missing, unsupported, or invalid."
+            );
             data
-        })
+        });
+    if result.tab == "ERROR" {
+        show_open_error(&result);
+    }
+    result
 }
 
 #[tauri::command]

@@ -59,7 +59,7 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
     let path = filepath.as_ref().to_string_lossy().into_owned();
     let (rawdata, compression) = zstd
         .try_decompress_all_ordered(&data, &path)
-        .unwrap_or((data, ZstdDictionary::None));
+        .unwrap_or((data.clone(), ZstdDictionary::None));
     println!("[COMPRESSION] {:?} for file {}", compression, &path);
     let compression = (compression != ZstdDictionary::None).then_some(compression);
 
@@ -75,8 +75,7 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
             internal_file.compression = compression;
             return Some((internal_file, text));
         }
-        println!("Unable to parse TagProduct archive entry {path}");
-        return None;
+        println!("Unable to parse {path} as TagProduct; falling back to generic BYML handling");
     }
 
     if is_esetb(&filepath) {
@@ -164,6 +163,12 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
 #[allow(dead_code)]
 fn write_data_to_file<P: AsRef<Path>>(path: P, data: Vec<u8>) -> io::Result<()> {
     let path = path.as_ref();
+    if data.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "refusing to write an empty save result",
+        ));
+    }
 
     // Ensure the parent directory exists.
     if let Some(parent) = path.parent() {
@@ -226,12 +231,11 @@ pub fn get_binary_by_filetype(
     compression: Option<ZstdDictionary>,
     yaz0_alignment: u32,
     internal_msbt: Option<&crate::parser::msbt::Msbt>,
+    internal_ainb: Option<&crate::parser::ainb::AinbDocument>,
     internal_tag: Option<&TagProduct<'_>>,
     is_internal: bool,
 ) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
-    let is_zs = file_path.to_lowercase().ends_with(".zs") && compression.is_none();
-    let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs");
     match file_type {
         TotkFileType::Bphcl => {
             rawdata = opened_file.bphcl.as_ref()?.raw_binary();
@@ -246,29 +250,21 @@ pub fn get_binary_by_filetype(
                 Some(file) => file.save_text(text).ok()?,
                 None => BfevFile::text_to_binary(text).ok()?,
             };
-            if is_zs {
-                rawdata = zstd.compress_zs(&rawdata).ok()?;
-            }
         }
         TotkFileType::Esetb => {
             if let Some(esetb) = &mut opened_file.esetb {
                 esetb.update_from_text(text).ok()?;
                 rawdata = esetb.to_binary();
-                if is_zs {
-                    rawdata = zstd.compress_zs(&rawdata).ok()?;
-                }
             }
         }
         TotkFileType::ASB => {
             if let Ok(some_data) = AsbFile::text_to_binary(text, Some(opened_file)) {
                 rawdata = some_data;
-                if is_zs {
-                    rawdata = zstd.compress_zs(&rawdata).ok()?;
-                }
             }
         }
         TotkFileType::AINB => {
-            if let Ok(some_data) = AinbFile::text_to_binary(text) {
+            let original = internal_ainb.or(opened_file.ainb.as_ref());
+            if let Ok(some_data) = AinbFile::text_to_binary(text, original) {
                 rawdata = some_data;
             }
         }
@@ -280,9 +276,6 @@ pub fn get_binary_by_filetype(
             };
             if let Ok(some_data) = TagProduct::to_binary(text, rank_table) {
                 rawdata = some_data;
-                if is_zs {
-                    rawdata = zstd.compress_zs(&rawdata).ok()?;
-                }
             }
         }
         TotkFileType::Byml => {
@@ -302,13 +295,6 @@ pub fn get_binary_by_filetype(
                 let pio = Byml::from_text(processed_text).ok()?;
                 rawdata = pio.to_binary(endian);
             }
-            if !rawdata.is_empty() {
-                if is_bcett {
-                    rawdata = zstd.compress_bcett(&rawdata).ok()?;
-                } else if is_zs {
-                    rawdata = zstd.compress_zs(&rawdata).ok()?;
-                }
-            }
         }
         TotkFileType::Bcett => {
             let processed_text = if zstd.totk_config.rotation_deg {
@@ -318,9 +304,6 @@ pub fn get_binary_by_filetype(
             };
             let pio = Byml::from_text(processed_text).ok()?;
             rawdata = pio.to_binary(endian);
-            if is_zs {
-                rawdata = zstd.compress_bcett(&rawdata).ok()?;
-            }
         }
         TotkFileType::Msbt => {
             rawdata = MsbtFile::text_to_binary(
@@ -345,6 +328,9 @@ pub fn get_binary_by_filetype(
         _ => {}
     }
 
+    if rawdata.is_empty() {
+        return None;
+    }
     if let Some(dictionary) = compression {
         rawdata = apply_remembered_compression(&rawdata, &zstd, dictionary, yaz0_alignment).ok()?;
     }
@@ -559,6 +545,7 @@ impl SendData {
     ) {
         self.file_metadata = match dictionary {
             Some(ZstdDictionary::Yaz0) => format!("[{filetype:?}] [Yaz0]"),
+            Some(ZstdDictionary::None) => format!("[{filetype:?}]"),
             Some(dictionary) => format!("[{filetype:?}] [ZSTD: {dictionary:?}]"),
             None => format!("[{filetype:?}]"),
         };
@@ -611,18 +598,12 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
         Xlink_rs::open_xlink(path, zstd)
     } else if file_name.ends_with(".esetb.byml") || file_name.ends_with(".esetb.byml.zs") {
         Esetb::open_esetb(path, zstd)
-    } else if uncompressed_name.ends_with(".rsizetable")
-        || uncompressed_name.ends_with(".restbl")
-        || uncompressed_name.ends_with(".rstb")
-        || uncompressed_name.ends_with(".rsizetable")
-        || uncompressed_name.ends_with(".rstbl.byml")
-    {
+    } else if uncompressed_name.ends_with(".rsizetable") {
         Restbl::open_restbl(path, zstd)
-    } 
-    else if Pathlib::is_banc_path(&uncompressed_name) || Pathlib::is_byml_path(&uncompressed_name) {
+    } else if Pathlib::is_banc_path(&uncompressed_name) || Pathlib::is_byml_path(&uncompressed_name)
+    {
         BymlFile::open_byml(path, zstd)
-    } 
-    else if uncompressed_name.ends_with(".asb") {
+    } else if uncompressed_name.ends_with(".asb") {
         AsbFile::open_asb(path, zstd)
     } else if uncompressed_name.ends_with(".ainb") {
         AinbFile::open_ainb(path, zstd)
@@ -637,7 +618,7 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
     } else if uncompressed_name.ends_with(".bphhb") {
         crate::file_format::bphhb::BphhbFile::open(path)
     } else if uncompressed_name.ends_with(".bfres") || file_name.ends_with(".bfres.mc") {
-        crate::file_format::Model3D::bfres::BfresFile::open(path)
+        crate::file_format::Model3D::bfres::BfresFile::open(path, zstd)
     } else if uncompressed_name.ends_with(".fbx") {
         crate::parser::fbx::FbxFile::open(path)
     } else if uncompressed_name.ends_with(".bntx")
@@ -699,6 +680,34 @@ mod remembered_compression_tests {
     }
 }
 
+#[cfg(test)]
+mod internal_format_tests {
+    use super::*;
+
+    #[test]
+    fn ainb_save_rebuilds_edited_yaml() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tmp/AI/_LocalModule_5cb1b16fed98.module.ainb");
+        if !path.is_file() {
+            return;
+        }
+        let bytes = fs::read(path).unwrap();
+        let text = AinbFile::binary_to_text(&bytes).unwrap();
+        let edited = text.replacen(
+            "Filename: _LocalModule_5cb1b16fed98.module",
+            "Filename: _LocalModule_5cb1b16fed98_edited.module",
+            1,
+        );
+        assert_ne!(edited, text);
+        let rebuilt = AinbFile::text_to_binary(&edited, None).unwrap();
+        assert!(rebuilt.starts_with(b"AIB "));
+        assert!(!rebuilt.is_empty());
+        assert_ne!(rebuilt, bytes);
+        let reparsed = AinbFile::binary_to_text(&rebuilt).unwrap();
+        assert!(reparsed.contains("Filename: _LocalModule_5cb1b16fed98_edited.module"));
+    }
+}
+
 pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     path: P,
     zstd: Arc<TotkZstd>,
@@ -718,7 +727,7 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
         .or_else(|| AinbFile::open_ainb(&file_name, zstd.clone()))
         .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
         .or_else(|| MsbtFile::open_mstb(file_name))
-        .or_else(|| crate::file_format::Model3D::bfres::BfresFile::open(file_name))
+        .or_else(|| crate::file_format::Model3D::bfres::BfresFile::open(file_name, zstd.clone()))
         .or_else(|| crate::parser::fbx::FbxFile::open(file_name))
         // Structured formats must run before the generic image detector. In
         // particular, many BFEVFL files use the shared `.zs` compression suffix.

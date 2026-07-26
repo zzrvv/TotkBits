@@ -9,7 +9,9 @@ mod skeleton;
 
 use rfd::{FileDialog, MessageDialog};
 use serde::Serialize;
-use std::{fmt, fs, io, path::Path};
+use std::{fmt, fs, io, path::Path, sync::Arc};
+
+use crate::Zstd::{TotkZstd, ZstdDictionary};
 
 const SECTION_SIGNATURES: &[&[u8; 4]] = &[
     b"FMDL", b"FSKL", b"FVTX", b"FSHP", b"FMAT", b"FSKA", b"FSHU", b"FSHA", b"FSCN", b"FTXP",
@@ -224,36 +226,39 @@ impl BfresFile {
 
     pub fn open(
         path: &std::path::Path,
+        zstd: Arc<TotkZstd>,
     ) -> Option<(
         crate::file_format::BinTextFile::OpenedFile<'static>,
         crate::Open_and_Save::SendData,
     )> {
-        #[cfg(not(debug_assertions))]
-        {
-            None
-        }
-        let source = fs::read(path).ok()?;
-        let has_supported_extension = path.extension().is_some_and(|extension| {
-            extension.eq_ignore_ascii_case("bfres") || extension.eq_ignore_ascii_case("mc")
-        });
-        if !has_supported_extension
-            && !source.starts_with(b"FRES")
-            && !source.starts_with(b"MCPK")
-            && !source.starts_with(b"\x28\xB5\x2F\xFD")
-        {
+        let rawdata = fs::read(path).ok()?;
+        let (source, compression) = zstd.try_decompress_all_ordered_safe(&rawdata, path);
+        println!(
+            "[BFRES] open {} compression {:?}, is bfres? {}",
+            path.display(),
+            compression,
+            source.starts_with(b"FRES")
+        );
+
+        if !source.starts_with(b"FRES") {
             return None;
         }
         let file = Self::from_bytes(&source).ok()?;
+        let disk_path = crate::Settings::Pathlib::new(path);
         let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
         opened.file_type = crate::Zstd::TotkFileType::Bfres;
-        opened.path = crate::Settings::Pathlib::new(path);
+        opened.path = disk_path.clone();
         opened.bfres = Some(file);
         opened.bfres_data = Some(source);
+        opened.compression = (compression != ZstdDictionary::None).then_some(compression);
 
         let mut data = crate::Open_and_Save::SendData::default();
-        data.path = crate::Settings::Pathlib::new(path);
+        data.path = disk_path;
         data.file_label = format!("{} [BFRES]", data.path.name);
         data.file_metadata = "[BFRES] [3D]".into();
+        if compression != ZstdDictionary::None {
+            data.file_metadata += &format!(" [{:?}]", compression);
+        }
         data.status_text = format!("Opened BFRES {}", path.display());
         data.tab = "3D".into();
         data.read_only = true;
@@ -1024,6 +1029,23 @@ mod tests {
             .bone_indices
             .iter()
             .all(|indices| indices[0] < file.render.bones.len() as u16));
+    }
+
+    #[test]
+    fn disk_opener_retains_full_source_path() {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bfres/Animal_Bull.Bull.bfres");
+        if !path.is_file() {
+            return;
+        }
+        let zstd = Arc::new(crate::Zstd::TotkZstd::dictionaryless(
+            Arc::new(crate::TotkConfig::TotkConfig::default()),
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+        ));
+        let (opened, data) = BfresFile::open(&path, zstd).expect("open BFRES from its disk path");
+        let expected = path.to_string_lossy();
+        assert_eq!(opened.path.full_path, expected);
+        assert_eq!(data.path.full_path, expected);
     }
 
     #[cfg(windows)]

@@ -399,6 +399,9 @@ impl ArchiveDocument {
                 .and_then(|v| v.to_str())
                 .unwrap_or("archive")
         ));
+        if bytes.is_empty() {
+            return Err("refusing to save an empty archive".into());
+        }
         fs::write(&tmp, bytes).map_err(|e| format!("failed to write temporary archive: {e}"))?;
         #[cfg(windows)]
         {

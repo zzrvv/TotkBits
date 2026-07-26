@@ -60,15 +60,14 @@ impl<'a> PackComparer<'a> {
         let path_ref = path.as_ref();
         print!("Is {:?} a sarc? ", &path_ref.display());
         let pathlib_var = Pathlib::new(path_ref);
-        let Ok(sarc) = PackFile::from_binary(&rawdata, zstd.clone()) else {
+        let Ok(mut sarc) = PackFile::from_binary(&rawdata, zstd.clone()) else {
             println!(" no!");
             return None;
         };
-
+        sarc.path = pathlib_var.clone();
 
         println!(" yes!");
-        data.status_text =
-            format!("Opened {}", &path_ref.to_string_lossy().replace("\\", "/"));
+        data.status_text = format!("Opened {}", &path_ref.to_string_lossy().replace("\\", "/"));
         data.path = pathlib_var.clone();
         data.tab = "SARC".to_string();
         // data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, &sarc., e_s);
@@ -394,7 +393,7 @@ pub struct PackFile<'a> {
     pub writer: SarcWriter,
     pub hashes: HashMap<String, String>,
     pub sarc: Sarc<'a>,
-    pub is_yaz0: bool,
+    pub compression: Option<ZstdDictionary>,
     pub yaz0_alignment: u32,
     pub dirty: bool,
 }
@@ -415,7 +414,7 @@ impl<'a> PackFile<'_> {
             writer: writer,
             hashes: HashMap::default(),
             sarc: sarc,
-            is_yaz0: false,
+            compression: None,
             yaz0_alignment: 0,
             dirty: false,
         })
@@ -428,13 +427,9 @@ impl<'a> PackFile<'_> {
         //decompressor: &'a ZstdDecompressor,
         //compressor: &'a ZstdCompressor
     ) -> io::Result<PackFile<'a>> {
-        let mut pack = Self::default(zstd.clone())?;
-        pack.sarc_file_to_bytes(&path)?;
-        // pack.sarc = Sarc::new(&pack.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-        pack.writer = SarcWriter::from_sarc(&pack.sarc);
-        pack.endian = pack.sarc.endian();
-        pack.path = Pathlib::new(path.as_ref());
-        Ok(pack)
+        let bytes = fs::read(path)?;
+        let pack = Self::from_binary(&bytes, zstd.clone());
+        pack
     }
 
     pub fn rename(&mut self, old_name: &str, new_name: &str) -> io::Result<()> {
@@ -496,41 +491,46 @@ impl<'a> PackFile<'_> {
         self.save(dest_file)
     }
 
-    fn compress(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
-        // let zstd = ZstdCppCompressor::from_totk_zstd(self.zstd.clone());
-        match self.file_type {
-            TotkFileType::Sarc => {
-                println!("Compressing SARC");
-                // return self.zstd.compressor.compress_pack(data);
-                return self.zstd.compress_pack(data);
-            }
-            TotkFileType::MalsSarc => {
-                println!("Compressing MALS SARC");
-                // return self.zstd.compressor.compress_zs(data);
-                return self.zstd.compress_zs(data);
-            }
-            _ => {
-                return Ok(data.to_vec());
-            }
-        }
-    }
-
     pub fn save(&mut self, dest_file: String) -> io::Result<()> {
-        makedirs(&PathBuf::from(&dest_file))?;
-        let raw_data = if self.dirty || self.data.is_empty() {
-            self.writer.to_binary()
-        } else {
-            self.data.clone()
-        };
-        let mut data = raw_data.clone();
-        if dest_file.to_lowercase().ends_with(".zs") {
-            data = self.compress(&data)?;
-        } else if self.is_yaz0 {
-            data = TotkZstd::compress_yaz0_with_alignment(&data, self.yaz0_alignment)?;
+        if dest_file.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "SARC save path is empty",
+            ));
         }
-        let mut file_handle: fs::File = fs::File::create(dest_file)?;
+        makedirs(&PathBuf::from(&dest_file))?;
+        let raw_data = self.writer.to_binary();
+        let should_compress = self.compression.is_some()
+            && (!self.totk_config.ask_for_compression
+                || rfd::MessageDialog::new()
+                    .set_title("Save compression")
+                    .set_description(format!(
+                        "{} was opened with {:?} compression.\n\nCompress the saved file?",
+                        self.path.name, self.compression
+                    ))
+                    .set_level(rfd::MessageLevel::Info)
+                    .set_buttons(rfd::MessageButtons::YesNo)
+                    .show()
+                    == rfd::MessageDialogResult::Yes);
+        let data = match (should_compress, self.compression) {
+            (true, Some(ZstdDictionary::Yaz0)) => {
+                TotkZstd::compress_yaz0_with_alignment(&raw_data, self.yaz0_alignment)?
+            }
+            (true, Some(dictionary)) => {
+                self.zstd.compress_with_dictionary(&raw_data, dictionary)?
+            }
+            _ => raw_data.clone(),
+        };
+        if data.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "refusing to save an empty SARC",
+            ));
+        }
+        let mut file_handle: fs::File = fs::File::create(&dest_file)?;
         file_handle.write_all(&data)?;
         self.data = raw_data;
+        self.path = Pathlib::new(&dest_file);
         self.dirty = false;
         Ok(())
     }
@@ -548,8 +548,14 @@ impl<'a> PackFile<'_> {
     // }
 
     pub fn from_binary(data: &[u8], zstd: Arc<TotkZstd<'a>>) -> io::Result<PackFile<'a>> {
+        let yaz0_alignment = data
+            .starts_with(b"Yaz0")
+            .then(|| TotkZstd::yaz0_alignment(data))
+            .unwrap_or_default();
         let (rawdata, compression) = if is_sarc(&data) {
             (data.to_vec(), ZstdDictionary::None)
+        } else if data.starts_with(b"Yaz0") {
+            (TotkZstd::decompress_yaz0(data)?, ZstdDictionary::Yaz0)
         } else {
             zstd.try_decompress_all_ordered_safe(data, "some_example.pack.zs")
         };
@@ -568,7 +574,6 @@ impl<'a> PackFile<'_> {
             ZstdDictionary::Zs => TotkFileType::MalsSarc,
             _ => TotkFileType::Sarc,
         };
-        let isyaz0 = compression == ZstdDictionary::Yaz0;
         Ok(PackFile {
             path: Pathlib::default(),
             totk_config: zstd.clone().totk_config.clone(),
@@ -579,8 +584,8 @@ impl<'a> PackFile<'_> {
             writer: writer,
             hashes: HashMap::default(),
             sarc,
-            is_yaz0: isyaz0,
-            yaz0_alignment: 0,
+            compression: (compression != ZstdDictionary::None).then_some(compression),
+            yaz0_alignment,
             dirty: false,
         })
     }
@@ -593,7 +598,7 @@ impl<'a> PackFile<'_> {
             self.yaz0_alignment = TotkZstd::yaz0_alignment(&buffer);
             if let Ok(dec_data) = TotkZstd::decompress_yaz0(&buffer) {
                 buffer = dec_data;
-                self.is_yaz0 = true;
+                self.compression = Some(ZstdDictionary::Yaz0);
             }
             if is_sarc(&buffer) {
                 self.data = buffer.clone();
@@ -614,6 +619,7 @@ impl<'a> PackFile<'_> {
                     self.sarc = Sarc::new(dec_data)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                     self.file_type = TotkFileType::Sarc;
+                    self.compression = Some(ZstdDictionary::Pack);
                     return Ok(());
                 }
             }
@@ -623,11 +629,13 @@ impl<'a> PackFile<'_> {
                     self.sarc = Sarc::new(dec_data)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                     self.file_type = TotkFileType::MalsSarc;
+                    self.compression = Some(ZstdDictionary::Zs);
                     return Ok(());
                 }
             }
         }
         if is_sarc(&buffer) {
+            self.compression = None;
             self.data = buffer.clone();
             self.sarc =
                 Sarc::new(buffer).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
@@ -722,7 +730,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn untouched_yaz0_sarc_save_as_is_byte_exact() {
+    fn opened_sarc_remembers_its_disk_save_path() {
+        let config = Arc::new(TotkConfig::default());
+        let zstd = Arc::new(TotkZstd::dictionaryless(
+            config,
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+        ));
+        let mut writer = SarcWriter::new(roead::Endian::Little);
+        writer.add_file("test.txt", b"test".to_vec());
+        let bytes = writer.to_binary();
+        let destination =
+            std::env::temp_dir().join(format!("totkbits-sarc-save-{}.sarc", std::process::id()));
+
+        let (mut comparer, _) =
+            PackComparer::open_sarc_bytes(&destination, &bytes, zstd).expect("open SARC bytes");
+        let opened = comparer.opened.as_mut().expect("opened SARC");
+        assert_eq!(opened.path.full_path, destination.to_string_lossy());
+        opened.save_default().expect("save SARC to remembered path");
+        assert!(destination.is_file());
+        let saved = fs::read(&destination).expect("read saved SARC");
+        let _ = fs::remove_file(destination);
+        assert!(is_sarc(&saved));
+    }
+
+    #[test]
+    fn yaz0_sarc_save_serializes_writer_and_reapplies_compression() {
         let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_ss/yaz0/MarioZombie.szs");
         if !source.is_file() {
             return;
@@ -738,13 +770,13 @@ mod tests {
 
         pack.save(destination.to_string_lossy().into_owned())
             .unwrap();
-        let expected = fs::read(&source).unwrap();
         let actual = fs::read(&destination).unwrap();
         let _ = fs::remove_file(destination);
-        assert_eq!(actual, expected);
+        assert!(actual.starts_with(b"Yaz0"));
+        assert_eq!(TotkZstd::yaz0_alignment(&actual), pack.yaz0_alignment);
         assert_eq!(
-            sha256(actual),
-            "CD0EB66CBED6FCA64011E6964CFB7831AF486E1B88E3D399D4375399FE64247E"
+            TotkZstd::decompress_yaz0(&actual).unwrap(),
+            pack.writer.to_binary()
         );
     }
 }

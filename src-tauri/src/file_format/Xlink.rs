@@ -115,7 +115,7 @@ impl<'a> Xlink_rs<'a> {
         text: &str,
         file_path: &str,
         zstd: Arc<TotkZstd<'a>>,
-        dictionary: Option<ZstdDictionary>,
+        _dictionary: Option<ZstdDictionary>,
     ) -> Option<Vec<u8>> {
         let data = match Self::new(zstd.clone()).and_then(|xlink| xlink.yaml_to_binary(text)) {
             Ok(data) => data,
@@ -124,11 +124,7 @@ impl<'a> Xlink_rs<'a> {
                 return None;
             }
         };
-        if file_path.to_ascii_lowercase().ends_with(".zs") && dictionary.is_none() {
-            zstd.compress_zs(&data).ok()
-        } else {
-            Some(data)
-        }
+        Some(data)
     }
 
     pub fn open_xlink<P: AsRef<Path>>(

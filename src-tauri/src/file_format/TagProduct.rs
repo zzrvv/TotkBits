@@ -169,13 +169,17 @@ impl<'a> TagProduct<'a> {
         let mut data: Vec<u8> = Self::to_binary(text, self.rank_table_bytes())
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-        if path.to_ascii_lowercase().ends_with(".zs") {
-            data = self
-                .byml
-                .zstd
-                // .compressor
-                .cpp_compressor
-                .compress_zs(&data)?;
+        if let Some(compression) = self.byml.file_data.compression {
+            data = if compression == crate::Zstd::ZstdDictionary::Yaz0 {
+                crate::Zstd::TotkZstd::compress_yaz0_with_alignment(
+                    &data,
+                    self.byml.file_data.yaz0_alignment,
+                )?
+            } else {
+                self.byml
+                    .zstd
+                    .compress_with_dictionary(&data, compression)?
+            };
         }
         //f_handle.write_all(&data);
         bytes_to_file(data, &path)?;

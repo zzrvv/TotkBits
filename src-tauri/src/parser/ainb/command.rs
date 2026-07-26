@@ -4,11 +4,16 @@ use std::io;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AinbCommand {
+    #[serde(rename = "Name")]
     pub name: String,
     #[serde(rename = "GUID")]
     pub guid: String,
+    #[serde(rename = "Root Node Index")]
     pub root_node_index: u16,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "Secondary Root Node Index",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub secondary_root_node_index: Option<u16>,
 }
 
