@@ -1,12 +1,10 @@
 use super::radix_tree::{read_keys, read_offset_array, read_string_ptr};
 use crate::parser::binary::BinaryReader;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeMap,
-    io::{self, ErrorKind},
-};
+use std::io::{self, ErrorKind};
 
-pub type Container = BTreeMap<String, ContainerItem>;
+pub type Container = IndexMap<String, ContainerItem>;
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]

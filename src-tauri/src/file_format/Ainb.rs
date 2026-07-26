@@ -14,7 +14,7 @@ impl AinbFile {
         AinbDocument::from_bytes(data)?.to_yaml()
     }
 
-    pub fn text_to_binary(text: &str, _original: Option<&AinbDocument>) -> io::Result<Vec<u8>> {
+    pub fn text_to_binary(text: &str) -> io::Result<Vec<u8>> {
         AinbDocument::from_yaml(text)?.to_bytes()
     }
 
@@ -31,7 +31,7 @@ impl AinbFile {
         opened_file.path = Pathlib::new(path);
         opened_file.file_type = TotkFileType::AINB;
         opened_file.compression = (compression != ZstdDictionary::None).then_some(compression);
-        opened_file.ainb = Some(document);
+        // opened_file.ainb = Some(document);
         let mut data = SendData::default();
         data.status_text = format!("Opened: {}", opened_file.path.full_path);
         data.path = Pathlib::new(path);
@@ -76,7 +76,7 @@ mod tests {
             let original = fs::read(&path).expect("read corpus AINB");
             let before = format!("{:x}", Sha256::digest(&original));
             let result = AinbFile::binary_to_text(&original)
-                .and_then(|yaml| AinbFile::text_to_binary(&yaml, None));
+                .and_then(|yaml| AinbFile::text_to_binary(&yaml));
             match result {
                 Ok(rebuilt) => {
                     let after = format!("{:x}", Sha256::digest(&rebuilt));

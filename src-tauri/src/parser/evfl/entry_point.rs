@@ -1,10 +1,8 @@
 use super::{container::ContainerItem, radix_tree::read_keys};
 use crate::parser::binary::BinaryReader;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeMap,
-    io::{self, ErrorKind},
-};
+use std::io::{self, ErrorKind};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "PascalCase")]
@@ -18,8 +16,12 @@ pub struct VariableDef {
 pub struct EntryPoint {
     pub sub_flow_event_indices: Vec<i16>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub variables: Option<BTreeMap<String, VariableDef>>,
+    pub variables: Option<IndexMap<String, VariableDef>>,
     pub event_index: i16,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub register_null_variable_dictionary: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub register_null_variable_definitions: bool,
 }
 
 impl EntryPoint {
@@ -53,7 +55,7 @@ impl EntryPoint {
             }
             let mut definitions = BinaryReader::new(data);
             definitions.seek(definitions_offset as usize)?;
-            let mut values = BTreeMap::new();
+            let mut values = IndexMap::new();
             for key in keys {
                 let raw = definitions.read_u64()?;
                 let count = definitions.read_u16()? as usize;
@@ -113,6 +115,42 @@ impl EntryPoint {
             sub_flow_event_indices,
             variables,
             event_index,
+            register_null_variable_dictionary: names_offset == 0
+                && is_relocated_pointer(data, offset as usize + 8)?,
+            register_null_variable_definitions: definitions_offset == 0
+                && is_relocated_pointer(data, offset as usize + 16)?,
         })
     }
+}
+
+fn is_relocated_pointer(data: &[u8], address: usize) -> io::Result<bool> {
+    let mut header = BinaryReader::new(data);
+    header.seek(24)?;
+    let relocation = header.read_u32()? as usize;
+    let mut count_reader = BinaryReader::new(data);
+    count_reader.seek(relocation + 36)?;
+    let count = count_reader.read_u32()? as usize;
+    let entries = relocation + 40;
+    let mut low = 0usize;
+    let mut high = count;
+    while low < high {
+        let middle = (low + high) / 2;
+        let mut entry = BinaryReader::new(data);
+        entry.seek(entries + middle * 8)?;
+        if entry.read_u32()? as usize <= address {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+    for index in low.saturating_sub(2)..low {
+        let mut entry = BinaryReader::new(data);
+        entry.seek(entries + index * 8)?;
+        let base = entry.read_u32()? as usize;
+        let flags = entry.read_u32()?;
+        if address >= base && address < base + 256 && (address - base) % 8 == 0 {
+            return Ok(flags & (1u32 << ((address - base) / 8)) != 0);
+        }
+    }
+    Ok(false)
 }

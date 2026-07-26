@@ -269,7 +269,7 @@ pub fn encode_uncompressed(
             _ => return Err(invalid("ESETB state is unavailable")),
         },
         TotkFileType::ASB => AsbFile::text_to_binary(request.text, None)?,
-        TotkFileType::AINB => AinbFile::text_to_binary(request.text, None)?,
+        TotkFileType::AINB => AinbFile::text_to_binary(request.text)?,
         TotkFileType::TagProduct => match content.as_deref() {
             Some(InternalContent::TagProduct(tag)) => {
                 TagProduct::to_binary(request.text, tag.rank_table_bytes())?

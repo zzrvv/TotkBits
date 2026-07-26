@@ -263,8 +263,8 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::AINB => {
-            let original = internal_ainb.or(opened_file.ainb.as_ref());
-            if let Ok(some_data) = AinbFile::text_to_binary(text, original) {
+            let _ = internal_ainb;
+            if let Ok(some_data) = AinbFile::text_to_binary(text) {
                 rawdata = some_data;
             }
         }
@@ -699,7 +699,7 @@ mod internal_format_tests {
             1,
         );
         assert_ne!(edited, text);
-        let rebuilt = AinbFile::text_to_binary(&edited, None).unwrap();
+        let rebuilt = AinbFile::text_to_binary(&edited).unwrap();
         assert!(rebuilt.starts_with(b"AIB "));
         assert!(!rebuilt.is_empty());
         assert_ne!(rebuilt, bytes);

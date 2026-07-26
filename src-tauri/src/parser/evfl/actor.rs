@@ -16,7 +16,8 @@ pub struct Actor {
     pub cut_number: u8,
     pub actions: Vec<String>,
     pub queries: Vec<String>,
-    pub parameters: Container,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<Container>,
 }
 
 impl Actor {
@@ -42,9 +43,9 @@ impl Actor {
             .map(|offset| read_string(data, offset))
             .collect::<io::Result<_>>()?;
         let parameters = if parameters_offset == 0 {
-            Container::new()
+            None
         } else {
-            read_container(data, parameters_offset)?
+            Some(read_container(data, parameters_offset)?)
         };
         Ok(Self {
             name,

@@ -544,11 +544,11 @@ pub struct OpenedFile<'a> {
     pub compression: Option<ZstdDictionary>,
     pub yaz0_alignment: u32,
     pub byml: Option<BymlFile<'a>>,
-    pub ainb: Option<crate::parser::ainb::AinbDocument>,
+    // pub ainb: Option<crate::parser::ainb::AinbDocument>,
     pub endian: Option<roead::Endian>,
     // pub msyt: Option<MsbtFile>,
     pub msyt: Option<Msbt>,
-    pub aamp: Option<()>,
+    // pub aamp: Option<()>,
     pub bfres: Option<crate::file_format::Model3D::bfres::BfresFile>,
     pub bfres_data: Option<Vec<u8>>,
     pub bfev: Option<crate::file_format::BfevFile::BfevFile>,
@@ -570,10 +570,10 @@ impl Default for OpenedFile<'_> {
             compression: None,
             yaz0_alignment: 0,
             byml: None,
-            ainb: None,
+            // ainb: None,
             endian: None,
             msyt: None,
-            aamp: None,
+            // aamp: None,
             bfres: None,
             bfres_data: None,
             bfev: None,
@@ -603,10 +603,10 @@ impl<'a> OpenedFile<'_> {
             compression: None,
             yaz0_alignment: 0,
             byml: None,
-            ainb: None,
+            // ainb: None,
             endian: endian,
             msyt: msyt,
-            aamp: None,
+            // aamp: None,
             bfres: None,
             bfres_data: None,
             bfev: None,
@@ -628,10 +628,10 @@ impl<'a> OpenedFile<'_> {
             compression: None,
             yaz0_alignment: 0,
             byml: None,
-            ainb: None,
+            // ainb: None,
             endian: None,
             msyt: None,
-            aamp: None,
+            // aamp: None,
             bfres: None,
             bfres_data: None,
             bfev: None,
@@ -650,10 +650,10 @@ impl<'a> OpenedFile<'_> {
         self.file_type = TotkFileType::None;
         self.path = Pathlib::default();
         self.byml = None;
-        self.ainb = None;
+        // self.ainb = None;
         self.endian = None;
         self.msyt = None;
-        self.aamp = None;
+        // self.aamp = None;
         self.bfres = None;
         self.bfev = None;
         self.bphcl = None;
@@ -680,16 +680,16 @@ impl<'a> OpenedFile<'_> {
         }
     }
 
-    pub fn open(&mut self, file_path: &str, zstd: Arc<TotkZstd>) -> String {
-        let res = String::new();
-        let path = Pathlib::new(file_path.to_string());
-        if self.open_tag(&path, zstd.clone()) {
-            if let Some(tag) = &self.tag {
-                return tag.text.to_string();
-            }
-        }
-        res
-    }
+    // pub fn open(&mut self, file_path: &str, zstd: Arc<TotkZstd>) -> String {
+    //     let res = String::new();
+    //     let path = Pathlib::new(file_path.to_string());
+    //     if self.open_tag(&path, zstd.clone()) {
+    //         if let Some(tag) = &self.tag {
+    //             return tag.text.to_string();
+    //         }
+    //     }
+    //     res
+    // }
 
     pub fn open_tag(&mut self, path: &Pathlib, zstd: Arc<TotkZstd>) -> bool {
         if path.name.to_lowercase().starts_with("tag.product") {

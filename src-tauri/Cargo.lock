@@ -16,6 +16,7 @@ dependencies = [
  "fs2",
  "image",
  "image_dds",
+ "indexmap 2.14.0",
  "meshcodec_bindings",
  "miow",
  "native-dialog",

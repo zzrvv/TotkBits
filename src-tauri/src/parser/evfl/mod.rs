@@ -11,6 +11,7 @@ mod timeline_cut;
 mod timeline_oneshot;
 mod timeline_subtimeline;
 mod timeline_trigger;
+mod writer;
 
 pub use document::BfevDocument;
 pub use timeline::Timeline;
@@ -19,3 +20,4 @@ pub use timeline_cut::Cut;
 pub use timeline_oneshot::Oneshot;
 pub use timeline_subtimeline::SubTimeline;
 pub use timeline_trigger::Trigger;
+pub use writer::write_document;
