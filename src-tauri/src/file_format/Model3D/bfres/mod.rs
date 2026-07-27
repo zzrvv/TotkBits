@@ -132,10 +132,10 @@ impl BfresFile {
         crate::InternalFile::InternalFile<'static>,
         crate::Open_and_Save::SendData,
     )> {
-        #[cfg(not(debug_assertions))]
-        {
-            return None;
-        }
+        // #[cfg(not(debug_assertions))]
+        // {
+        //     return None;
+        // }
         let bfres = Self::from_bytes(&bytes).ok()?;
         let mut data = crate::Open_and_Save::SendData::default();
         data.path = crate::Settings::Pathlib::new(path);

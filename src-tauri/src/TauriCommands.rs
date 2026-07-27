@@ -358,6 +358,7 @@ pub fn replace_bntx_image(
 }
 
 fn require_experimental_visuals() -> Result<(), String> {
+    return Ok(());
     if cfg!(debug_assertions) {
         Ok(())
     } else {

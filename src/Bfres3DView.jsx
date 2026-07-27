@@ -102,9 +102,6 @@ function materialTextures(material, textures) {
     if (emission) emission.colorSpace = THREE.SRGBColorSpace;
     if (base) base.channel = 0;
     const normal = find('Normal');
-    // BFRES material sampler `_n0` uses the primary material UV set. Assigning
-    // it to Three's uv1 channel makes tangent-space normals sample unrelated
-    // coordinates on models that actually contain a second UV layer.
     if (normal) normal.channel = 0;
     return {
         base,
@@ -119,10 +116,14 @@ function materialTextures(material, textures) {
 
 function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, weightBone, showNormals, onSelect, textures }) {
     const usesMaterialUvs = viewMode === 'default';
+    const hasSecondUv = mesh.uv_maps?.[1]?.length === mesh.positions.length;
     Object.values(textures).filter(Boolean).forEach((texture) => {
         texture.channel = usesMaterialUvs ? 0 : uvIndex;
     });
-    if (usesMaterialUvs && textures.normal) textures.normal.channel = 0;
+    if (usesMaterialUvs && hasSecondUv) {
+        if (textures.normal) textures.normal.channel = 1;
+        if (textures.specular) textures.specular.channel = 1;
+    }
     const geometry = useMemo(() => {
         const result = new THREE.BufferGeometry();
         const positions = new Float32Array(mesh.positions.flat());
@@ -546,7 +547,6 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 <label className="bfres-shading-select">Shading:
                 <select value={viewMode} onChange={(event) => { setViewMode(event.target.value); if (event.target.value === 'selectedBoneWeights' && weightBone < 0) setWeightBone(0); }}>
 <option value="default">Default</option>
-<option value="blank">Blank</option>
 <option value="diffuse">Diffuse</option>
 <option value="normalMap">NormalMap</option>
 <option value="specularMap">SpecularMap</option>
@@ -566,6 +566,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
 <option value="roughnessMap">RoughnessMap</option>
 {/* <option value="subSurfaceScatteringMap">SubSurfaceScatteringMap</option> */}
 <option value="wireframe">Wireframe</option>
+<option value="blank">Blank</option>
 
                 </select>
                 </label>

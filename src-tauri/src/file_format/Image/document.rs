@@ -120,10 +120,10 @@ impl ImageDocument {
         crate::file_format::BinTextFile::OpenedFile<'static>,
         crate::Open_and_Save::SendData,
     )> {
-        #[cfg(not(debug_assertions))]
-        {
-            None
-        }
+        // #[cfg(not(debug_assertions))]
+        // {
+        //     return None;
+        // }
         let data = std::fs::read(path).ok()?;
         let bntx_dictionary = decode_compressed_bntx(&data, Some(zstd))
             .ok()

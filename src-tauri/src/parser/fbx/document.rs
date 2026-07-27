@@ -108,10 +108,10 @@ impl FbxFile {
         crate::file_format::BinTextFile::OpenedFile<'static>,
         crate::Open_and_Save::SendData,
     )> {
-        #[cfg(not(debug_assertions))]
-        {
-            None
-        }
+        // #[cfg(not(debug_assertions))]
+        // {
+        //     return None;
+        // }
 
         let data = std::fs::read(path).ok()?;
         if !data.starts_with(b"Kaydara FBX Binary") {

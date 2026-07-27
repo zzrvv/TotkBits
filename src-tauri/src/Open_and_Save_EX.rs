@@ -349,14 +349,7 @@ pub fn open_file_from_disk<'a>(
         .or_else(|| BymlFile::open_byml(path, zstd.clone()))
         .or_else(|| MsbtFile::open_mstb(path))
         .or_else(|| {
-            #[cfg(debug_assertions)]
-            {
-                crate::file_format::Model3D::bfres::BfresFile::open(path, zstd.clone())
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                None
-            }
+           crate::file_format::Model3D::bfres::BfresFile::open(path, zstd.clone())
         })
         .or_else(|| {
             #[cfg(debug_assertions)]
@@ -370,14 +363,7 @@ pub fn open_file_from_disk<'a>(
         })
         .or_else(|| BfevFile::open_bfev(path, zstd.clone()))
         .or_else(|| {
-            #[cfg(debug_assertions)]
-            {
-                crate::file_format::Image::ImageDocument::open(path, &zstd)
-            }
-            #[cfg(not(debug_assertions))]
-            {
-                None
-            }
+            crate::file_format::Image::ImageDocument::open(path, &zstd)
         })
         .or_else(|| crate::file_format::bphcl::BphclFile::open(path))
         .or_else(|| crate::file_format::hkcl::HkclFile::open(path))
