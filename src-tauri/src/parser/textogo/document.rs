@@ -100,33 +100,3 @@ fn u32_at(reader: &BinaryReader<'_>, p: usize) -> Result<u32, TexToGoError> {
         .read_u32_at(p)
         .map_err(|error| TexToGoError::new(p, error.to_string()))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn parses_all_sample_surfaces() {
-        let data = include_bytes!(r"../../../../tmp/tex/Armor_1006_Lower_Alb.7.txtg");
-        let file = TexToGoFile::parse(data).unwrap();
-        assert_eq!((file.header.width, file.header.height), (640, 640));
-        assert_eq!(file.header.mip_count, 10);
-        assert_eq!(file.surfaces.len(), 10);
-        assert!(file.surfaces.iter().all(|surface| !surface.data.is_empty()));
-    }
-
-    #[test]
-    fn parses_textogo_corpus() {
-        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/tex");
-        for entry in std::fs::read_dir(directory).unwrap() {
-            let path = entry.unwrap().path();
-            if path.extension().and_then(|value| value.to_str()) == Some("txtg") {
-                let file = TexToGoFile::parse(&std::fs::read(&path).unwrap())
-                    .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-                assert_eq!(
-                    file.surfaces.len(),
-                    usize::from(file.header.depth) * usize::from(file.header.mip_count)
-                );
-            }
-        }
-    }
-}

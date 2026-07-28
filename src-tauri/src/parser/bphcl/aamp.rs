@@ -85,6 +85,19 @@ impl AampRegistrationMerger {
     pub fn remove_collidable(document: &BphclDocument, name: &str) -> io::Result<Vec<u8>> {
         remove_entry(document, COLLIDABLE_LIST, name)
     }
+
+    pub fn rename_template_entries(
+        document: &BphclDocument,
+        cloth_name: (&str, &str),
+        collidable_names: impl IntoIterator<Item = (String, String)>,
+    ) -> io::Result<Vec<u8>> {
+        let mut bytes = Archive::from_document(document)?.bytes;
+        bytes = rename_entry(bytes, CLOTH_LIST, cloth_name.0, cloth_name.1, true)?;
+        for (old_name, new_name) in collidable_names {
+            bytes = rename_entry(bytes, COLLIDABLE_LIST, &old_name, &new_name, false)?;
+        }
+        Ok(bytes)
+    }
 }
 
 fn remove_entry(document: &BphclDocument, list_hash: u32, name: &str) -> io::Result<Vec<u8>> {
@@ -123,6 +136,61 @@ fn remove_entry(document: &BphclDocument, list_hash: u32, name: &str) -> io::Res
         parameter_delta,
         string_delta,
     )
+}
+
+fn rename_entry(
+    bytes: Vec<u8>,
+    list_hash: u32,
+    old_name: &str,
+    new_name: &str,
+    required: bool,
+) -> io::Result<Vec<u8>> {
+    if old_name == new_name {
+        return Ok(bytes);
+    }
+    if new_name.is_empty() || new_name.contains('\0') {
+        return Err(invalid("AAMP registration name is empty or contains NUL"));
+    }
+    let archive = Archive::read(&bytes, 0, bytes.len())?;
+    let list = archive.find_list(list_hash)?;
+    let Some(index) = list
+        .objects
+        .iter()
+        .position(|object| object.name == old_name)
+    else {
+        return if required {
+            Err(invalid(&format!(
+                "BPHCL AAMP has no registration named '{old_name}'"
+            )))
+        } else {
+            Ok(bytes)
+        };
+    };
+    if list
+        .objects
+        .iter()
+        .enumerate()
+        .any(|(other, object)| other != index && object.name == new_name)
+    {
+        return Err(invalid(&format!(
+            "BPHCL AAMP already has a registration named '{new_name}'"
+        )));
+    }
+    let mut objects = list.objects.clone();
+    let object = &mut objects[index];
+    let name_parameter = object
+        .parameters
+        .iter_mut()
+        .find(|parameter| parameter.name_hash == NAME_PARAMETER)
+        .ok_or_else(|| invalid("BPHCL AAMP registration has no name parameter"))?;
+    let old_size = name_parameter.value.len();
+    name_parameter.value = new_name.as_bytes().to_vec();
+    name_parameter.value.push(0);
+    object.name = new_name.to_owned();
+    let string_delta = i64::try_from(name_parameter.value.len())
+        .and_then(|new_size| i64::try_from(old_size).map(|old_size| new_size - old_size))
+        .map_err(|_| invalid("AAMP string size exceeds i64"))?;
+    rebuild_list(&archive, &list, &objects, 0, 0, string_delta)
 }
 
 fn append_entries<'a>(
@@ -535,6 +603,19 @@ mod tests {
         )
         .unwrap();
         assert_eq!(merged, target);
+    }
+
+    #[test]
+    fn renaming_registration_rebuilds_its_string_value() {
+        let bytes = archive_with_name(CLOTH_LIST, crc32("cloth_mesh_0"), "Template");
+        let renamed = rename_entry(bytes, CLOTH_LIST, "Template", "ImportedCloth", true).unwrap();
+        let archive = Archive::read(&renamed, 0, renamed.len()).unwrap();
+        let list = archive.find_list(CLOTH_LIST).unwrap();
+
+        assert_eq!(list.objects[0].name, "ImportedCloth");
+        assert_eq!(list.objects[0].name_hash, crc32("cloth_mesh_0"));
+        assert_eq!(read_u32(&renamed, 0x1c).unwrap(), 1);
+        assert_eq!(read_u32(&renamed, 0x20).unwrap(), 1);
     }
 }
 impl AampSection {

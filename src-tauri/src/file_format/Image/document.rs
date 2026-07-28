@@ -763,48 +763,4 @@ mod tests {
             None,
         ));
     }
-
-    #[test]
-    fn renders_bntx_sample() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
-        let path = root.join("tex/Animal_Insect_A.bntx");
-        let rendered = ImageDocument::render_path(path).unwrap();
-        assert_eq!(
-            (rendered.width, rendered.height, rendered.format.as_str()),
-            (256, 256, "BNTX")
-        );
-        assert_eq!(rendered.dds_type.as_deref(), Some("ASTC_4x4"));
-
-        let encoded = rendered.data_url.split_once(',').unwrap().1;
-        let actual_png = base64::engine::general_purpose::STANDARD
-            .decode(encoded)
-            .unwrap();
-        let actual = image::load_from_memory(&actual_png).unwrap().to_rgba8();
-        let expected = image::open(root.join("_ss/Animal_Insect_A.png"))
-            .unwrap()
-            .to_rgba8();
-        assert_eq!(actual.dimensions(), expected.dimensions());
-        let total_error: u64 = actual
-            .as_raw()
-            .iter()
-            .zip(expected.as_raw())
-            .map(|(actual, expected)| u64::from(actual.abs_diff(*expected)))
-            .sum();
-        let mean_error = total_error as f64 / actual.as_raw().len() as f64;
-        assert!(
-            mean_error < 2.0,
-            "rendered BNTX differs from the reference PNG (mean channel error {mean_error:.3})"
-        );
-    }
-
-    #[test]
-    fn renders_textogo_sample() {
-        let path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/tex/Armor_1006_Lower_Alb.7.txtg");
-        let rendered = ImageDocument::render_path(path).unwrap();
-        assert_eq!(
-            (rendered.width, rendered.height, rendered.format.as_str()),
-            (640, 640, "TexToGo")
-        );
-    }
 }

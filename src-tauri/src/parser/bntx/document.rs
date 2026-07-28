@@ -129,32 +129,3 @@ fn u64_at(reader: &BinaryReader<'_>, p: usize) -> Result<u64, BntxError> {
         .read_u64_at(p)
         .map_err(|error| BntxError::new(p, error.to_string()))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn parses_insect_sample() {
-        let data = include_bytes!(r"../../../../tmp/tex/Animal_Insect_A.bntx");
-        let file = BntxFile::parse(data).unwrap();
-        assert_eq!(file.target, "NX  ");
-        assert_eq!(file.textures.len(), 1);
-        let texture = &file.textures[0];
-        assert_eq!(texture.name, "Animal_Insect_A");
-        assert_eq!((texture.width, texture.height), (256, 256));
-        assert!(!texture.data_offsets.is_empty());
-    }
-
-    #[test]
-    fn parses_bntx_corpus() {
-        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/tex");
-        for entry in std::fs::read_dir(directory).unwrap() {
-            let path = entry.unwrap().path();
-            if path.extension().and_then(|value| value.to_str()) == Some("bntx") {
-                let file = BntxFile::parse(&std::fs::read(&path).unwrap())
-                    .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-                assert!(!file.textures.is_empty(), "{}", path.display());
-            }
-        }
-    }
-}

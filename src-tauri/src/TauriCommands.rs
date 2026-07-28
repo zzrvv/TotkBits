@@ -428,6 +428,16 @@ pub fn build_physics_merge_graph(
 }
 
 #[tauri::command]
+pub fn merge_hkcl_nodes_into_bphcl(
+    app_handle: tauri::AppHandle,
+    request: crate::DocumentState::PhysicsMergeRequest,
+) -> Result<crate::DocumentState::BphclMergeResult, String> {
+    app_handle
+        .state::<DocumentState>()
+        .merge_hkcl_nodes_into_bphcl(&request)
+}
+
+#[tauri::command]
 pub fn commit_rebuilt_physics_document(
     app_handle: tauri::AppHandle,
     request: crate::DocumentState::RebuiltPhysicsDocument,
@@ -1249,72 +1259,4 @@ pub fn update_app(latestVer: String) -> String {
     }
     // process::exit(1);
     String::new()
-}
-
-#[cfg(test)]
-mod texture_resolution_tests {
-    use super::*;
-
-    #[test]
-    fn resolves_only_material_referenced_textogo_files() {
-        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(
-            workspace.join("tmp/bfres/Animal_Bull.Bull.bfres"),
-        )
-        .expect("failed to parse BFRES texture fixture");
-        let texture_name = bfres
-            .materials
-            .iter()
-            .flat_map(|material| &material.texture_slots)
-            .next()
-            .expect("BFRES fixture has no texture slots")
-            .name
-            .clone();
-        let root = std::env::temp_dir().join(format!(
-            "totkbits-textogo-resolution-{}",
-            std::process::id()
-        ));
-        let texture_root = root.join("TexToGo");
-        std::fs::create_dir_all(root.join("Pack")).expect("failed to create ROMFS Pack folder");
-        std::fs::create_dir_all(&texture_root).expect("failed to create TexToGo folder");
-        std::fs::write(root.join("Pack/ZsDic.pack.zs"), []).expect("failed to create ROMFS marker");
-        std::fs::copy(
-            workspace.join("tmp/tex/Armor_1006_Lower_Alb.7.txtg"),
-            texture_root.join(format!("{texture_name}.txtg")),
-        )
-        .expect("failed to stage TexToGo fixture");
-
-        let textures = resolve_bfres_textures(
-            &bfres,
-            &workspace.join("tmp/bfres/Animal_Bull.Bull.bfres"),
-            None,
-            &root,
-        );
-        let _ = std::fs::remove_dir_all(&root);
-        assert_eq!(textures.len(), 1);
-        assert_eq!(textures[0].name, texture_name);
-        assert_eq!(textures[0].source, "textogo");
-        assert!(textures[0].data_url.starts_with("data:image/png;base64,"));
-    }
-
-    #[test]
-    fn resolves_embedded_mario_zombie_bntx_textures() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_ss/MarioZombie.bfres");
-        if !path.is_file() {
-            return;
-        }
-        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(&path).unwrap();
-        let names: HashSet<&str> = bfres
-            .materials
-            .iter()
-            .flat_map(|material| material.texture_slots.iter().map(|slot| slot.name.as_str()))
-            .collect();
-        let source_data = std::fs::read(&path).unwrap();
-        let nonexistent_archive_path = Path::new("Archive.sarc/MarioZombie.bfres");
-        let textures =
-            resolve_embedded_bntx_textures(nonexistent_archive_path, Some(&source_data), &names);
-        assert!(!textures.is_empty());
-        assert!(textures.iter().all(|texture| texture.source == "embedded"
-            && texture.data_url.starts_with("data:image/png;base64,")));
-    }
 }

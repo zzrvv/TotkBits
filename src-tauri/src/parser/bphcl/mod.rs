@@ -5,11 +5,13 @@ mod cloth;
 mod cloth_skeleton_pair;
 mod collidable;
 mod collidable_shape;
+mod constraint;
 mod copied_item_graph;
 #[cfg(test)]
 mod corpus_tests;
 mod document;
 mod header;
+mod hkcl_import;
 mod imported_range;
 mod item;
 mod item_graph;
@@ -38,6 +40,9 @@ pub use cloth::Cloth;
 pub use cloth_skeleton_pair::ClothSkeletonPair;
 pub use collidable::Collidable;
 pub use collidable_shape::CollidableShape;
+pub(crate) use constraint::{
+    read_elements as read_constraint_elements, write_elements as write_constraint_elements,
+};
 pub use copied_item_graph::CopiedItemGraph;
 pub use document::BphclDocument;
 pub use header::BphclHeader;

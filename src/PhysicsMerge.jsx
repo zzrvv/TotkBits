@@ -171,6 +171,16 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpa
                 setpaths(refreshedPaths);
                 setActiveTab('SARC');
                 setStatusText(mergeStatus);
+            } else if (sourceFormat === 'hkcl' && targetFormat === 'bphcl') {
+                const result = await invoke('merge_hkcl_nodes_into_bphcl', { request });
+                const mergeStatus = `HKCL → BPHCL merge completed: ${result.addedClothCount} cloth and ${result.addedCollidableCount} collidables added`;
+                const refreshedPaths = { ...result.sarcPaths, documentId: targetId };
+                const snapshot = documentSnapshots.current.get(targetId);
+                if (snapshot) documentSnapshots.current.set(targetId, { ...snapshot, activeTab: 'SARC', paths: refreshedPaths, statusText: mergeStatus });
+                if (getDocumentsSnapshot().activeDocumentId !== targetId) activateDocument(targetId);
+                setpaths(refreshedPaths);
+                setActiveTab('SARC');
+                setStatusText(mergeStatus);
             } else {
                 const result = await invoke('build_physics_merge_graph', { request });
                 setStatusText(`Physics merge graph built: ${result.imported.length} imported. Binary document update is not available yet.`);
@@ -212,7 +222,7 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpa
 
         {error && <div className="physics-merge-error" role="alert">{error}</div>}
         {validation && !validation.valid && <div className="physics-merge-error" role="alert">{validation.issues.map((issue) => <div key={issue}>{issue}</div>)}</div>}
-        {(crossFormat || targetFormat === 'hkcl') && <p className="physics-merge-notice">Cross-format and HKCL merge results are validated graph previews until binary rebuilding is implemented.</p>}
+        {targetFormat === 'hkcl' && <p className="physics-merge-notice">HKCL target merge results are validated graph previews until HKCL binary rebuilding is implemented.</p>}
         <div className="physics-merge-selection-actions">
             <button type="button" onClick={() => toggleGroup(selectableNodes)} disabled={loading || selectableNodes.length === 0}>{allSelected(selectableNodes) ? 'Deselect all nodes' : 'Select all nodes'}</button>
             {groups.map((group) => <button type="button" key={group.kind} onClick={() => toggleGroup(group.nodes)} disabled={loading || group.nodes.length === 0}>{allSelected(group.nodes) ? `Deselect all ${group.kind === 'cloth' ? 'cloths' : 'collidables'}` : `Select all ${group.kind === 'cloth' ? 'cloths' : 'collidables'}`}</button>)}
@@ -220,7 +230,7 @@ function PhysicsMerge({ activeTab, setActiveTab, returnTab, setStatusText, setpa
         {loading && <div className="physics-merge-empty">Loading {formatLabel[sourceFormat]} nodes…</div>}
         {!loading && groups.map((group) => <div className="physics-merge-group" key={group.kind}><h2>{group.label} <span>{group.nodes.length}</span></h2>{group.nodes.length === 0 ? <p className="physics-merge-empty">No selectable {group.label.toLowerCase()}.</p> : <div className="physics-merge-node-list">{group.nodes.map((node) => <label className="physics-merge-node" key={node.nodeId}><input type="checkbox" checked={selectedNodeIds.has(node.nodeId)} onChange={() => toggleNode(node.nodeId)} /><span className="physics-merge-node-name">{node.name || `Unnamed ${node.kind} ${node.index}`}</span><span className="physics-merge-node-meta">{sourceFormat === 'bphcl' ? `ITEM ${node.itemIndex}` : `DATA 0x${node.dataOffset.toString(16)}`}</span></label>)}</div>}</div>)}
 
-        <footer className="physics-merge-footer"><span>{selectedNodeIds.size} selected</span><button onClick={mergeSelection} disabled={merging || loading || !validation?.valid}>{merging ? 'Merging…' : crossFormat || targetFormat === 'hkcl' ? 'Build merge graph' : 'Merge selected'}</button></footer>
+        <footer className="physics-merge-footer"><span>{selectedNodeIds.size} selected</span><button onClick={mergeSelection} disabled={merging || loading || !validation?.valid}>{merging ? 'Merging…' : targetFormat === 'hkcl' ? 'Build merge graph' : 'Merge selected'}</button></footer>
     </section>;
 }
 

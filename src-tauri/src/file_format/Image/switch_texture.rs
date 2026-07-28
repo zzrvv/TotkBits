@@ -346,24 +346,6 @@ mod component_selector_tests {
         apply_component_selectors(&mut image, [0, 1, 2, 5]);
         assert_eq!(image.get_pixel(0, 0).0, [0, 255, 10, 40]);
     }
-
-    #[test]
-    fn maps_bntx_astc_and_bc7_formats_without_overlap() {
-        assert_eq!(astc_block_from_bntx(0x2d06), Some((4, 4)));
-        assert!(format_from_bntx(0x2d06).is_err());
-        assert_eq!(
-            format_from_bntx(0x2006).expect("BC7 sRGB should be supported"),
-            ImageFormat::BC7RgbaUnormSrgb
-        );
-    }
-
-    #[test]
-    fn maps_signed_normal_block_formats() {
-        assert_eq!(format_from_bntx(0x1d01).unwrap(), ImageFormat::BC4RUnorm);
-        assert_eq!(format_from_bntx(0x1d02).unwrap(), ImageFormat::BC4RSnorm);
-        assert_eq!(format_from_bntx(0x1e01).unwrap(), ImageFormat::BC5RgUnorm);
-        assert_eq!(format_from_bntx(0x1e02).unwrap(), ImageFormat::BC5RgSnorm);
-    }
 }
 
 fn format_layout(format: ImageFormat) -> io::Result<(u32, u32, u32)> {

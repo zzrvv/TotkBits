@@ -159,7 +159,8 @@ pub fn convert_hkcl_cloth_to_bphcl_template(
     {
         target_sim.name = source_sim.name.clone();
         target_sim.particles.clone_from(&source_sim.particles);
-        target_sim.triangle_indices = source_sim.triangle_indices.clone();
+        // BPHCL topology, buffers, and operator layout remain owned by the
+        // template. HKCL triangle indices are not a standalone BPHCL array.
     }
     for (target_sim, source_sim) in target.cloths[template_cloth]
         .simulations
@@ -186,9 +187,48 @@ pub fn convert_hkcl_cloth_to_bphcl_template(
         }
     }
     converted.skeletons[target_skeleton_index].name = source_skeleton.name.clone();
-    converted.skeletons[target_skeleton_index]
+    let target_bones = converted.skeletons[target_skeleton_index].bones.clone();
+    let source_by_name: BTreeMap<_, _> = source_skeleton
         .bones
-        .clone_from(&source_skeleton.bones);
+        .iter()
+        .enumerate()
+        .filter_map(|(index, bone)| {
+            bone.name
+                .as_ref()
+                .map(|name| (strip_prefix(name).to_ascii_lowercase(), (index, bone)))
+        })
+        .collect();
+    let target_index_by_source: BTreeMap<_, _> = target_bones
+        .iter()
+        .enumerate()
+        .filter_map(|(target_index, target_bone)| {
+            let source_index = target_bone
+                .name
+                .as_ref()
+                .and_then(|name| source_by_name.get(&strip_prefix(name).to_ascii_lowercase()))
+                .map(|(source_index, _)| *source_index)?;
+            Some((source_index, target_index))
+        })
+        .collect();
+    converted.skeletons[target_skeleton_index].bones = target_bones
+        .into_iter()
+        .map(|target_bone| {
+            let Some((_, source_bone)) = target_bone
+                .name
+                .as_ref()
+                .and_then(|name| source_by_name.get(&strip_prefix(name).to_ascii_lowercase()))
+            else {
+                return target_bone;
+            };
+            let mut converted_bone = (*source_bone).clone();
+            // BPHCL namespaces and array order belong to the template.
+            converted_bone.name = target_bone.name;
+            converted_bone.parent_index = source_bone
+                .parent_index
+                .and_then(|index| target_index_by_source.get(&index).copied());
+            converted_bone
+        })
+        .collect();
     for ((_, source_value), (_, target_value)) in
         source_colliders.iter().zip(target_colliders.iter())
     {

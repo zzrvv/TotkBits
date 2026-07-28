@@ -292,7 +292,7 @@ impl From<&bphcl::BphclDocument> for FormatNeutralPhysicsGraph {
                     .and_then(|entry| document.type_names.get(entry.type_index as usize))
                     .cloned(),
                 name: None,
-                elements: Vec::new(),
+                elements: bphcl::read_constraint_elements(document, item).unwrap_or_default(),
             })
             .collect();
         let skeleton_ids: BTreeMap<_, _> = document

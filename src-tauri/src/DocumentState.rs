@@ -446,6 +446,140 @@ impl DocumentState {
         })
     }
 
+    pub fn merge_hkcl_nodes_into_bphcl(
+        &self,
+        request: &PhysicsMergeRequest,
+    ) -> Result<BphclMergeResult, String> {
+        if request.source_format != PhysicsMergeFormat::Hkcl
+            || request.target_format != PhysicsMergeFormat::Bphcl
+        {
+            return Err(
+                "Native cross-format saving requires an HKCL source and BPHCL target".into(),
+            );
+        }
+        let mut documents = self.documents();
+        let validation = validate_physics_merge_request(&documents, request);
+        if !validation.valid {
+            return Err(validation.issues.join("; "));
+        }
+        let source = documents
+            .get(&request.source_document_id)
+            .ok_or_else(|| format!("Document '{}' is not open", request.source_document_id))?
+            .opened_file
+            .hkcl
+            .as_ref()
+            .ok_or_else(|| {
+                format!(
+                    "Document '{}' is not an HKCL document",
+                    request.source_document_id
+                )
+            })?
+            .document
+            .neutral_physics_graph();
+        let target_app = documents
+            .get(&request.target_document_id)
+            .ok_or_else(|| format!("Document '{}' is not open", request.target_document_id))?;
+        let target_file = target_app.opened_file.bphcl.as_ref().ok_or_else(|| {
+            format!(
+                "Document '{}' is not a BPHCL document",
+                request.target_document_id
+            )
+        })?;
+        let target_source_path = target_file.source_path.clone();
+        let parent_link = target_app.internal_parent.clone();
+        let original_cloth_count = target_file.document.cloth.len();
+        let original_collidable_count = target_file.document.collidables.len();
+        let template = request
+            .template_cloth_index
+            .ok_or_else(|| "HKCL to BPHCL import requires a template cloth".to_owned())?;
+        let mut merged = target_file.document.clone();
+        let mut imported = Vec::new();
+        let mut skipped = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
+        for node_id in &request.node_ids {
+            if !seen.insert(node_id.as_str()) {
+                skipped.push(BphclMergeSkip {
+                    name: node_id.clone(),
+                    reason: "Duplicate selection".into(),
+                });
+                continue;
+            }
+            let (kind, index) = parse_physics_node_id(node_id)?;
+            if kind != "cloth" {
+                return Err(format!(
+                    "HKCL to BPHCL saving does not support standalone {kind} nodes"
+                ));
+            }
+            let name = source
+                .cloths
+                .get(index)
+                .and_then(|cloth| cloth.name.clone())
+                .unwrap_or_else(|| format!("HKCL cloth {index}"));
+            let bytes = merged
+                .import_hkcl_cloth(&source, index, template)
+                .map_err(|error| format!("Failed to import '{node_id}': {error}"))?;
+            merged = crate::parser::bphcl::BphclDocument::parse(&bytes)
+                .map_err(|error| format!("Imported BPHCL did not reparse: {error}"))?;
+            imported.push(format!("Cloth: {name}"));
+        }
+
+        let final_bytes = merged.raw.clone();
+        if let Some(link) = &parent_link {
+            documents
+                .get_mut(&link.document_id)
+                .ok_or_else(|| format!("Parent document '{}' is not open", link.document_id))?
+                .update_child_entry(link.outer_path.as_deref(), &link.inner_path, final_bytes)?;
+        }
+        let cloth_count = merged.cloth.len();
+        let collidable_count = merged.collidables.len();
+        let added_cloth_count = cloth_count.saturating_sub(original_cloth_count);
+        let added_collidable_count = collidable_count.saturating_sub(original_collidable_count);
+        let target = documents
+            .get_mut(&request.target_document_id)
+            .ok_or_else(|| {
+                format!(
+                    "Document '{}' was closed during merge",
+                    request.target_document_id
+                )
+            })?;
+        target.opened_file.bphcl = Some(crate::file_format::bphcl::BphclFile {
+            source_path: target_source_path,
+            document: merged,
+        });
+        let root_name = if target.opened_file.path.name.is_empty() {
+            "merged.bphcl".to_string()
+        } else {
+            target.opened_file.path.name.clone()
+        };
+        let refreshed = target
+            .opened_file
+            .bphcl
+            .as_ref()
+            .ok_or_else(|| "Merged BPHCL state was lost".to_owned())?;
+        let sarc_paths = refreshed
+            .send_data(
+                std::path::Path::new(&root_name),
+                "Refreshed HKCL-imported BPHCL".into(),
+            )
+            .map_err(|error| format!("Failed to refresh merged BPHCL tree: {error}"))?
+            .sarc_paths;
+
+        Ok(BphclMergeResult {
+            selected_count: request.node_ids.len(),
+            imported_count: added_cloth_count + added_collidable_count,
+            imported_selection_count: imported.len(),
+            skipped_count: skipped.len(),
+            added_cloth_count,
+            added_collidable_count,
+            cloth_count,
+            collidable_count,
+            imported,
+            skipped,
+            sarc_paths,
+        })
+    }
+
     pub fn remove_bphcl_node(
         &self,
         document_id: &str,
