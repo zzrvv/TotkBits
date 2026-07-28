@@ -127,12 +127,10 @@ impl<'a> RstbEstimator<'a> {
                 if self.vanilla_sarc_hashes.is_none() {
                     self.vanilla_sarc_hashes = Some(get_sarc_entries_data().unwrap_or_default());
                 }
-                self.estimate_sarc_entries(
-                    relative,
-                    &sarc_data,
-                    self.vanilla_sarc_hashes.as_ref().unwrap(),
-                    &mut estimated,
-                )?;
+                let vanilla_hashes = self.vanilla_sarc_hashes.as_ref().ok_or_else(|| {
+                    RstbEstimateError::new("failed to initialize the vanilla SARC hash cache")
+                })?;
+                self.estimate_sarc_entries(relative, &sarc_data, vanilla_hashes, &mut estimated)?;
             }
         }
 
@@ -586,7 +584,10 @@ fn read_u32_le(data: &[u8], offset: usize, field: &str) -> Result<u32, RstbEstim
     let bytes = data
         .get(offset..end)
         .ok_or_else(|| RstbEstimateError::new(format!("{field} is outside the file")))?;
-    Ok(u32::from_le_bytes(bytes.try_into().unwrap()))
+    let bytes: [u8; 4] = bytes
+        .try_into()
+        .map_err(|_| RstbEstimateError::new(format!("{field} must contain four bytes")))?;
+    Ok(u32::from_le_bytes(bytes))
 }
 
 fn read_i32_le(data: &[u8], offset: usize, field: &str) -> Result<i32, RstbEstimateError> {
@@ -793,10 +794,14 @@ mod tests {
     use roead::{sarc::SarcWriter, Endian};
     use std::{
         collections::{BTreeMap, HashMap},
+        error::Error,
         fs,
+        path::PathBuf,
         sync::Arc,
         time::{SystemTime, UNIX_EPOCH},
     };
+
+    type TestResult = Result<(), Box<dyn Error>>;
 
     fn test_zstd() -> Arc<TotkZstd<'static>> {
         Arc::new(TotkZstd::dictionaryless(
@@ -810,25 +815,22 @@ mod tests {
     }
 
     #[test]
-    fn fixed_and_generic_rules_use_aligned_size() {
+    fn fixed_and_generic_rules_use_aligned_size() -> TestResult {
         let estimator = test_estimator();
         let data = vec![0; 33];
         assert_eq!(
-            estimator
-                .estimate(TotkFileType::Bphcl, "Physics/Test.bphcl", &data)
-                .unwrap(),
+            estimator.estimate(TotkFileType::Bphcl, "Physics/Test.bphcl", &data)?,
             320
         );
         assert_eq!(
-            estimator
-                .estimate(TotkFileType::Bfres, "Model/Test.bfres", &data)
-                .unwrap(),
+            estimator.estimate(TotkFileType::Bfres, "Model/Test.bfres", &data)?,
             6256
         );
+        Ok(())
     }
 
     #[test]
-    fn fixed_path_rules_match_the_reference_table() {
+    fn fixed_path_rules_match_the_reference_table() -> TestResult {
         let estimator = test_estimator();
         let cases = [
             ("Test.baatarc", 256),
@@ -872,39 +874,35 @@ mod tests {
         ];
         for (path, overhead) in cases {
             assert_eq!(
-                estimator.estimate(TotkFileType::Other, path, &[0]).unwrap(),
+                estimator.estimate(TotkFileType::Other, path, &[0])?,
                 32 + overhead,
                 "{path}"
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn byml_suffixes_keep_distinct_rules() {
+    fn byml_suffixes_keep_distinct_rules() -> TestResult {
         let estimator = test_estimator();
         let data = vec![0; 33];
         assert_eq!(
-            estimator
-                .estimate(TotkFileType::Byml, "RSDB/Test.byml", &data)
-                .unwrap(),
+            estimator.estimate(TotkFileType::Byml, "RSDB/Test.byml", &data)?,
             320
         );
         assert_eq!(
-            estimator
-                .estimate(TotkFileType::Byml, "RSDB/Test.bgyml", &data)
-                .unwrap(),
+            estimator.estimate(TotkFileType::Byml, "RSDB/Test.bgyml", &data)?,
             16_512
         );
         assert_eq!(
-            estimator
-                .estimate(TotkFileType::Byml, "RSDB/Test.casset.byml", &data)
-                .unwrap(),
+            estimator.estimate(TotkFileType::Byml, "RSDB/Test.casset.byml", &data)?,
             512
         );
+        Ok(())
     }
 
     #[test]
-    fn asb_uses_node_and_exb_signature_counts() {
+    fn asb_uses_node_and_exb_signature_counts() -> TestResult {
         let estimator = test_estimator();
         let mut data = vec![0; 0x100];
         data[0x10..0x14].copy_from_slice(&2_u32.to_le_bytes());
@@ -912,123 +910,114 @@ mod tests {
         data[0xa0..0xa4].copy_from_slice(&0x40_u32.to_le_bytes());
         data[0xc0..0xc4].copy_from_slice(&3_u32.to_le_bytes());
         assert_eq!(
-            estimator
-                .estimate(TotkFileType::ASB, "AS/Test.asb", &data)
-                .unwrap(),
+            estimator.estimate(TotkFileType::ASB, "AS/Test.asb", &data)?,
             920
         );
+        Ok(())
     }
 
     #[test]
-    fn ainb_allocates_empty_exb_header() {
+    fn ainb_allocates_empty_exb_header() -> TestResult {
         let estimator = test_estimator();
         let data = vec![0; 0x80];
         assert_eq!(
-            estimator
-                .estimate(TotkFileType::AINB, "AI/Test.ainb", &data)
-                .unwrap(),
+            estimator.estimate(TotkFileType::AINB, "AI/Test.ainb", &data)?,
             536
         );
+        Ok(())
     }
 
     #[test]
-    fn bstar_reads_entry_count() {
+    fn bstar_reads_entry_count() -> TestResult {
         let estimator = test_estimator();
         let mut data = vec![0; 12];
         data[0x08..0x0c].copy_from_slice(&3_u32.to_le_bytes());
         assert_eq!(
-            estimator
-                .estimate(TotkFileType::Other, "Sequence/Test.bstar", &data)
-                .unwrap(),
+            estimator.estimate(TotkFileType::Other, "Sequence/Test.bstar", &data)?,
             344
         );
+        Ok(())
     }
 
     #[test]
-    fn path_specific_overheads_are_applied() {
+    fn path_specific_overheads_are_applied() -> TestResult {
         let estimator = test_estimator();
         assert_eq!(
-            estimator
-                .estimate(
-                    TotkFileType::Sarc,
-                    "Shader/agl_resource.Nin_NX_NVN.release.sarc",
-                    &[0],
-                )
-                .unwrap(),
+            estimator.estimate(
+                TotkFileType::Sarc,
+                "Shader/agl_resource.Nin_NX_NVN.release.sarc",
+                &[0],
+            )?,
             4128
         );
         assert_eq!(
-            estimator
-                .estimate(
-                    TotkFileType::Evfl,
-                    "Event/EventFlow/Dm_ED_0004.bfevfl",
-                    &[0],
-                )
-                .unwrap(),
+            estimator.estimate(
+                TotkFileType::Evfl,
+                "Event/EventFlow/Dm_ED_0004.bfevfl",
+                &[0],
+            )?,
             512
         );
         assert_eq!(
-            estimator
-                .estimate(
-                    TotkFileType::Esetb,
-                    "Effect/static.Nin_NX_NVN.esetb.byml",
-                    &[0],
-                )
-                .unwrap(),
+            estimator.estimate(
+                TotkFileType::Esetb,
+                "Effect/static.Nin_NX_NVN.esetb.byml",
+                &[0],
+            )?,
             4128
         );
+        Ok(())
     }
 
     #[test]
-    fn ta_zs_uses_compressed_length_and_dev_mode_is_applied_last() {
+    fn ta_zs_uses_compressed_length_and_dev_mode_is_applied_last() -> TestResult {
         let data = vec![0; 33];
         assert_eq!(
-            test_estimator()
-                .estimate(TotkFileType::Other, "Terrain/Test.ta.zs", &data)
-                .unwrap(),
+            test_estimator().estimate(TotkFileType::Other, "Terrain/Test.ta.zs", &data)?,
             320
         );
         assert_eq!(
-            RstbEstimator::with_dev_mode(test_zstd(), true)
-                .estimate(TotkFileType::Bphcl, "Physics/Test.bphcl", &data)
-                .unwrap(),
+            RstbEstimator::with_dev_mode(test_zstd(), true).estimate(
+                TotkFileType::Bphcl,
+                "Physics/Test.bphcl",
+                &data
+            )?,
             416
         );
+        Ok(())
     }
 
     #[test]
-    fn mesh_codec_uses_header_size_then_underlying_rule() {
+    fn mesh_codec_uses_header_size_then_underlying_rule() -> TestResult {
         let estimator = test_estimator();
         let mut data = vec![0; 12];
         data[0x08..0x0c].copy_from_slice(&(100_i32 << 5).to_le_bytes());
         assert_eq!(
-            estimator
-                .estimate(TotkFileType::Bfres, "Model/Test.bfres.mc", &data)
-                .unwrap(),
+            estimator.estimate(TotkFileType::Bfres, "Model/Test.bfres.mc", &data)?,
             6896
         );
+        Ok(())
     }
 
     #[test]
-    fn folder_estimates_relative_paths_and_exports_json_and_yaml() {
-        let root = unique_temp_directory();
-        fs::create_dir_all(root.join("Physics")).unwrap();
-        fs::create_dir_all(root.join("Model")).unwrap();
-        fs::create_dir_all(root.join("System/Resource")).unwrap();
-        let compressed_bphcl = zstd::stream::encode_all(&vec![0; 33][..], 1).unwrap();
-        fs::write(root.join("Physics/Test.bphcl.zs"), compressed_bphcl).unwrap();
+    fn folder_estimates_relative_paths_and_exports_json_and_yaml() -> TestResult {
+        let root = unique_temp_directory()?;
+        fs::create_dir_all(root.join("Physics"))?;
+        fs::create_dir_all(root.join("Model"))?;
+        fs::create_dir_all(root.join("System/Resource"))?;
+        let compressed_bphcl = zstd::stream::encode_all(&vec![0; 33][..], 1)?;
+        fs::write(root.join("Physics/Test.bphcl.zs"), compressed_bphcl)?;
 
         let mut mesh_codec = vec![0; 12];
         mesh_codec[0x08..0x0c].copy_from_slice(&(100_i32 << 5).to_le_bytes());
-        fs::write(root.join("Model/Test.bfres.mc"), mesh_codec).unwrap();
+        fs::write(root.join("Model/Test.bfres.mc"), mesh_codec)?;
         fs::write(
             root.join("System/Resource/ResourceSizeTable.Product.121.rsizetable"),
             b"RESTBL",
-        )
-        .unwrap();
+        )?;
 
         let mut estimator = test_estimator();
-        estimator.estimate_folder(&root).unwrap();
+        estimator.estimate_folder(&root)?;
 
         assert_eq!(estimator.entries["Physics/Test.bphcl"], 320);
         assert_eq!(estimator.entries["Model/Test.bfres"], 6896);
@@ -1037,13 +1026,11 @@ mod tests {
 
         let json_path = root.join("exports/entries.json");
         let yaml_path = root.join("exports/entries.yaml");
-        estimator.save_entries(&json_path).unwrap();
-        estimator.save_entries(&yaml_path).unwrap();
+        estimator.save_entries(&json_path)?;
+        estimator.save_entries(&yaml_path)?;
 
-        let json: BTreeMap<String, u32> =
-            serde_json::from_slice(&fs::read(json_path).unwrap()).unwrap();
-        let yaml: BTreeMap<String, u32> =
-            serde_yaml::from_slice(&fs::read(yaml_path).unwrap()).unwrap();
+        let json: BTreeMap<String, u32> = serde_json::from_slice(&fs::read(json_path)?)?;
+        let yaml: BTreeMap<String, u32> = serde_yaml::from_slice(&fs::read(yaml_path)?)?;
         let expected: BTreeMap<String, u32> = estimator
             .entries
             .iter()
@@ -1052,48 +1039,49 @@ mod tests {
         assert_eq!(json, expected);
         assert_eq!(yaml, expected);
 
-        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 
     #[test]
-    fn folder_estimate_can_save_rstb_yaml_in_parent() {
-        let parent = unique_temp_directory();
+    fn folder_estimate_can_save_rstb_yaml_in_parent() -> TestResult {
+        let parent = unique_temp_directory()?;
         let folder = parent.join("mod");
-        fs::create_dir_all(folder.join("Physics")).unwrap();
-        fs::write(folder.join("Physics/Test.bphcl"), [0; 33]).unwrap();
+        fs::create_dir_all(folder.join("Physics"))?;
+        fs::write(folder.join("Physics/Test.bphcl"), [0; 33])?;
 
         let mut estimator = test_estimator();
-        let output = estimator.estimate_folder_and_save(&folder).unwrap();
+        let output = estimator.estimate_folder_and_save(&folder)?;
 
         assert_eq!(output, parent.join("rstb.yaml"));
-        let yaml: BTreeMap<String, u32> =
-            serde_yaml::from_slice(&fs::read(&output).unwrap()).unwrap();
+        let yaml: BTreeMap<String, u32> = serde_yaml::from_slice(&fs::read(&output)?)?;
         assert_eq!(yaml["Physics/Test.bphcl"], 320);
         assert_eq!(yaml.len(), 1);
 
-        fs::remove_dir_all(parent).unwrap();
+        fs::remove_dir_all(parent)?;
+        Ok(())
     }
 
     #[test]
-    fn sarc_members_use_full_paths_and_skip_vanilla_hash_matches() {
-        let root = unique_temp_directory();
-        fs::create_dir_all(root.join("Actor/Pack")).unwrap();
+    fn sarc_members_use_full_paths_and_skip_vanilla_hash_matches() -> TestResult {
+        let root = unique_temp_directory()?;
+        fs::create_dir_all(root.join("Actor/Pack"))?;
 
         let vanilla_data = vec![0; 17];
         let changed_data = vec![0; 33];
-        let compressed_data = zstd::stream::encode_all(&vec![0; 33][..], 1).unwrap();
+        let compressed_data = zstd::stream::encode_all(&vec![0; 33][..], 1)?;
         let mut writer = SarcWriter::new(Endian::Little);
         writer.add_file("Physics/Vanilla.bphcl", vanilla_data.clone());
         writer.add_file("Physics/Changed.bphcl", changed_data);
         writer.add_file("Physics/Compressed.bphcl.zs", compressed_data);
         writer.add_file("Physics\\WindowsPath.bphcl", vec![0; 33]);
-        fs::write(root.join("Actor/Pack/Test.pack"), writer.to_binary()).unwrap();
+        fs::write(root.join("Actor/Pack/Test.pack"), writer.to_binary())?;
 
         let mut vanilla_hashes = HashMap::new();
         vanilla_hashes.insert("Physics/Vanilla.bphcl".to_owned(), sha256(vanilla_data));
         let mut estimator = test_estimator();
         estimator.vanilla_sarc_hashes = Some(vanilla_hashes);
-        estimator.estimate_folder(&root).unwrap();
+        estimator.estimate_folder(&root)?;
 
         assert!(estimator.entries.contains_key("Actor/Pack/Test.pack"));
         assert_eq!(estimator.entries["Physics/Changed.bphcl"], 320);
@@ -1102,34 +1090,35 @@ mod tests {
         assert!(!estimator.entries.contains_key("Physics/Vanilla.bphcl"));
         assert!(estimator.entries.keys().all(|path| !path.contains('\\')));
 
-        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 
     #[test]
-    fn exports_normalize_publicly_inserted_windows_paths() {
-        let root = unique_temp_directory();
-        fs::create_dir_all(&root).unwrap();
+    fn exports_normalize_publicly_inserted_windows_paths() -> TestResult {
+        let root = unique_temp_directory()?;
+        fs::create_dir_all(&root)?;
         let output = root.join("entries.yaml");
         let mut estimator = test_estimator();
         estimator
             .entries
             .insert("Physics\\Manual.bphcl".into(), 320);
 
-        estimator.save_yaml(&output).unwrap();
+        estimator.save_yaml(&output)?;
 
-        let yaml: BTreeMap<String, u32> =
-            serde_yaml::from_slice(&fs::read(output).unwrap()).unwrap();
+        let yaml: BTreeMap<String, u32> = serde_yaml::from_slice(&fs::read(output)?)?;
         assert_eq!(yaml["Physics/Manual.bphcl"], 320);
         assert!(!yaml.keys().any(|path| path.contains('\\')));
 
-        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 
     #[test]
-    fn failed_folder_estimate_preserves_existing_entries() {
-        let root = unique_temp_directory();
-        fs::create_dir_all(root.join("AI")).unwrap();
-        fs::write(root.join("AI/Broken.ainb"), [0; 8]).unwrap();
+    fn failed_folder_estimate_preserves_existing_entries() -> TestResult {
+        let root = unique_temp_directory()?;
+        fs::create_dir_all(root.join("AI"))?;
+        fs::write(root.join("AI/Broken.ainb"), [0; 8])?;
 
         let mut estimator = test_estimator();
         estimator.entries.insert("Existing.bin".into(), 123);
@@ -1137,17 +1126,15 @@ mod tests {
         assert_eq!(estimator.entries.len(), 1);
         assert_eq!(estimator.entries["Existing.bin"], 123);
 
-        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 
-    fn unique_temp_directory() -> std::path::PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        std::env::temp_dir().join(format!(
+    fn unique_temp_directory() -> Result<PathBuf, std::time::SystemTimeError> {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        Ok(std::env::temp_dir().join(format!(
             "totkbits-rstb-estimator-{}-{unique}",
             std::process::id()
-        ))
+        )))
     }
 }
