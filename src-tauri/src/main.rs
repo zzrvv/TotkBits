@@ -25,6 +25,7 @@ mod Zstd;
 mod compression;
 mod file_format;
 mod parser;
+pub mod tools;
 use crate::DocumentState::DocumentState as Documents;
 use crate::Settings::{get_startup_data, StartupData};
 use crate::TauriCommands::{
