@@ -1021,6 +1021,8 @@ pub fn preview_aoc_model(hash: String) -> Result<Option<String>, String> {
             .join("CharacterEditor")
             .join("g1m")
             .join(&filename),
+        dump_path.join("MaterialEditor").join("g1m").join(&filename),
+        dump_path.join("FieldEditor4").join("g1m").join(&filename),
         dump_path
             .join("CharacterEditor")
             .join("g1m_merged")

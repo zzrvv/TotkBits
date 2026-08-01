@@ -185,6 +185,10 @@ function App() {
   }, []); // Empty dependency array to run once on mount
 
   useEffect(() => {
+    setStatusText('Ready');
+  }, [activeTab, setStatusText]);
+
+  useEffect(() => {
     // Directly adjust visibility without disposing the editor
     const editorDom = editorContainerRef.current;
     if (editorDom) {
@@ -211,10 +215,18 @@ function App() {
   const isComparerWorking = (compareData?.content1?.length ?? 0) > 0;
   const displayButtons = activeTab === 'SARC' || activeTab === 'AUDIO' || activeTab === 'RSTB' || activeTab === 'YAML';
   const rootStyle = activeTab !== "COMPARER" ? {} : isComparerWorking ? {backgroundColor: "#2E303C"} : {};
+  const uiScale = Math.min(3, Math.max(0.2, Number(settings.uiScale) || 1));
   return (
     <div
       className={`maincontainer ${rightDocumentId && activeTab !== '3D' && activeTab !== 'IMAGE' ? 'has-split-view' : ''}`}
-      style={{ ...rootStyle, '--buttons-h': displayButtons ? '33px' : '0px', '--split-position': `${splitRatio * 100}%` }}
+      style={{
+        ...rootStyle,
+        '--buttons-h': displayButtons ? '33px' : '0px',
+        '--split-position': `${splitRatio * 100}%`,
+        zoom: uiScale,
+        width: `${100 / uiScale}vw`,
+        height: `${100 / uiScale}vh`,
+      }}
     > 
       {isFileHovering && (
         <div className="file-drop-overlay" role="status">

@@ -88,6 +88,12 @@ pub struct BfresMesh {
     pub material_index: u16,
     pub bone_index: u16,
     pub vertex_skin_count: u8,
+    #[serde(default)]
+    pub is_cloth: bool,
+    #[serde(default)]
+    pub cloth_id: u16,
+    #[serde(default)]
+    pub nun_id: u32,
     pub positions: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
     pub uv0: Vec<[f32; 2]>,
@@ -717,6 +723,9 @@ fn parse_shape(
             material_index,
             bone_index,
             vertex_skin_count,
+            is_cloth: false,
+            cloth_id: 0,
+            nun_id: 0,
             positions: positions.clone(),
             normals: normals.clone(),
             uv0: uv0.clone(),

@@ -60,13 +60,14 @@ const InitializeEditor = (props) => {
   invoke('get_startup_data').then((data) => {
     // Use object spread to combine default settings with fetched data
     const updatedSettings = { ...settings, ...data };
-    // setSettings(updatedSettings);  // Update state for future re-renders
+    setSettings(updatedSettings);
     settings.argv1 = updatedSettings.argv1;
     settings.argv = updatedSettings.argv;
     settings.fontSize = updatedSettings.fontSize;  
     settings.theme = updatedSettings.theme;  
     settings.minimap = updatedSettings.minimap;  
     settings.contextMenuFontSize = updatedSettings.contextMenuFontSize;  
+    settings.uiScale = updatedSettings.uiScale;
     settings.zstd_msg = data.zstd_msg;  
     
 

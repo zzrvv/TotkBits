@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { OpenFileFromPath } from './ButtonClicks';
+import { openModelCollectionDocument } from './DocumentState';
 import { useEditorContext } from './StateManager';
 
 export default function AocModelView({ activeTab }) {
@@ -8,19 +9,35 @@ export default function AocModelView({ activeTab }) {
         aocModelCatalog, setStatusText, setActiveTab, setLabelTextDisplay,
         setpaths, updateEditorContent,
     } = useEditorContext();
+    const minCharCount = 3;
     const [filter, setFilter] = useState('');
-    const query = filter.trim().toLocaleLowerCase();
-    const matches = useMemo(() => {
-        if (!aocModelCatalog) return [];
-        const filtered = Object.entries(aocModelCatalog)
-            .filter(([hash, name]) => hash.toLocaleLowerCase().includes(query)
-                || String(name).toLocaleLowerCase().includes(query));
-        if (filtered.length > 200) return [];
-        return filtered.sort((left, right) => String(left[1]).localeCompare(String(right[1]), undefined, {
+    const [hideMissingPreviews, setHideMissingPreviews] = useState(false);
+    const [missingPreviewHashes, setMissingPreviewHashes] = useState(() => new Set());
+    const [selectedHashes, setSelectedHashes] = useState(() => new Set());
+    const query = filter.trim().toLowerCase();
+    const allMatches = useMemo(() => {
+        if (!aocModelCatalog || query.length < minCharCount) return [];
+        return Object.entries(aocModelCatalog)
+            .filter(([hash, name]) => String(hash).toLowerCase().includes(query)
+                || String(name).toLowerCase().includes(query))
+            .sort((left, right) => String(left[1]).localeCompare(String(right[1]), undefined, {
                 numeric: true,
                 sensitivity: 'base',
             }));
     }, [aocModelCatalog, query]);
+    const matches = useMemo(() => hideMissingPreviews
+        ? allMatches.filter(([hash]) => !missingPreviewHashes.has(hash))
+        : allMatches, [allMatches, hideMissingPreviews, missingPreviewHashes]);
+    const markMissingPreview = (hash, image) => {
+        setMissingPreviewHashes((current) => {
+            if (current.has(hash)) return current;
+            const next = new Set(current);
+            next.add(hash);
+            return next;
+        });
+        image.onerror = null;
+        image.src = '/no_preview.png';
+    };
     const preview = async (hash) => {
         setStatusText(`Locating AOC model ${hash}...`);
         try {
@@ -37,6 +54,32 @@ export default function AocModelView({ activeTab }) {
             setStatusText(`Unable to preview AOC model ${hash}: ${error}`);
         }
     };
+    const toggleSelected = (hash) => {
+        setSelectedHashes((current) => {
+            const next = new Set(current);
+            if (next.has(hash)) next.delete(hash);
+            else if (next.size < 5) next.add(hash);
+            return next;
+        });
+    };
+    const importSelected = async () => {
+        const hashes = [...selectedHashes].slice(0, 5);
+        if (hashes.length < 2) return;
+        setStatusText(`Locating ${hashes.length} selected AOC models...`);
+        try {
+            const paths = (await Promise.all(hashes.map((hash) =>
+                invoke('preview_aoc_model', { hash })))).filter(Boolean);
+            if (paths.length !== hashes.length) {
+                setStatusText(`Unable to locate all ${hashes.length} selected AOC models`);
+                return;
+            }
+            openModelCollectionDocument(paths, `${hashes.length} selected AOC models`);
+            setActiveTab('3D');
+            setStatusText(`Loading ${hashes.length} selected AOC models...`);
+        } catch (error) {
+            setStatusText(`Unable to import selected AOC models: ${error}`);
+        }
+    };
     const copyHash = async (hash) => {
         try {
             await navigator.clipboard.writeText(hash);
@@ -45,11 +88,16 @@ export default function AocModelView({ activeTab }) {
             setStatusText(`Unable to copy AOC model hash ${hash}: ${error}`);
         }
     };
-
+    const showSearch200Limit = false;
+    const displayName = (name) => {
+        const value = name || '—';
+        return value.length > 30 ? `${value.slice(0, 27)}...` : value;
+    };
     if (activeTab !== 'AOC_MODELS') return null;
+    const aocTitle = allMatches.length > 0 && filter.length >= minCharCount ? `AOC models (found ${allMatches.length})` : "AOC models";
     return <main className="aoc-model-view">
         <header>
-            <h2>AOC models</h2>
+            <h2>{aocTitle}</h2>
             <input
                 autoFocus
                 type="search"
@@ -58,16 +106,54 @@ export default function AocModelView({ activeTab }) {
                 placeholder="Filter by hash or name"
                 aria-label="Filter AOC models"
             />
+            <label className="aoc-model-preview-filter">
+                <input
+                    type="checkbox"
+                    checked={hideMissingPreviews}
+                    onChange={(event) => setHideMissingPreviews(event.target.checked)}
+                />
+                Hide entries without preview image
+            </label>
+            {selectedHashes.size > 0 && <div className="aoc-model-selection-actions">
+                {selectedHashes.size > 1 && <button
+                    className="aoc-model-import-selected"
+                    type="button"
+                    onClick={importSelected}
+                >Import selected ({selectedHashes.size})</button>}
+                <button
+                    className="aoc-model-clear-selection"
+                    type="button"
+                    onClick={() => setSelectedHashes(new Set())}
+                >Clear</button>
+                <span className="aoc-model-selection-count">
+                    {selectedHashes.size}/5 selected
+                </span>
+            </div>}
         </header>
-        {filter.length > 0 && matches.length > 0 &&  <div className="aoc-model-results">
-            {matches.map(([hash, name]) => <div className="aoc-model-result" key={hash}>
+        {showSearch200Limit && query && allMatches.length > 200 && <p className="aoc-model-result-limit" role="status">
+            Showing the first 200 of {allMatches.length} matches. Refine the name or hash to narrow the results.
+        </p>}
+        {filter.length >= minCharCount && matches.length > 0 &&  <div className="aoc-model-results">
+            {matches.map(([hash, name]) => {
+                const checked = selectedHashes.has(hash);
+                const selectionFull = selectedHashes.size >= 5 && !checked;
+                return <div className={`aoc-model-result${checked ? ' selected' : ''}`} key={hash}>
+                <input
+                    className="aoc-model-select"
+                    type="checkbox"
+                    checked={checked}
+                    disabled={selectionFull}
+                    onChange={() => toggleSelected(hash)}
+                    aria-label={`Select AOC model ${hash}`}
+                    title={selectionFull ? 'A maximum of 5 models can be selected' : `Select ${hash}`}
+                />
                 <img
                     src={`/AOC/${hash.toLocaleLowerCase()}.png`}
-                    onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = '/no_preview.png'; }}
+                    onError={(event) => markMissingPreview(hash, event.currentTarget)}
                     alt=""
                 />
                 <code>{hash}</code>
-                <span>{name || '—'}</span>
+                <span title={name || undefined}>{displayName(name)}</span>
                 <button
                     className="aoc-model-copy"
                     type="button"
@@ -78,7 +164,7 @@ export default function AocModelView({ activeTab }) {
                     <img src="/clipboard.png" alt="" />
                 </button>
                 <button type="button" onClick={() => preview(hash)}>Preview</button>
-            </div>)}
+            </div>})}
         </div>}
     </main>;
 }

@@ -177,7 +177,53 @@ impl ImageDocument {
         let source = std::fs::read(path)?;
         let data = maybe_zstd(&source, zstd)?;
         let mut entries = Vec::new();
-        let (rgba, format, mip_count, dds_type) = if data.starts_with(b"BNTX") {
+        let (rgba, format, mip_count, dds_type) = if data.starts_with(b"GT1G")
+            || data.starts_with(b"G1TG")
+        {
+            let archive = crate::parser::AOC::g1t::G1tFile::parse(&data)?;
+            entries = archive
+                .textures
+                .iter()
+                .map(|texture| ImageEntry {
+                    name: format!("Texture {}", texture.index),
+                    width: texture.width,
+                    height: texture.height,
+                    // G1T previews intentionally expose only the base mip.
+                    mip_count: 1,
+                    array_count: texture.array_count,
+                    format: format!("G1T 0x{:02X}", texture.texture_type),
+                    subimages: subimages(texture.array_count, 1, texture.width, texture.height),
+                })
+                .collect();
+            let texture = archive.textures.get(texture_index).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "G1T texture index is out of range",
+                )
+            })?;
+            if mip_index != 0 || array_index >= texture.array_count {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "G1T preview exposes only the highest-resolution mip",
+                ));
+            }
+            let encoded = texture
+                .data_urls
+                .get(array_index as usize)
+                .unwrap_or(&texture.data_url)
+                .split_once(',')
+                .map(|(_, value)| value)
+                .ok_or_else(|| invalid("invalid G1T image URL"))?;
+            let png = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .map_err(invalid)?;
+            (
+                super::raster::decode(&png)?,
+                "G1T".into(),
+                1,
+                Some(format!("0x{:02X}", texture.texture_type)),
+            )
+        } else if data.starts_with(b"BNTX") {
             let bntx = crate::parser::bntx::BntxFile::parse(&data).map_err(invalid)?;
             entries = bntx
                 .textures
@@ -646,6 +692,8 @@ impl ImageDocument {
     fn supports(path: &Path, data: &[u8], zstd: Option<&crate::Zstd::TotkZstd<'_>>) -> bool {
         if data.starts_with(b"DDS ")
             || data.starts_with(b"BNTX")
+            || data.starts_with(b"GT1G")
+            || data.starts_with(b"G1TG")
             || data.get(4..8) == Some(b"6PK0")
             || data.starts_with(b"\x89PNG\r\n\x1a\n")
         {
@@ -677,6 +725,7 @@ impl ImageDocument {
                     | "dds"
                     | "bntx"
                     | "txtg"
+                    | "g1t"
             )
         )
     }
@@ -762,5 +811,23 @@ mod tests {
             b"not an image",
             None,
         ));
+    }
+
+    #[test]
+    fn g1t_preview_uses_only_the_highest_resolution_mip() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/g1m/00648a45.g1t");
+        if !path.is_file() {
+            return;
+        }
+        let rendered = ImageDocument::render_path(&path).expect("G1T preview did not render");
+        assert_eq!(rendered.format, "G1T");
+        assert_eq!(rendered.mip_count, 1);
+        assert!(!rendered.entries.is_empty());
+        assert!(rendered.entries.iter().all(|entry| entry.mip_count == 1));
+        assert!(rendered
+            .entries
+            .iter()
+            .flat_map(|entry| &entry.subimages)
+            .all(|surface| surface.mip_index == 0));
     }
 }

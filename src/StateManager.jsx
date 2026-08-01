@@ -44,6 +44,7 @@ export const EditorProvider = ({ children }) => {
                      }); //compare files content
 
   const [settings, setSettings] = useState({ argv1: '', argv: [],
+    uiScale: 1,
     fontSize: 14, 
     theme: 'vs-dark', 
     minimap: false, 

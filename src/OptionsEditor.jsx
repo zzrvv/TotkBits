@@ -8,6 +8,7 @@ const fields = [
     { key: "Stop asking for romfs path", label: "Stop asking for a RomFS path", type: "boolean" },
     { key: "BOTW WIIU path (optional)", label: "BOTW Wii U path", type: "path" },
     { key: "AOC path (optional)", label: "Age of Calamity path", type: "path" },
+    { key: "UI scale", label: "Entire UI scale", type: "number", min: 0.2, max: 3.0, step: 0.1 },
     { key: "font size", label: "Editor font size", type: "number", min: 8, max: 72 },
     { key: "Context menu font size", label: "Context-menu font size", type: "number", min: 8, max: 40 },
     { key: "Byml inline container max count", label: "BYML inline item limit", type: "number", min: 1, max: 10 },
@@ -59,9 +60,13 @@ function OptionsEditor() {
 
     const save = async () => {
         try {
-            const content = await invoke("update_toml_config", { newConfig: config });
+            const uiScale = Math.min(3, Math.max(0.2, Number(config["UI scale"]) || 1));
+            const normalizedConfig = { ...config, "UI scale": uiScale };
+            const content = await invoke("update_toml_config", { newConfig: normalizedConfig });
+            setConfig(normalizedConfig);
             setSettings((current) => ({
                 ...current,
+                uiScale,
                 fontSize: config["font size"],
                 contextMenuFontSize: config["Context menu font size"],
                 theme: config["Text editor theme"],
@@ -114,6 +119,7 @@ function OptionsEditor() {
                                         <>
                                             <input id={`setting-${field.key}`} type={field.type === "number" ? "number" : "text"}
                                                 min={field.min} max={field.max} required={field.required}
+                                                step={field.step}
                                                 value={config[field.key] ?? ""} onChange={(event) => change(field, event.target.value)} />
                                             {field.type === "path" && <button type="button" onClick={() => chooseDirectory(field.key)}>Browse…</button>}
                                         </>

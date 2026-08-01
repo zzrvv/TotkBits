@@ -537,7 +537,7 @@ button {
   position: fixed;
   inset: var(--main-top-offset) 0 22px 0;
   overflow: auto;
-  padding: 24px;
+  padding: 0 24px 24px;
   box-sizing: border-box;
   color: #ddd;
   background: #181a1d;
@@ -545,9 +545,9 @@ button {
 
 .aoc-model-view header {
   position: sticky;
-  top: -24px;
+  top: 0;
   z-index: 1;
-  padding: 12px 0 18px;
+  padding: 0 0 18px;
   background: #181a1d;
 }
 
@@ -564,6 +564,22 @@ button {
   background: #25282d;
 }
 
+.aoc-model-view .aoc-model-preview-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  margin-top: 10px;
+  color: #c9d0d8;
+  cursor: pointer;
+}
+
+.aoc-model-view .aoc-model-preview-filter input {
+  width: auto;
+  margin: 0;
+  accent-color: #4f91c5;
+}
+
 .aoc-model-results {
   width: min(900px, 100%);
   border: 1px solid #444;
@@ -571,11 +587,43 @@ button {
 
 .aoc-model-result {
   display: grid;
-  grid-template-columns: 200px 110px minmax(0, 1fr) auto auto;
+  grid-template-columns: 22px 200px 110px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 16px;
   padding: 7px 10px;
   border-bottom: 1px solid #36393e;
+}
+
+.aoc-model-result.selected {
+  background: #202f3b;
+  box-shadow: inset 3px 0 #4f91c5;
+}
+
+.aoc-model-result .aoc-model-select {
+  width: auto;
+  margin: 0;
+  accent-color: #4f91c5;
+}
+
+.aoc-model-selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.aoc-model-import-selected,
+.aoc-model-clear-selection {
+  padding: 7px 13px;
+  border: 1px solid #607d9b;
+  border-radius: 3px;
+  color: #e8f4ff;
+  background: #294760;
+  cursor: pointer;
+}
+
+.aoc-model-selection-count {
+  color: #9faeba;
 }
 
 .aoc-model-result img {

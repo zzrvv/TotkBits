@@ -621,6 +621,8 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
         crate::file_format::Model3D::bfres::BfresFile::open(path, zstd)
     } else if uncompressed_name.ends_with(".g1m") {
         crate::parser::AOC::g1m::G1mFile::open(path)
+    } else if uncompressed_name.ends_with(".g1t") {
+        crate::file_format::Image::ImageDocument::open(path, &zstd)
     } else if uncompressed_name.ends_with(".fbx") {
         crate::parser::fbx::FbxFile::open(path)
     } else if uncompressed_name.ends_with(".bntx")

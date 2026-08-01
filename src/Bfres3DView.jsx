@@ -17,15 +17,72 @@ celGradient.magFilter = THREE.NearestFilter;
 celGradient.generateMipmaps = false;
 celGradient.needsUpdate = true;
 
-// Keep a small cache so switching documents does not reparse BFRES or decode
-// all referenced embedded/externally resolved textures again. Models are read-only in this viewer.
+// Models are read-only in this viewer. Keep every inspected model for the life
+// of the application so switching between document tabs never invokes Rust or
+// transfers the full mesh payload again.
 const modelInspectionCache = new Map();
 const cacheModelInspection = (path, value) => {
-    modelInspectionCache.delete(path);
     modelInspectionCache.set(path, value);
-    while (modelInspectionCache.size > 4) {
-        modelInspectionCache.delete(modelInspectionCache.keys().next().value);
-    }
+};
+
+// TextureLoader otherwise decodes identical data URLs every time a cached
+// model becomes active. These textures intentionally live as long as the model
+// inspection cache and are released when the AOC configuration invalidates it.
+const resolvedTextureCache = new Map();
+const clearModelCaches = () => {
+    modelInspectionCache.clear();
+    resolvedTextureCache.forEach((texture) => texture.dispose());
+    resolvedTextureCache.clear();
+};
+
+const mergeG1mModels = (models) => {
+    const merged = {
+        format: 'G1M',
+        name: `${models.length} selected AOC models`,
+        sections: [],
+        materials: [],
+        resolvedTextures: [],
+        textureStats: { total: 0, skipped: 0 },
+        render: { meshes: [], bones: [], scale_mode: models[0]?.value?.render?.scale_mode || 'none' },
+    };
+    models.forEach(({ path, value }) => {
+        const modelId = path.replace(/\\/g, '/').split('/').pop()?.replace(/\.g1m$/i, '') || 'model';
+        const materialOffset = merged.materials.length;
+        const boneOffset = merged.render.bones.length;
+        merged.sections.push(...(value.sections || []).map((section) => ({
+            ...section,
+            name: section.name ? `${modelId}: ${section.name}` : modelId,
+        })));
+        merged.materials.push(...(value.materials || []).map((material) => ({
+            ...material,
+            name: `${modelId}: ${material.name || 'Material'}`,
+            texture_slots: (material.texture_slots || []).map((slot) => ({
+                ...slot,
+                name: `${modelId}:${slot.name}`,
+            })),
+        })));
+        merged.resolvedTextures.push(...(value.resolvedTextures || []).map((texture) => ({
+            ...texture,
+            name: `${modelId}:${texture.name}`,
+        })));
+        merged.render.bones.push(...(value.render?.bones || []).map((bone) => ({
+            ...bone,
+            name: `${modelId}: ${bone.name || 'Bone'}`,
+            parent_index: bone.parent_index >= 0 ? bone.parent_index + boneOffset : -1,
+        })));
+        merged.render.meshes.push(...(value.render?.meshes || []).map((mesh) => ({
+            ...mesh,
+            name: `${modelId}: ${mesh.name || 'Mesh'}`,
+            material_index: mesh.material_index + materialOffset,
+            bone_index: mesh.bone_index >= 0 ? mesh.bone_index + boneOffset : mesh.bone_index,
+            bone_indices: (mesh.bone_indices || []).map((indices) =>
+                indices.map((index) => index + boneOffset)),
+            skin_bones: (mesh.skin_bones || []).map((index) => index + boneOffset),
+        })));
+        merged.textureStats.total += value.textureStats?.total || 0;
+        merged.textureStats.skipped += value.textureStats?.skipped || 0;
+    });
+    return merged;
 };
 
 const sectionYaml = (section) => [
@@ -75,28 +132,30 @@ function boneWorldMatrices(bones, scaleMode = 'none') {
 }
 
 function useResolvedTextures(entries) {
-    const [textures, setTextures] = useState({});
+    const [textures, setTextures] = useState(() => ({}));
     useEffect(() => {
         const loader = new THREE.TextureLoader();
         const loaded = {};
         for (const entry of entries || []) {
             const urls = entry.dataUrls?.length ? entry.dataUrls : [entry.dataUrl];
             const loadLayer = (url, suffix = '') => {
+                const cacheKey = `${entry.path || entry.name}:${suffix}:${url}`;
+                const cached = resolvedTextureCache.get(cacheKey);
+                if (cached) return cached;
                 const texture = loader.load(url);
                 texture.name = `${entry.name}${suffix}`;
                 texture.flipY = false;
                 texture.colorSpace = THREE.NoColorSpace;
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
+                texture.userData.renderable = entry.renderable !== false;
+                resolvedTextureCache.set(cacheKey, texture);
                 return texture;
             };
             loaded[entry.name] = loadLayer(urls[0]);
             if (urls.length > 1) loaded[`${entry.name}::last`] = loadLayer(urls.at(-1), ' [last layer]');
         }
         setTextures(loaded);
-        return () => {
-            Object.values(loaded).forEach((texture) => texture.dispose());
-        };
     }, [entries]);
     return textures;
 }
@@ -115,7 +174,8 @@ function materialTextures(material, textures) {
     const base = diffuseSlot ? textures[diffuseSlot.name] || null : null;
     // AoC emission arrays store the material image in layer 0. Later layers
     // are auxiliary data and may be black; the legacy importer also selects 0.
-    const emission = find('Emission');
+    const candidateEmission = find('Emission');
+    const emission = candidateEmission?.userData.renderable === false ? null : candidateEmission;
     if (base) base.colorSpace = THREE.SRGBColorSpace;
     if (emission) emission.colorSpace = THREE.SRGBColorSpace;
     if (base) base.channel = 0;
@@ -141,11 +201,13 @@ function materialTextures(material, textures) {
     };
 }
 
-function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, weightBone, showNormals, onSelect, textures }) {
+function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, glow, weightBone, showNormals, onSelect, textures }) {
     const usesMaterialUvs = viewMode === 'default';
     ['base', 'normal', 'roughness', 'metalness', 'emission', 'mask', 'specular', 'ambientOcclusion'].forEach((kind) => {
         if (textures[kind]) textures[kind].channel = usesMaterialUvs ? (textures[`${kind}Uv`] ?? 0) : uvIndex;
     });
+    const hasSecondUv = mesh.uv_maps?.[1]?.length === mesh.positions.length;
+    if (textures.emission && usesMaterialUvs && hasSecondUv) textures.emission.channel = 1;
     const geometry = useMemo(() => {
         const result = new THREE.BufferGeometry();
         const positions = new Float32Array(mesh.positions.flat());
@@ -264,9 +326,9 @@ function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, wei
                 : viewMode === 'diffuse' && textures.base
                     ? <meshBasicMaterial key={`diffuse-${uvIndex}`} map={textures.base} side={THREE.DoubleSide} transparent alphaTest={0.02} />
                 : celShading && ['default', 'lighting', 'wireframe'].includes(viewMode)
-                    ? <meshToonMaterial key={`cel-${viewMode}`} map={textures.base} normalMap={textures.normal} gradientMap={celGradient} alphaMap={textures.mask} vertexColors={!textures.base} wireframe={viewMode === 'wireframe'} side={THREE.DoubleSide} transparent={Boolean(textures.mask || textures.base)} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
+                    ? <meshToonMaterial key={`cel-${viewMode}`} map={textures.base} normalMap={textures.normal} gradientMap={celGradient} alphaMap={textures.mask} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base} wireframe={viewMode === 'wireframe'} side={THREE.DoubleSide} transparent={Boolean(textures.mask || textures.base)} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
                 : ['default', 'lighting', 'wireframe'].includes(viewMode)
-                    ? <meshPhysicalMaterial key={`${viewMode}-${uvIndex}`} map={textures.base} normalMap={textures.normal} roughnessMap={textures.roughness} metalnessMap={textures.metalness} emissiveMap={textures.emission} emissive={textures.emission ? '#ffffff' : '#000000'} alphaMap={textures.mask} aoMap={textures.ambientOcclusion} aoMapIntensity={0.35} specularColorMap={textures.specular} vertexColors={!textures.base} wireframe={viewMode === 'wireframe'} roughness={0.72} metalness={viewMode === 'lighting' ? 0 : 0.05} side={THREE.DoubleSide} transparent={Boolean(textures.mask || textures.base)} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
+                    ? <meshPhysicalMaterial key={`${viewMode}-${uvIndex}`} map={textures.base} normalMap={textures.normal} roughnessMap={textures.roughness} metalnessMap={textures.metalness} alphaMap={textures.mask} aoMap={textures.ambientOcclusion} aoMapIntensity={0.35} specularColorMap={textures.specular} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base} wireframe={viewMode === 'wireframe'} roughness={0.72} metalness={viewMode === 'lighting' ? 0 : 0.05} side={THREE.DoubleSide} transparent={Boolean(textures.mask || textures.base)} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
                     : <meshBasicMaterial vertexColors side={THREE.DoubleSide} />}
         </mesh>
         {viewMode === 'default' && weightBone >= 0 && !mesh.hidden && <mesh geometry={geometry} renderOrder={2}>
@@ -303,7 +365,7 @@ function SceneExposure({ brightness }) {
     return null;
 }
 
-function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShading, showSkeleton, showNormals, weightBone, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes }) {
+function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShading, glow, showSkeleton, showNormals, weightBone, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes }) {
     const textures = useResolvedTextures(bfres?.resolvedTextures);
     return <>
         <SceneExposure brightness={brightness} />
@@ -315,7 +377,7 @@ function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShadin
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
         <Bounds fit clip observe margin={1.15}>
-            <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} weightBone={weightBone} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
+            <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
             {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} />}
         </Bounds>
     </>;
@@ -457,6 +519,7 @@ function ResourceContextMenu({ menu, close, action }) {
 export default function Bfres3DView({ activeTab, setStatusText }) {
     const { documents, activeDocumentId } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
     const document = documents.find((item) => item.id === activeDocumentId);
+    const modelPathsKey = document?.modelPaths?.join('|') || '';
     const [bfres, setBfres] = useState(null);
     const [error, setError] = useState('');
     const [selected, setSelected] = useState(null);
@@ -464,6 +527,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [panel, setPanel] = useState('resources');
     const [viewMode, setViewMode] = useState('default');
     const [celShading, setCelShading] = useState(true);
+    const [glow, setGlow] = useState(false);
     const [uvIndex, setUvIndex] = useState(0);
     const [brightness, setBrightness] = useState(1.0);
     const [brightnessLoaded, setBrightnessLoaded] = useState(false);
@@ -479,7 +543,22 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [contextMenu, setContextMenu] = useState(null);
     const [modelVisible, setModelVisible] = useState(true);
     const [hiddenMeshes, setHiddenMeshes] = useState([]);
+    const [viewResetKey, setViewResetKey] = useState(0);
     const isG1m = bfres?.format === 'G1M';
+    const hasGlow = useMemo(() => {
+        const renderableTextures = new Set((bfres?.resolvedTextures || [])
+            .filter((texture) => texture.renderable !== false)
+            .map((texture) => texture.name));
+        return (bfres?.materials || []).some((material) =>
+            (material.texture_slots || []).some((slot) =>
+                slot.texture_type === 'Emission' && renderableTextures.has(slot.name)));
+    }, [bfres]);
+
+    useEffect(() => {
+        const clearAocModels = () => clearModelCaches();
+        window.addEventListener('totkbits:aoc-config-changed', clearAocModels);
+        return () => window.removeEventListener('totkbits:aoc-config-changed', clearAocModels);
+    }, []);
 
     useEffect(() => {
         invoke('get_viewport_brightness')
@@ -502,14 +581,23 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         if (activeTab !== '3D' || !document?.fullPath) return;
         setSelectedMesh('');
         setSelectedMaterial(null);
-        const cacheKey = `${document.id}:${document.fullPath}`;
+        setGlow(false);
+        // The same read-only model may be opened in more than one document.
+        // Cache by canonical-looking path, not tab id, so all tabs share the
+        // complete parsed model and its resolved image payloads.
+        const modelPaths = document.modelPaths?.length ? document.modelPaths : [document.fullPath];
+        const cacheKey = modelPaths.map((path) => path.replace(/\\/g, '/').toLowerCase()).join('|');
         const cached = modelInspectionCache.get(cacheKey);
-        if (cached) {
+        const cachedG1mHasTextures = cached?.format !== 'G1M' || cached?.resolvedTextures?.length > 0;
+        if (cached && cachedG1mHasTextures) {
             setBfres(cached);
             setViewMode('default');
-            if (cached.materials) setStatusText(modelTextureStatus(cached));
             setError('');
-            return;
+            const statusTimeout = window.setTimeout(() => {
+                if (cached.format === 'G1M') setStatusText('Done');
+                else if (cached.materials) setStatusText(modelTextureStatus(cached));
+            }, 0);
+            return () => window.clearTimeout(statusTimeout);
         }
         let cancelled = false;
         const operationId = `model:${document.id}:${crypto.randomUUID()}`;
@@ -527,12 +615,26 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             // Give React and the browser a frame to display the overlay before parsing starts.
             await new Promise((resolve) => requestAnimationFrame(resolve));
             try {
-                const value = await invoke('inspect_3d_model', { path: document.fullPath });
+                const inspected = await Promise.all(modelPaths.map(async (path) => {
+                    const pathKey = path.replace(/\\/g, '/').toLowerCase();
+                    const pathCached = modelInspectionCache.get(pathKey);
+                    if (pathCached && (pathCached.format !== 'G1M' || pathCached.resolvedTextures?.length > 0)) {
+                        return { path, value: pathCached };
+                    }
+                    const value = await invoke('inspect_3d_model', { path });
+                    if (value.format !== 'G1M' || value.resolvedTextures?.length > 0) {
+                        cacheModelInspection(pathKey, value);
+                    }
+                    return { path, value };
+                }));
+                const value = inspected.length > 1 ? mergeG1mModels(inspected) : inspected[0].value;
                 if (cancelled) return;
-                cacheModelInspection(cacheKey, value);
+                if (value.format !== 'G1M' || value.resolvedTextures?.length > 0) {
+                    cacheModelInspection(cacheKey, value);
+                }
                 setBfres(value);
                 setViewMode('default');
-                if (value.materials) {
+                if (value.format !== 'G1M' && value.materials) {
                     setStatusText(modelTextureStatus(value));
                 }
                 const initial = value.sections.find((section) => String.fromCharCode(...section.signature) === 'FMDL') || value.sections[0];
@@ -540,6 +642,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 setYaml(initial ? sectionYaml(initial) : '');
                 // Keep the overlay over the potentially expensive Three.js scene commit.
                 await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                if (value.format === 'G1M') setStatusText('Done');
             } catch (reason) {
                 if (!cancelled) setError(String(reason));
             } finally {
@@ -551,7 +654,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             cancelled = true;
             finishLoading();
         };
-    }, [activeTab, document?.id, document?.fullPath]);
+    }, [activeTab, document?.id, document?.fullPath, modelPathsKey]);
 
     const animations = useMemo(() => (bfres?.sections || []).filter((section) =>
         ['FSKA', 'FSHU', 'FSHA', 'FTXP', 'FVIS', 'FMAA'].includes(String.fromCharCode(...section.signature))), [bfres]);
@@ -579,6 +682,8 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const applyYaml = () => {
         setStatusText('BFRES node YAML is staged in the inspector; binary rebuilding is not available for this node type yet');
     };
+    const showYamlButtonFlag = false;
+    const showNormalsButtonFlag = false;
 
     return <main className="bfres-workspace" aria-hidden={activeTab !== '3D'} style={{ '--bfres-left-width': `${leftWidth}px`, '--bfres-right-width': `${rightWidth}px`, display: activeTab === '3D' ? 'grid' : 'none' }}>
         <header className="bfres-viewport-toolbar">
@@ -586,6 +691,9 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 <button type="button" onClick={() => setPanel('resources')} className={panel === 'resources' ? 'active' : ''}>Resources</button>
                 <button type="button" onClick={() => { if (!isG1m) setPanel('parameters'); }} className={panel === 'parameters' ? 'active' : ''}>Parameters</button>
                 <button type="button" onClick={() => setPanel('animations')} className={panel === 'animations' ? 'active' : ''}>Animations <small>{animations.length}</small></button>
+                {hasGlow && <button type="button" onClick={() => setGlow((value) => !value)} className={glow ? 'active' : ''} aria-pressed={glow}>Glow</button>}
+                <button type="button" onClick={() => setViewResetKey((value) => value + 1)}>Reset View</button>
+                <button type="button" onClick={() => setCelShading((value) => !value)} className={celShading ? 'active' : ''}>Cel Shading</button>
             </div>
             <div className="bfres-toolbar-row bfres-toolbar-controls">
                 <label className="bfres-shading-select">Shading:
@@ -594,7 +702,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
 <option value="diffuse">Diffuse</option>
 <option value="normalMap">NormalMap</option>
 <option value="specularMap">SpecularMap</option>
-<option value="selectedBoneWeights">SelectedBoneWeights</option>
+<option value="selectedBoneWeights">Weights</option>
 <option value="emissionMap">EmissionMap</option>
 <option value="normal">Normal</option>
 {/* <option value="lighting">Lighting</option>
@@ -625,9 +733,9 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 <span>{Math.round((brightness/3) * 100)}%</span>
                 </label>
                 <button type="button" onClick={() => setShowSkeleton((value) => !value)} className={showSkeleton ? 'active' : ''}>Skeleton</button>
-                <button type="button" onClick={() => setShowNormals((value) => !value)} className={showNormals ? 'active' : ''}>Normals</button>
-                <button type="button" onClick={() => setCelShading((value) => !value)} className={celShading ? 'active' : ''}>Cel Shading</button>
-                <button type="button" onClick={() => setShowEditor((value) => !value)} className={!showEditor ? 'active' : ''}>{showEditor ? 'Hide YAML' : 'Show YAML'}</button>
+                {showNormalsButtonFlag && <button type="button" onClick={() => setShowNormals((value) => !value)} className={showNormals ? 'active' : ''}>Normals</button>}
+                {/* <button type="button" onClick={() => setCelShading((value) => !value)} className={celShading ? 'active' : ''}>Cel Shading</button> */}
+                {showYamlButtonFlag && <button type="button" onClick={() => setShowEditor((value) => !value)} className={!showEditor ? 'active' : ''}>{showEditor ? 'Hide YAML' : 'Show YAML'}</button>}
                 {viewMode === 'selectedBoneWeights' && <select className="bfres-bone-select" value={weightBone} onChange={(event) => setWeightBone(Number(event.target.value))} aria-label="Selected bone weights">
                     {(bfres?.render?.bones || []).map((bone, index) => <option key={`${bone.name}-${index}`} value={index}>Bone: {bone.name}</option>
 )}
@@ -676,8 +784,8 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             }} />
             <div className="bfres-panel-divider left" role="separator" aria-orientation="vertical" onMouseDown={(event) => startPanelDrag('left', event)} />
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
-                <Canvas dpr={[1, 2]} gl={{ antialias: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
-                    {bfres?.render && <ResourceScene bfres={bfres} render={bfres.render} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
+                <Canvas key={viewResetKey} dpr={[1, 2]} gl={{ antialias: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
+                    {bfres?.render && <ResourceScene bfres={bfres} render={bfres.render} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
                         setSelectedMesh(mesh.name);
                         setSelectedMaterial(null);
                         setWeightBone(-2);

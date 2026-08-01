@@ -19,6 +19,10 @@ const emptySnapshot = () => ({
     editorText: '', editorLanguage: 'yaml', readOnly: false,
 });
 
+const initialSnapshotForDocument = (document) => document?.modelPaths?.length
+    ? { ...emptySnapshot(), activeTab: '3D', readOnly: true }
+    : emptySnapshot();
+
 const modelUri = (id) => `inmemory://totkbits/${id}`;
 const isUsableModel = (model) => Boolean(model && !model.isDisposed());
 const isOwnedModel = (model, id) => isUsableModel(model) && model.uri.toString() === modelUri(id);
@@ -113,7 +117,9 @@ export default function DocumentTabs() {
                 const previousViewState = latest.editorRef.current.saveViewState();
                 if (previousViewState) latest.documentViewStates.current.set(previous, previousViewState);
             }
-            const snapshot = latest.documentSnapshots.current.get(activeDocumentId) || emptySnapshot();
+            const activeDocument = documents.find((document) => document.id === activeDocumentId);
+            const snapshot = latest.documentSnapshots.current.get(activeDocumentId)
+                || initialSnapshotForDocument(activeDocument);
             let model = latest.documentModels.current.get(activeDocumentId);
             if (!isOwnedModel(model, activeDocumentId)) {
                 latest.documentModels.current.delete(activeDocumentId);
@@ -131,9 +137,11 @@ export default function DocumentTabs() {
             const viewState = latest.documentViewStates.current.get(activeDocumentId);
             if (viewState && isUsableModel(model)) latest.editorRef.current.restoreViewState(viewState);
         }
-        const snapshot = latest.documentSnapshots.current.get(activeDocumentId) || emptySnapshot();
+        const activeDocument = documents.find((document) => document.id === activeDocumentId);
+        const snapshot = latest.documentSnapshots.current.get(activeDocumentId)
+            || initialSnapshotForDocument(activeDocument);
         latest.setActiveTab(snapshot.activeTab);
-        latest.setStatusText(snapshot.statusText);
+        latest.setStatusText('Ready');
         latest.setSelectedPath(snapshot.selectedPath);
         latest.setLabelTextDisplay(snapshot.labelTextDisplay);
         latest.setpaths(snapshot.paths);

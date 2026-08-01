@@ -25,6 +25,7 @@ const MIN_INLINE_BYML_ITEMS: usize = 1;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct TotkConfig {
     pub romfs: String,
+    pub ui_scale: f64,
     pub font_size: i32,
     pub context_menu_font_size: i32,
     pub yaml_max_inl: usize,
@@ -54,6 +55,7 @@ impl Default for TotkConfig {
     fn default() -> Self {
         Self {
             romfs: String::new(),
+            ui_scale: 1.0,
             close_all_prompt: true,
             font_size: 14,
             yaml_max_inl: 4,
@@ -171,6 +173,7 @@ impl TotkConfig {
         }
 
         self.font_size = get_i64(&json_data, "font size", self.font_size as i64) as i32;
+        self.ui_scale = get_f64(&json_data, "UI scale", self.ui_scale).clamp(0.2, 3.0);
         self.yaml_max_inl = get_i64(
             &json_data,
             "Byml inline container max count",
@@ -229,6 +232,7 @@ impl TotkConfig {
     pub fn to_json(&self) -> io::Result<serde_json::Value> {
         Ok(json!({
             "romfs": self.romfs,
+            "UI scale": self.ui_scale,
             "font size": self.font_size,
             "Byml inline container max count": self.yaml_max_inl,
             "Lower float precision": self.lower_float_prec,
@@ -250,6 +254,7 @@ impl TotkConfig {
     pub fn to_react_json(&self) -> io::Result<serde_json::Value> {
         Ok(json!({
             "romfs": self.romfs,
+            "uiScale": self.ui_scale,
             "fontSize": self.font_size,
             "contextMenuFontSize": self.context_menu_font_size,
             "theme": self.monaco_theme,
@@ -307,6 +312,7 @@ impl TotkConfig {
             "# Byml inline container max count must be between {} and {}\n#\n",
             MIN_INLINE_BYML_ITEMS, MAX_INLINE_BYML_ITEMS
         ));
+        res.push_str("# UI scale must be between 0.2 and 3.0\n#\n");
         if let Ok(exe_path) = env::current_exe() {
             if let Some(cwd_path) = exe_path.parent() {
                 res.push_str(&format!(

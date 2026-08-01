@@ -62,6 +62,26 @@ export const openUtilityDocument = (title, utilityTab) => {
     return { id, created: true };
 };
 
+export const openModelCollectionDocument = (paths, title = 'Selected AOC models') => {
+    const modelPaths = [...new Set(paths.filter(Boolean))].slice(0, 5);
+    if (modelPaths.length < 2) return null;
+    const reusable = documents.length === 1 && documents[0].clean ? documents[0] : null;
+    const id = reusable ? reusable.id : addCleanDocument();
+    documents = documents.map((document) => document.id === id
+        ? {
+            ...document,
+            title,
+            fullPath: `aoc-models://${modelPaths.join('|')}`,
+            fileMetadata: '[G1M] [ReadOnly]',
+            modelPaths,
+            clean: false,
+        }
+        : document);
+    activateDocument(id);
+    emit();
+    return id;
+};
+
 const updateTitle = (id, title, opened = false) => {
     documents = documents.map((document) => document.id === id
         ? { ...document, title: title || document.title, clean: opened ? false : document.clean }
