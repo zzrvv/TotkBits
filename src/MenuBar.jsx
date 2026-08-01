@@ -5,7 +5,7 @@ import { addFilesFromDirRecursivelyToRoot, clearSearchInSarcClick, closeAllFiles
 import { ImageButton } from "./Buttons";
 import CommandsHelp from './CommandsHelp';
 import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanila, compareInternalFileWithOVanilaMonaco } from './Comparer';
-import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
+import { getDocumentsSnapshot, openUtilityDocument, subscribeDocuments } from './DocumentState';
 import { useEditorContext } from './StateManager';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -295,9 +295,11 @@ function MenuBarDisplay({ updateButton = null }) {
     return () => window.removeEventListener('totkbits:aoc-config-changed', refresh);
   }, [setAocModelCatalog]);
 
-  const handleOpenAocModels = (event) => {
+  const handleOpenAocModels = async (event) => {
     event.stopPropagation();
     closeMenu();
+    const { created } = openUtilityDocument('AOC models', 'AOC_MODELS');
+    if (created) await new Promise((resolve) => requestAnimationFrame(resolve));
     setActiveTab('AOC_MODELS');
     setStatusText('Search Age of Calamity models by hash or name');
   };
@@ -334,7 +336,7 @@ function MenuBarDisplay({ updateButton = null }) {
       })),
     },
     { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
-    { label: 'AOC model', onClick: handleOpenAocModels, icon: blankIcon, shortcut: '', condition: aocModelCatalog !== null },
+    { label: 'AOC model', onClick: handleOpenAocModels, icon: 'menu/aoc_logo.png', shortcut: '', condition: aocModelCatalog !== null },
     { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S', condition: isSaveEnabled },
     { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S', condition: isSaveEnabled },
     { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },

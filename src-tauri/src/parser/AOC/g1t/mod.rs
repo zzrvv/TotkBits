@@ -12,7 +12,9 @@ pub struct G1tTexture {
     pub height: u32,
     pub mip_count: u8,
     pub texture_type: u8,
+    pub array_count: u32,
     pub data_url: String,
+    pub data_urls: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -174,26 +176,34 @@ fn parse_texture(index: usize, entry: &[u8], endian: Endian) -> io::Result<G1tTe
     if payload.len() < expected {
         return Err(invalid("truncated G1T texture payload"));
     }
-    let dds = make_dds(
-        format,
-        width,
-        height,
-        decode_mips,
-        false,
-        &payload[..expected],
-    );
-    let image = crate::file_format::Image::dds::decode(&dds)?;
-    let png = crate::file_format::Image::png::encode(&image)?;
+    let array_count = (payload.len() / expected).clamp(1, 256);
+    let mut data_urls = Vec::with_capacity(array_count);
+    for layer in 0..array_count {
+        let start = layer * expected;
+        let dds = make_dds(
+            format,
+            width,
+            height,
+            decode_mips,
+            false,
+            &payload[start..start + expected],
+        );
+        let image = crate::file_format::Image::dds::decode(&dds)?;
+        let png = crate::file_format::Image::png::encode(&image)?;
+        data_urls.push(format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(png)
+        ));
+    }
     Ok(G1tTexture {
         index,
         width,
         height,
         mip_count,
         texture_type,
-        data_url: format!(
-            "data:image/png;base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(png)
-        ),
+        array_count: array_count as u32,
+        data_url: data_urls.first().cloned().unwrap_or_default(),
+        data_urls,
     })
 }
 
@@ -306,5 +316,42 @@ mod tests {
             parsed += 1;
         }
         assert!(parsed >= 80);
+    }
+
+    #[test]
+    fn parses_emission_texture_arrays() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/g1m/00648a45.g1t");
+        let archive = G1tFile::parse(&std::fs::read(path).unwrap()).unwrap();
+        let texture = archive.textures.first().unwrap();
+        assert_eq!(texture.array_count, 2);
+        assert_eq!(texture.data_urls.len(), texture.array_count as usize);
+        assert_ne!(texture.data_urls.first(), texture.data_urls.last());
+    }
+
+    #[test]
+    fn first_emission_layer_matches_legacy_extraction() {
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/g1m_importer/_ss/data");
+        let g1t_path = root.join("0202a4c9.g1t");
+        let legacy_path = root.join("49c9ef33_textures/emm_0_0202a4c9_17.dds");
+        if !g1t_path.is_file() || !legacy_path.is_file() {
+            return;
+        }
+        let archive = G1tFile::parse(&std::fs::read(g1t_path).unwrap()).unwrap();
+        let texture = archive.textures.first().unwrap();
+        let encoded = texture
+            .data_urls
+            .first()
+            .unwrap()
+            .split_once(',')
+            .unwrap()
+            .1;
+        let png = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .unwrap();
+        let decoded = crate::file_format::Image::raster::decode(&png).unwrap();
+        let legacy =
+            crate::file_format::Image::dds::decode(&std::fs::read(legacy_path).unwrap()).unwrap();
+        assert_eq!(decoded, legacy);
     }
 }

@@ -119,12 +119,20 @@ pub fn inspect_3d_model(
                 .unwrap_or("G1M"),
         )
         .map_err(|error| error.to_string())?;
-        let textures = g1m.resolve_textures(Path::new(&path), Path::new(&aoc_path));
+        let texture_resolution = g1m.resolve_textures(Path::new(&path), Path::new(&aoc_path));
         let mut value = serde_json::to_value(g1m).map_err(|error| error.to_string())?;
         if let Some(object) = value.as_object_mut() {
             object.insert(
                 "resolvedTextures".into(),
-                serde_json::to_value(textures).map_err(|error| error.to_string())?,
+                serde_json::to_value(texture_resolution.textures)
+                    .map_err(|error| error.to_string())?,
+            );
+            object.insert(
+                "textureStats".into(),
+                serde_json::json!({
+                    "total": texture_resolution.total,
+                    "skipped": texture_resolution.skipped,
+                }),
             );
         }
         Ok(value)
@@ -967,15 +975,98 @@ pub fn get_aoc_model_catalog() -> Result<Option<HashMap<String, String>>, String
         fs::read_to_string(parent.join("bin").join("AOC_names.json"))
     });
 
-    let catalog = contents
+    let mut catalog = contents
         .ok()
         .and_then(|value| serde_json::from_str::<HashMap<String, String>>(&value).ok())
         .unwrap_or_default();
     if catalog.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(catalog))
+        return Ok(None);
     }
+    let pairs_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("bin")
+        .join("G1M_to_G1T_pairs.json");
+    let pairs = fs::read_to_string(pairs_path).or_else(|_| {
+        let executable = env::current_exe()?;
+        let parent = executable.parent().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "executable directory is missing",
+            )
+        })?;
+        fs::read_to_string(parent.join("bin").join("G1M_to_G1T_pairs.json"))
+    });
+    if let Some(pair_keys) = pairs
+        .ok()
+        .and_then(|value| serde_json::from_str::<HashMap<String, serde_json::Value>>(&value).ok())
+    {
+        for hash in pair_keys.into_keys() {
+            catalog.entry(hash).or_default();
+        }
+    }
+    Ok(Some(catalog))
+}
+
+#[tauri::command]
+pub fn preview_aoc_model(hash: String) -> Result<Option<String>, String> {
+    if hash.len() != 8 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("invalid AOC model hash".into());
+    }
+    let config =
+        crate::TotkConfig::TotkConfig::safe_new(false).map_err(|error| error.to_string())?;
+    let dump_path = Path::new(&config.aoc_path);
+    let filename = format!("{}.g1m", hash.to_ascii_lowercase());
+    let model_path = [
+        dump_path.join(&filename),
+        dump_path
+            .join("CharacterEditor")
+            .join("g1m")
+            .join(&filename),
+        dump_path
+            .join("CharacterEditor")
+            .join("g1m_merged")
+            .join(hash.to_ascii_lowercase())
+            .join(&filename),
+        dump_path.join("g1m").join(&filename),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())
+    .or_else(|| {
+        fs::read_dir(dump_path)
+            .ok()?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path().join("g1m").join(&filename))
+            .find(|path| path.is_file())
+    });
+    let Some(model_path) = model_path else {
+        MessageDialog::new()
+            .set_title("AOC model not found")
+            .set_description(format!(
+                "The model {filename} does not exist in the configured AOC dump path."
+            ))
+            .set_level(rfd::MessageLevel::Error)
+            .set_buttons(rfd::MessageButtons::Ok)
+            .show();
+        return Ok(None);
+    };
+    Ok(Some(model_path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+pub fn get_viewport_brightness() -> Result<f64, String> {
+    crate::TotkConfig::TotkConfig::safe_new(false)
+        .map(|config| config.viewport_brightness)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn set_viewport_brightness(brightness: f64) -> Result<(), String> {
+    if !brightness.is_finite() {
+        return Err("invalid 3D viewport brightness".into());
+    }
+    let mut config =
+        crate::TotkConfig::TotkConfig::safe_new(false).map_err(|error| error.to_string())?;
+    config.viewport_brightness = brightness.clamp(0.3, 3.0);
+    config.save().map_err(|error| error.to_string())
 }
 
 #[tauri::command]

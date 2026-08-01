@@ -586,7 +586,7 @@ impl<'a> TotkBitsApp<'a> {
             let query = entry.trim().to_ascii_lowercase();
             if !query.is_empty() {
                 let mut returned_paths = std::collections::HashSet::new();
-                for canonical_path in &rstb.hash_table {
+                for canonical_path in rstb.hash_table.iter() {
                     let normalized_path = canonical_path.to_ascii_lowercase();
                     if normalized_path.contains(&query) && returned_paths.insert(normalized_path) {
                         if let Some(val) = rstb.table.get(canonical_path.clone()) {
@@ -629,7 +629,7 @@ impl<'a> TotkBitsApp<'a> {
             }
             rstb.table.set(canonical_path.clone(), value);
             if cached_path.is_none() {
-                rstb.hash_table.push(canonical_path);
+                Arc::make_mut(&mut rstb.hash_table).push(canonical_path);
             }
         } else {
             data.status_text = "Error: No RSTB opened".to_string();
@@ -2140,7 +2140,8 @@ impl<'a> TotkBitsApp<'a> {
             let disk_path = Pathlib::new(&file_name);
             opened.path = disk_path.clone();
             data.path = disk_path;
-            if opened.file_type != TotkFileType::Bntx {
+            let has_specialized_g1m_metadata = data.file_metadata.contains("[G1M]");
+            if opened.file_type != TotkFileType::Bntx && !has_specialized_g1m_metadata {
                 data.set_file_metadata(opened.file_type, Some(compression));
             }
             opened.compression = Some(compression);

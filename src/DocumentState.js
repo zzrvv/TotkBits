@@ -47,6 +47,21 @@ export const addCleanDocument = () => {
     return document.id;
 };
 
+export const openUtilityDocument = (title, utilityTab) => {
+    const existing = documents.find((document) => document.utilityTab === utilityTab);
+    if (existing) {
+        activateDocument(existing.id);
+        return { id: existing.id, created: false };
+    }
+    const reusable = documents.length === 1 && documents[0].clean ? documents[0] : null;
+    const id = reusable ? reusable.id : addCleanDocument();
+    documents = documents.map((document) => document.id === id
+        ? { ...document, title, clean: false, utilityTab }
+        : document);
+    emit();
+    return { id, created: true };
+};
+
 const updateTitle = (id, title, opened = false) => {
     documents = documents.map((document) => document.id === id
         ? { ...document, title: title || document.title, clean: opened ? false : document.clean }
@@ -160,7 +175,10 @@ export const invoke = async (command, args = {}) => {
                 return null;
             }
             else {
-                updateTitle(documentId, result.path?.name || result.file_label?.split(' [')[0] || 'Document', true);
+                const g1mTitle = result.file_metadata?.includes('[G1M]')
+                    ? result.file_label?.replace(/\s+\[G1M\]$/, '')
+                    : null;
+                updateTitle(documentId, g1mTitle || result.path?.name || result.file_label?.split(' [')[0] || 'Document', true);
                 updateFullPath(documentId, result.path?.full_path || args?.innerPath || args?.path || '');
                 updateFileMetadata(documentId, result.file_metadata || '');
                 if (isOpen && command !== 'open_folder_struct') {

@@ -9,6 +9,7 @@ mod Cli;
 mod Comparer;
 mod DocumentState;
 mod InternalFile;
+mod LookupData;
 // mod InternalFile_EX;
 mod NestedSarc;
 mod Open_and_Save;
@@ -33,15 +34,16 @@ use crate::TauriCommands::{
     exit_app, expand_nested_sarc, export_bfwav_node, export_image_png,
     extract_folder_from_opened_sarc, extract_internal_file, extract_nested_sarc_file,
     extract_opened_sarc, get_aoc_model_catalog, get_recent_files, get_toml_config,
-    inspect_3d_model, inspect_bfres, list_bphcl_selectable_nodes, list_hkcl_selectable_nodes,
-    list_open_bphcl_documents, list_open_bphhb_documents, list_open_hkcl_documents,
-    merge_bphcl_nodes, merge_hkcl_nodes_into_bphcl, mutate_nested_archive, open_amta_node,
-    open_audio_file_dialog, open_bfwav_node, open_bphcl_leaf, open_dir_dialog, open_file_dialog,
-    open_file_from_path, open_file_struct, open_folder_struct, remove_bphcl_node,
-    remove_internal_sarc_file, rename_bntx_texture, rename_internal_sarc_file, render_image,
-    replace_bars_audio_from_folder, replace_bfwav_node, replace_bntx_image, replace_dds_image,
-    restart_app, rstb_edit_entry, rstb_get_entries, rstb_remove_entry, save_as_click,
-    save_file_struct, search_in_sarc, update_toml_config, validate_bphcl_merge_documents,
+    get_viewport_brightness, inspect_3d_model, inspect_bfres, list_bphcl_selectable_nodes,
+    list_hkcl_selectable_nodes, list_open_bphcl_documents, list_open_bphhb_documents,
+    list_open_hkcl_documents, merge_bphcl_nodes, merge_hkcl_nodes_into_bphcl,
+    mutate_nested_archive, open_amta_node, open_audio_file_dialog, open_bfwav_node,
+    open_bphcl_leaf, open_dir_dialog, open_file_dialog, open_file_from_path, open_file_struct,
+    open_folder_struct, preview_aoc_model, remove_bphcl_node, remove_internal_sarc_file,
+    rename_bntx_texture, rename_internal_sarc_file, render_image, replace_bars_audio_from_folder,
+    replace_bfwav_node, replace_bntx_image, replace_dds_image, restart_app, rstb_edit_entry,
+    rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,
+    set_viewport_brightness, update_toml_config, validate_bphcl_merge_documents,
     validate_physics_merge_request,
 };
 
@@ -91,6 +93,9 @@ fn main() -> io::Result<()> {
             extract_folder_from_opened_sarc,
             get_toml_config,
             get_aoc_model_catalog,
+            preview_aoc_model,
+            get_viewport_brightness,
+            set_viewport_brightness,
             get_recent_files,
             update_toml_config,
             restart_app,

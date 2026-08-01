@@ -465,7 +465,7 @@ export async function addFilesFromDirRecursively(internalPath, setStatusText, se
 
 }
 
-const refreshSavedArchivePaths = (sarcPaths, setpaths, documentSnapshots, parentModdedPath = null) => {
+const refreshSavedArchivePaths = (sarcPaths, setpaths, documentSnapshots) => {
   if (!sarcPaths || sarcPaths.paths.length === 0) return;
   setpaths(sarcPaths);
   const { documents, activeDocumentId } = getDocumentsSnapshot();
@@ -481,17 +481,12 @@ const refreshSavedArchivePaths = (sarcPaths, setpaths, documentSnapshots, parent
     if (parentSnapshot) {
       documentSnapshots.current.set(parentId, { ...parentSnapshot, paths: sarcPaths });
     }
-  } else if (parentId && (parentModdedPath || activeDocument.fullPath)) {
+  } else if (parentId && sarcPaths) {
     const parentSnapshot = documentSnapshots.current.get(parentId);
     if (parentSnapshot) {
-      const parentPaths = parentSnapshot.paths || { paths: [], added_paths: [], modded_paths: [], file_type: '' };
-      const moddedPath = parentModdedPath || activeDocument.fullPath;
       documentSnapshots.current.set(parentId, {
         ...parentSnapshot,
-        paths: {
-          ...parentPaths,
-          modded_paths: [...new Set([...(parentPaths.modded_paths || []), moddedPath])],
-        },
+        paths: sarcPaths,
       });
     }
   }
@@ -527,7 +522,7 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
-      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots, content.parent_modded_path);
+      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots);
       console.log(content.sarc_paths.added_paths);
       console.log(content.sarc_paths.modded_paths);
     }
@@ -564,7 +559,7 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
-      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots, content.parent_modded_path);
+      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots);
       console.log(content.sarc_paths.added_paths);
       console.log(content.sarc_paths.modded_paths);
     }

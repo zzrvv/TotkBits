@@ -3,7 +3,6 @@ use crate::Open_and_Save::get_string_from_data;
 use crate::Settings::Pathlib;
 use crate::TotkConfig::TotkConfig;
 use digest::Digest;
-use flate2::read::ZlibDecoder;
 use roead::sarc::*;
 use sha2::Sha256;
 use zstd::zstd_safe::zstd_sys::{
@@ -534,13 +533,7 @@ impl<'a> TotkZstd<'_> {
         internal_path: P,
     ) -> io::Result<String> {
         //parse json
-        let json_zlibdata = fs::read(crate::Settings::exe_relative_path(
-            "bin/totk_internal_filepaths.bin",
-        ))?;
-        let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
-        let mut json_str = String::new();
-        decoder.read_to_string(&mut json_str)?;
-        let res: HashMap<String, String> = serde_json::from_str(&json_str)?;
+        let res = crate::LookupData::internal_filepaths();
         //find the sarc file
         let int_path_str = internal_path.as_ref().to_string_lossy().to_string();
         let sarc_localpath = res
@@ -856,13 +849,7 @@ impl<'a> ZstdCompressor<'_> {
     }
 
     pub fn find_vanila_file_in_romfs<P: AsRef<Path>>(&self, path: P) -> io::Result<String> {
-        let json_zlibdata = fs::read(crate::Settings::exe_relative_path(
-            "bin/totk_filename_to_localpath.bin",
-        ))?;
-        let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
-        let mut json_str = String::new();
-        decoder.read_to_string(&mut json_str)?;
-        let res: HashMap<String, String> = serde_json::from_str(&json_str)?;
+        let res = crate::LookupData::filename_to_localpath();
         let filename = path
             .as_ref()
             .file_name()

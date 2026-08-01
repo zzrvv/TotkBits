@@ -1,5 +1,4 @@
 #![allow(non_snake_case, non_camel_case_types)]
-use flate2::read::ZlibDecoder;
 use roead;
 use roead::sarc::{Sarc, SarcWriter};
 use serde::{Deserialize, Serialize};
@@ -12,21 +11,14 @@ use std::sync::Arc;
 //mod Zstd;
 
 use crate::Open_and_Save::SendData;
-use crate::Settings::{exe_relative_path, makedirs, Pathlib};
+use crate::Settings::{makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd, ZstdDictionary};
 
 // use super::SarcEntriesData::get_sarc_entries_data;
 
-pub fn get_sarc_entries_data() -> io::Result<HashMap<String, String>> {
-    //parse json
-    println!("Getting global sarc data ");
-    let json_zlibdata = fs::read(exe_relative_path("bin/totk_sarc_sha256.bin"))?;
-    let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
-    let mut json_str = String::new();
-    decoder.read_to_string(&mut json_str)?;
-    let res: HashMap<String, String> = serde_json::from_str(&json_str)?;
-    Ok(res)
+pub fn get_sarc_entries_data() -> Arc<HashMap<String, String>> {
+    crate::LookupData::sarc_sha256()
 }
 
 pub struct PackComparer<'a> {
@@ -36,7 +28,7 @@ pub struct PackComparer<'a> {
     pub zstd: Arc<TotkZstd<'a>>,
     pub added: HashMap<String, String>,
     pub modded: HashMap<String, String>,
-    pub global_sarc_data: HashMap<String, String>,
+    pub global_sarc_data: Arc<HashMap<String, String>>,
 }
 
 #[allow(dead_code)]
@@ -131,7 +123,7 @@ impl<'a> PackComparer<'a> {
             zstd: zstd.clone(),
             added: HashMap::default(),
             modded: HashMap::default(),
-            global_sarc_data: HashMap::default(),
+            global_sarc_data: Arc::default(),
         };
         println!("Comparing and reloading");
         if let Err(error) = pack.compare_and_reload() {
@@ -298,7 +290,7 @@ impl<'a> PackComparer<'a> {
                 //custom actor
                 println!("Comparing custom actor");
                 if self.global_sarc_data.is_empty() {
-                    self.global_sarc_data = get_sarc_entries_data().unwrap_or_default();
+                    self.global_sarc_data = get_sarc_entries_data();
                 }
                 let mut added: HashMap<String, String> = HashMap::default();
                 let mut modded: HashMap<String, String> = HashMap::default();

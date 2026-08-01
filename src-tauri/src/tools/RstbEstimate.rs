@@ -25,7 +25,7 @@ const ALIGNMENT: u64 = 0x20;
 pub struct RstbEstimator<'a> {
     zstd: Arc<TotkZstd<'a>>,
     dev_mode: bool,
-    vanilla_sarc_hashes: Option<HashMap<String, String>>,
+    vanilla_sarc_hashes: Option<Arc<HashMap<String, String>>>,
     pub entries: HashMap<String, u32>,
 }
 
@@ -125,7 +125,7 @@ impl<'a> RstbEstimator<'a> {
                 ))
             })? {
                 if self.vanilla_sarc_hashes.is_none() {
-                    self.vanilla_sarc_hashes = Some(get_sarc_entries_data().unwrap_or_default());
+                    self.vanilla_sarc_hashes = Some(get_sarc_entries_data());
                 }
                 let vanilla_hashes = self.vanilla_sarc_hashes.as_ref().ok_or_else(|| {
                     RstbEstimateError::new("failed to initialize the vanilla SARC hash cache")
@@ -1080,7 +1080,7 @@ mod tests {
         let mut vanilla_hashes = HashMap::new();
         vanilla_hashes.insert("Physics/Vanilla.bphcl".to_owned(), sha256(vanilla_data));
         let mut estimator = test_estimator();
-        estimator.vanilla_sarc_hashes = Some(vanilla_hashes);
+        estimator.vanilla_sarc_hashes = Some(Arc::new(vanilla_hashes));
         estimator.estimate_folder(&root)?;
 
         assert!(estimator.entries.contains_key("Actor/Pack/Test.pack"));

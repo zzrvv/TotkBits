@@ -1,5 +1,4 @@
 #![allow(non_snake_case, non_camel_case_types)]
-use flate2::read::ZlibDecoder;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -45,6 +44,7 @@ pub struct TotkConfig {
     pub config_path: String,
     pub botw_romfs_path: String,
     pub aoc_path: String,
+    pub viewport_brightness: f64,
     pub stop_asking_for_romfs: bool,
     pub last_romfs_prompt: u64,
     pub recent_files: Vec<String>,
@@ -74,6 +74,7 @@ impl Default for TotkConfig {
             config_path: String::new(),
             botw_romfs_path: String::new(),
             aoc_path: String::new(),
+            viewport_brightness: 1.0,
             stop_asking_for_romfs: false,
             last_romfs_prompt: 0,
             recent_files: Vec::new(),
@@ -160,6 +161,10 @@ impl TotkConfig {
             data.get(key).and_then(|v| v.as_bool()).unwrap_or(default)
         }
 
+        fn get_f64(data: &HashMap<String, serde_json::Value>, key: &str, default: f64) -> f64 {
+            data.get(key).and_then(|v| v.as_f64()).unwrap_or(default)
+        }
+
         let theme = get_string(&json_data, "Text editor theme");
         if self.available_themes.contains(&theme) {
             self.monaco_theme = theme;
@@ -186,6 +191,12 @@ impl TotkConfig {
         self.romfs = get_string(&json_data, "romfs");
         self.botw_romfs_path = get_string(&json_data, "BOTW WIIU path (optional)");
         self.aoc_path = get_string(&json_data, "AOC path (optional)");
+        self.viewport_brightness = get_f64(
+            &json_data,
+            "3D viewport brightness",
+            self.viewport_brightness,
+        )
+        .clamp(0.3, 3.0);
         self.stop_asking_for_romfs = get_bool(
             &json_data,
             "Stop asking for romfs path",
@@ -229,6 +240,7 @@ impl TotkConfig {
             "ask for compression": self.ask_for_compression,
             "BOTW WIIU path (optional)": self.botw_romfs_path,
             "AOC path (optional)": self.aoc_path,
+            "3D viewport brightness": self.viewport_brightness,
             "Stop asking for romfs path": self.stop_asking_for_romfs,
             "Last romfs path prompt": self.last_romfs_prompt,
             "Recent files": self.recent_files,
@@ -414,13 +426,7 @@ impl TotkConfig {
     //FIND VANLA FILE IN ROMFS
     pub fn find_vanila_file_in_romfs<P: AsRef<Path>>(&self, path: P) -> io::Result<String> {
         //parse json
-        let json_zlibdata = fs::read(crate::Settings::exe_relative_path(
-            "bin/totk_filename_to_localpath.bin",
-        ))?;
-        let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
-        let mut json_str = String::new();
-        decoder.read_to_string(&mut json_str)?;
-        let res: HashMap<String, String> = serde_json::from_str(&json_str)?;
+        let res = crate::LookupData::filename_to_localpath();
         //get filename (key)
         let filename = Pathlib::new(&path).name;
         let mut filenames: Vec<String> = vec![];

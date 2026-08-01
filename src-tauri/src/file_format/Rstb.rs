@@ -10,7 +10,6 @@ use crate::parser::rstb::ResourceSizeTable;
 use crate::Open_and_Save::SendData;
 use crate::Settings::{list_files_recursively, Pathlib};
 use crate::Zstd::{is_restbl, TotkFileType, TotkZstd, ZstdDictionary};
-use flate2::read::ZlibDecoder;
 // use serde_json::to_string_pretty;
 
 use super::Pack::PackFile;
@@ -18,22 +17,12 @@ use super::Pack::PackFile;
 // use super::RstbData::get_rstb_data;
 
 #[allow(dead_code)]
-fn get_rstb_data() -> io::Result<Vec<String>> {
-    let json_zlibdata = fs::read("bin/totk_rstb_paths.bin")?;
-    let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
-    let mut json_str = String::new();
-    decoder.read_to_string(&mut json_str)?;
-    let res: Vec<String> = serde_json::from_str(&json_str)?;
-    Ok(res)
-}
-
-#[allow(dead_code)]
 pub struct Restbl<'a> {
     pub path: Pathlib,
     pub zstd: Arc<TotkZstd<'a>>,
     // buffer: Arc<Vec<u8>>, // Use Arc to share ownership
     pub table: ResourceSizeTable,
-    pub hash_table: Vec<String>,
+    pub hash_table: Arc<Vec<String>>,
     pub compression: Option<ZstdDictionary>,
 }
 
@@ -86,13 +75,8 @@ impl<'a> Restbl<'_> {
         None
     }
 
-    pub fn get_restb_entries<P: AsRef<Path>>(&mut self, path: P) -> io::Result<Vec<String>> {
-        //read from zlib json
-        let json_zlibdata = fs::read("bin/totk_rstb_paths.bin")?;
-        let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
-        let mut json_str = String::new();
-        decoder.read_to_string(&mut json_str)?;
-        let mut res: Vec<String> = serde_json::from_str(&json_str)?;
+    pub fn get_restb_entries<P: AsRef<Path>>(&mut self, path: P) -> io::Result<Arc<Vec<String>>> {
+        let mut res = crate::LookupData::rstb_paths();
         let mut p = PathBuf::from(path.as_ref());
         for _ in 0..3 {
             if !p.pop() {
@@ -136,12 +120,12 @@ impl<'a> Restbl<'_> {
                             // if !entry_path.is_empty() && !res.contains(&entry_path) {
                             if !entry_path.is_empty() {
                                 // println!("Adding custom rstb sarc path: {}", &entry_path);
-                                res.push(entry_path);
+                                Arc::make_mut(&mut res).push(entry_path);
                             }
                         }
                     }
                 } else {
-                    res.push(local_path);
+                    Arc::make_mut(&mut res).push(local_path);
                 }
             }
         }

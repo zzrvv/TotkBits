@@ -112,6 +112,14 @@ pub struct ResolvedG1tTexture {
     pub data_url: String,
     pub width: u32,
     pub height: u32,
+    pub array_count: u32,
+    pub data_urls: Vec<String>,
+}
+
+pub struct G1mTextureResolution {
+    pub textures: Vec<ResolvedG1tTexture>,
+    pub total: usize,
+    pub skipped: usize,
 }
 
 #[derive(Clone)]
@@ -141,6 +149,7 @@ struct IndexBuffer {
 }
 #[derive(Clone, Default)]
 struct Submesh {
+    submesh_type: u32,
     vertex_buffer: usize,
     bone_palette: usize,
     bone_index: u32,
@@ -255,25 +264,53 @@ impl G1mFile {
         opened.file_type = crate::Zstd::TotkFileType::Other;
         let mut send = crate::Open_and_Save::SendData::default();
         send.path = crate::Settings::Pathlib::new(path);
-        send.file_label = format!("{} [G1M]", send.path.name);
-        send.file_metadata = "[G1M] [3D MODEL] [READ ONLY]".into();
+        send.file_label = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .and_then(|stem| AOC_NAMES.get(&stem.to_ascii_lowercase()))
+            .filter(|name| !name.trim().is_empty())
+            .map(|name| format!("[{}] {} [G1M]", name.trim(), send.path.name))
+            .unwrap_or_else(|| format!("{} [G1M]", send.path.name));
+        send.file_metadata = "[G1M] [ReadOnly]".into();
         send.status_text = format!("Opened G1M {}", path.display());
         send.tab = "3D".into();
         send.read_only = true;
         Some((opened, send))
     }
 
-    pub fn resolve_textures(&self, source: &Path, aoc_path: &Path) -> Vec<ResolvedG1tTexture> {
+    pub fn resolve_textures(&self, source: &Path, aoc_path: &Path) -> G1mTextureResolution {
+        let all_slots: BTreeSet<_> = self
+            .materials
+            .iter()
+            .flat_map(|material| material.texture_slots.iter())
+            .map(|slot| slot.name.clone())
+            .collect();
+        let total = all_slots.len();
         let Some(pair) = paired_texture_info(source) else {
-            return Vec::new();
+            return G1mTextureResolution {
+                textures: Vec::new(),
+                total,
+                skipped: 0,
+            };
         };
-        let resolved = resolve_kidsobj_textures(self, source, aoc_path, &pair);
+        let resolved = resolve_kidsobj_textures(source, aoc_path, &pair, &all_slots);
         if !resolved.is_empty() {
-            return resolved;
+            return G1mTextureResolution {
+                textures: resolved,
+                total,
+                skipped: 0,
+            };
         }
         // Standalone dumps sometimes place the paired value directly beside
         // the model as a G1T without KTID/KidsObj metadata.
-        resolve_direct_g1t(source, aoc_path, &pair.ktid_hash)
+        pair.ktid_hash
+            .as_deref()
+            .and_then(|hash| resolve_direct_g1t(source, aoc_path, hash, &all_slots))
+            .unwrap_or(G1mTextureResolution {
+                textures: Vec::new(),
+                total,
+                skipped: 0,
+            })
     }
 }
 
@@ -448,6 +485,7 @@ fn parse_geometry(data: &[u8], endian: Endian, file_offset: usize) -> io::Result
                         .map(|_| reader.read_u32())
                         .collect::<io::Result<_>>()?;
                     geometry.submeshes.push(Submesh {
+                        submesh_type: values[0],
                         vertex_buffer: values[1] as usize,
                         bone_palette: values[2] as usize,
                         bone_index: values[3],
@@ -555,6 +593,8 @@ fn build_meshes(data: &[u8], geometry: &Geometry, endian: Endian) -> io::Result<
         let mut colors = vec![[1.0; 4]; vertex_count];
         let mut bone_indices = vec![[0; 4]; vertex_count];
         let mut bone_weights = vec![[0.0; 4]; vertex_count];
+        let mut has_bone_indices = false;
+        let mut has_bone_weights = false;
         for attribute in &attrs.attributes {
             let Some(buffer_index) = attrs.buffers.get(attribute.buffer).copied() else {
                 continue;
@@ -582,8 +622,12 @@ fn build_meshes(data: &[u8], geometry: &Geometry, endian: Endian) -> io::Result<
                 )?;
                 match attribute.semantic {
                     0 => positions[vertex] = [values[0], values[1], values[2]],
-                    1 => bone_weights[vertex] = values,
+                    1 => {
+                        has_bone_weights = true;
+                        bone_weights[vertex] = values;
+                    }
                     2 => {
+                        has_bone_indices = true;
                         let palette = geometry.palettes.get(submesh.bone_palette);
                         for component in 0..4 {
                             let local = values[component] as usize / 3;
@@ -608,6 +652,47 @@ fn build_meshes(data: &[u8], geometry: &Geometry, endian: Endian) -> io::Result<
                 }
             }
         }
+        let is_rigid = submesh.submesh_type & 0x2 != 0;
+        let rigid_bone = geometry
+            .palettes
+            .get(submesh.bone_palette)
+            .and_then(|palette| palette.first())
+            .copied()
+            .unwrap_or(submesh.bone_index) as u16;
+        let vertex_skin_count = if is_rigid {
+            // Project-G1M binds rigid submeshes to local palette index zero,
+            // overriding skin attributes that may exist in a shared buffer.
+            bone_indices.fill([rigid_bone; 4]);
+            bone_weights.fill([1.0, 0.0, 0.0, 0.0]);
+            1
+        } else if has_bone_indices {
+            if !has_bone_weights {
+                bone_weights.fill([1.0, 0.0, 0.0, 0.0]);
+            } else {
+                for weights in &mut bone_weights {
+                    for weight in weights.iter_mut() {
+                        if !weight.is_finite() || *weight < 0.0 {
+                            *weight = 0.0;
+                        }
+                    }
+                    let sum: f32 = weights.iter().sum();
+                    if sum > f32::EPSILON {
+                        for weight in weights.iter_mut() {
+                            *weight /= sum;
+                        }
+                    } else {
+                        *weights = [1.0, 0.0, 0.0, 0.0];
+                    }
+                }
+            }
+            // A single non-zero weight does not make a G1M submesh rigid.
+            // Non-rigid vertices remain in model bind space even when every
+            // vertex happens to use only one influence. Only submesh_type bit
+            // 1 identifies bone-local geometry that needs a rest transform.
+            4
+        } else {
+            0
+        };
         let skin_bones = bone_indices
             .iter()
             .flatten()
@@ -623,12 +708,12 @@ fn build_meshes(data: &[u8], geometry: &Geometry, endian: Endian) -> io::Result<
         meshes.push(BfresMesh {
             name: format!("Mesh {mesh_index}"),
             material_index: submesh.material as u16,
-            bone_index: submesh.bone_index as u16,
-            vertex_skin_count: if bone_weights.iter().any(|w| w[1] > 0.0) {
-                4
+            bone_index: if is_rigid {
+                rigid_bone
             } else {
-                1
+                submesh.bone_index as u16
             },
+            vertex_skin_count,
             positions,
             normals,
             uv0,
@@ -729,7 +814,7 @@ fn classify_texture(kind: u16, subtype: u16) -> (String, String) {
     match (kind, subtype) {
         (1, _) => ("_a0".into(), "Diffuse".into()),
         (3, _) => ("_n0".into(), "Normal".into()),
-        (19, 0) | (2, _) => ("_e0".into(), "Emission".into()),
+        (19, 0) => ("_e0".into(), "Emission".into()),
         (5, 5) => ("_ao0".into(), "AmbientOcclusion".into()),
         (37, 37) | (66, 66) => ("_s0".into(), "Specular".into()),
         _ => (String::new(), "Unknown".into()),
@@ -737,7 +822,7 @@ fn classify_texture(kind: u16, subtype: u16) -> (String, String) {
 }
 
 struct PairedTextureInfo {
-    ktid_hash: String,
+    ktid_hash: Option<String>,
     kidsobjdb: Option<String>,
 }
 
@@ -750,7 +835,10 @@ fn paired_texture_info(source: &Path) -> Option<PairedTextureInfo> {
         .to_ascii_lowercase();
     let pair = PAIRS.get(&stem)?;
     Some(PairedTextureInfo {
-        ktid_hash: pair.get("g1t")?.as_str()?.to_owned(),
+        ktid_hash: pair
+            .get("g1t")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
         kidsobjdb: pair
             .get("kidsobjdb")
             .and_then(serde_json::Value::as_str)
@@ -759,12 +847,15 @@ fn paired_texture_info(source: &Path) -> Option<PairedTextureInfo> {
 }
 
 fn resolve_kidsobj_textures(
-    model: &G1mFile,
     source: &Path,
     aoc: &Path,
     pair: &PairedTextureInfo,
+    slot_ids: &BTreeSet<String>,
 ) -> Vec<ResolvedG1tTexture> {
-    let Some(ktid_path) = find_asset(source, aoc, "ktid", &pair.ktid_hash, "ktid") else {
+    let Some(ktid_hash) = pair.ktid_hash.as_deref() else {
+        return Vec::new();
+    };
+    let Some(ktid_path) = find_asset(source, aoc, "ktid", ktid_hash, "ktid") else {
         return Vec::new();
     };
     let Some(kids_name) = pair.kidsobjdb.as_deref() else {
@@ -782,11 +873,6 @@ fn resolve_kidsobj_textures(
     let Ok(kids) = parse_kidsobj(&std::fs::read(kids_path).unwrap_or_default()) else {
         return Vec::new();
     };
-    let slot_ids: BTreeSet<_> = model
-        .materials
-        .iter()
-        .flat_map(|material| material.texture_slots.iter().map(|slot| slot.name.clone()))
-        .collect();
     let mut textures = Vec::new();
     for slot_id in slot_ids {
         let Ok(index) = slot_id.parse::<u32>() else {
@@ -804,25 +890,42 @@ fn resolve_kidsobj_textures(
         let Ok(g1t) = G1tFile::parse(&std::fs::read(&path).unwrap_or_default()) else {
             continue;
         };
-        let Some(texture) = g1t.textures.into_iter().next() else {
-            continue;
-        };
-        textures.push(resolved_texture(slot_id, path, texture, source));
+        for texture in g1t.textures {
+            let name = if texture.index == 0 {
+                slot_id.clone()
+            } else {
+                format!("{slot_id}:{}", texture.index)
+            };
+            textures.push(resolved_texture(name, path.clone(), texture, source));
+        }
     }
     textures
 }
 
-fn resolve_direct_g1t(source: &Path, aoc: &Path, hash: &str) -> Vec<ResolvedG1tTexture> {
+fn resolve_direct_g1t(
+    source: &Path,
+    aoc: &Path,
+    hash: &str,
+    slot_ids: &BTreeSet<String>,
+) -> Option<G1mTextureResolution> {
     let Some(path) = find_g1t(source, aoc, hash) else {
-        return Vec::new();
+        return None;
     };
     let Ok(g1t) = G1tFile::parse(&std::fs::read(&path).unwrap_or_default()) else {
-        return Vec::new();
+        return None;
     };
-    g1t.textures
+    let total = g1t.textures.len();
+    let textures: Vec<_> = g1t
+        .textures
         .into_iter()
+        .filter(|texture| slot_ids.contains(&texture.index.to_string()))
         .map(|texture| resolved_texture(texture.index.to_string(), path.clone(), texture, source))
-        .collect()
+        .collect();
+    Some(G1mTextureResolution {
+        skipped: total.saturating_sub(textures.len()),
+        total,
+        textures,
+    })
 }
 
 fn resolved_texture(
@@ -843,6 +946,8 @@ fn resolved_texture(
         data_url: texture.data_url,
         width: texture.width,
         height: texture.height,
+        array_count: texture.array_count,
+        data_urls: texture.data_urls,
     }
 }
 
@@ -994,7 +1099,7 @@ mod tests {
     fn pairing_table_contains_sample_model() {
         assert_eq!(
             paired_texture_info(Path::new("00320929.g1m"))
-                .map(|pair| pair.ktid_hash)
+                .and_then(|pair| pair.ktid_hash)
                 .as_deref(),
             Some("5399aa72")
         );
@@ -1031,5 +1136,120 @@ mod tests {
             .meshes
             .iter()
             .all(|mesh| mesh.uv_maps.len() <= 2));
+    }
+
+    #[test]
+    fn supplied_champion_model_has_safe_skin_bindings() {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/g1m_importer/_ss/0cb432cf.g1m");
+        if !path.is_file() {
+            return;
+        }
+        let model = G1mFile::from_path(path).unwrap();
+        let bone_count = model.render.bones.len() as u16;
+        assert_eq!(model.render.meshes.len(), 4);
+        for mesh in &model.render.meshes {
+            assert!(mesh
+                .bone_indices
+                .iter()
+                .zip(&mesh.bone_weights)
+                .all(|(indices, weights)| (0..mesh.vertex_skin_count as usize)
+                    .all(|index| weights[index] == 0.0 || indices[index] < bone_count)));
+            if mesh.vertex_skin_count == 1 {
+                assert!(mesh
+                    .bone_weights
+                    .iter()
+                    .all(|weights| *weights == [1.0, 0.0, 0.0, 0.0]));
+            }
+        }
+    }
+
+    #[test]
+    fn named_g1m_open_metadata_is_preserved() {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/g1m_importer/_ss/0cb432cf.g1m");
+        if !path.is_file() {
+            return;
+        }
+        let (_, data) = G1mFile::open(&path).expect("G1M opener rejected fixture");
+        assert_eq!(data.file_label, "[Champion Revali] 0cb432cf.g1m [G1M]");
+        assert_eq!(data.file_metadata, "[G1M] [ReadOnly]");
+    }
+
+    #[test]
+    fn champion_zelda_uses_binary_ktid_resource() {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/g1m_importer/_ss/data/49c9ef33.g1m");
+        if path.is_file() {
+            let model = G1mFile::from_path(&path).expect("49c9ef33 fixture did not parse");
+            let slots: BTreeSet<_> = model
+                .materials
+                .iter()
+                .flat_map(|material| &material.texture_slots)
+                .map(|slot| slot.name.as_str())
+                .collect();
+            assert!(slots.contains("16"));
+            assert!(slots.contains("17"));
+            assert!(slots.contains("22"));
+        }
+        assert_eq!(
+            paired_texture_info(Path::new("49c9ef33.g1m"))
+                .and_then(|pair| pair.ktid_hash)
+                .as_deref(),
+            Some("3cfe85a8")
+        );
+    }
+
+    #[test]
+    fn champion_zelda_emission_is_slot_17_not_slot_24() {
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/g1m_importer/_ss/data/49c9ef33.g1m");
+        if !path.is_file() {
+            return;
+        }
+        let model = G1mFile::from_path(path).unwrap();
+        let material = &model.materials[0];
+        assert_eq!(
+            material
+                .texture_slots
+                .iter()
+                .find(|slot| slot.texture_type == "Emission")
+                .map(|slot| slot.name.as_str()),
+            Some("17")
+        );
+        assert_eq!(
+            material
+                .texture_slots
+                .iter()
+                .find(|slot| slot.name == "24")
+                .map(|slot| slot.texture_type.as_str()),
+            Some("Unknown")
+        );
+    }
+
+    #[test]
+    fn opening_g1m_and_g1t_creates_no_sidecar_files() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/g1m_importer/_ss/data");
+        let g1m_path = root.join("49c9ef33.g1m");
+        let g1t_path = root.join("076238b3.g1t");
+        if !g1m_path.is_file() || !g1t_path.is_file() {
+            return;
+        }
+
+        let directory_entries = || -> BTreeSet<_> {
+            std::fs::read_dir(&root)
+                .expect("failed to inspect fixture directory")
+                .filter_map(Result::ok)
+                .map(|entry| entry.file_name())
+                .collect()
+        };
+        let before = directory_entries();
+
+        let model = G1mFile::from_path(&g1m_path).expect("G1M fixture did not parse");
+        let _ = model.resolve_textures(&g1m_path, Path::new(""));
+        let g1t_data = std::fs::read(&g1t_path).expect("failed to read G1T fixture");
+        let _ = G1tFile::parse(&g1t_data).expect("G1T fixture did not parse");
+
+        assert_eq!(before, directory_entries());
     }
 }
