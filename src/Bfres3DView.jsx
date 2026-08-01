@@ -105,7 +105,9 @@ function materialTextures(material, textures) {
     if (normal) normal.channel = 0;
     return {
         base,
+        baseUv: diffuseSlot?.uv_layer ?? 0,
         normal,
+        normalUv: material.texture_slots.find((value) => value.texture_type === 'Normal')?.uv_layer ?? 0,
         roughness: find('Roughness'),
         metalness: find('Metalness'),
         emission,
@@ -116,14 +118,9 @@ function materialTextures(material, textures) {
 
 function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, weightBone, showNormals, onSelect, textures }) {
     const usesMaterialUvs = viewMode === 'default';
-    const hasSecondUv = mesh.uv_maps?.[1]?.length === mesh.positions.length;
-    Object.values(textures).filter(Boolean).forEach((texture) => {
-        texture.channel = usesMaterialUvs ? 0 : uvIndex;
+    ['base', 'normal', 'roughness', 'metalness', 'emission', 'mask', 'specular'].forEach((kind) => {
+        if (textures[kind]) textures[kind].channel = usesMaterialUvs ? (kind === 'normal' ? textures.normalUv : textures.baseUv) : uvIndex;
     });
-    if (usesMaterialUvs && hasSecondUv) {
-        if (textures.normal) textures.normal.channel = 1;
-        if (textures.specular) textures.specular.channel = 1;
-    }
     const geometry = useMemo(() => {
         const result = new THREE.BufferGeometry();
         const positions = new Float32Array(mesh.positions.flat());
@@ -315,13 +312,18 @@ function Folder({ label, children, open = false, detail, onSelect, onContextMenu
 }
 
 function ResourceTree({ bfres, title, onSection, onMesh, onBone, onModel, onContext, modelVisible, hiddenMeshes, onToggleModel, onToggleMesh }) {
+    const natural = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+    const naturally = (values, getName = (value) => value?.name || '') => [...values].sort((left, right) => natural.compare(getName(left), getName(right)));
     const sections = bfres?.sections || [];
-    const materials = bfres?.materials || [];
-    const textures = sections.filter((section) => ['FTXP', 'FTEX', 'BNTX'].includes(String.fromCharCode(...section.signature)));
-    const meshes = bfres?.render?.meshes || [];
+    const materials = naturally(bfres?.materials || []);
+    const textures = naturally(sections.filter((section) => ['FTXP', 'FTEX', 'BNTX'].includes(String.fromCharCode(...section.signature))));
+    const meshes = naturally(bfres?.render?.meshes || []);
     const resolvedTextures = bfres?.resolvedTextures || [];
+    const isG1m = bfres?.format === 'G1M';
     const embeddedTextures = resolvedTextures.filter((texture) => texture.source === 'embedded');
-    const texToGoTextures = resolvedTextures.filter((texture) => texture.source !== 'embedded');
+    const g1tTextures = isG1m ? resolvedTextures.filter((texture) => texture.source !== 'embedded') : [];
+    const treeTextures = naturally([...embeddedTextures, ...g1tTextures]);
+    const texToGoTextures = naturally(isG1m ? [] : resolvedTextures.filter((texture) => texture.source !== 'embedded'));
     const bones = bfres?.render?.bones || [];
     const node = (name, detail, action, key, kind) => <button type="button" className="bfres-tree-node" onClick={action} onContextMenu={(event) => onContext(event, kind, name)} key={key} title={name}>
         {kind === 'object' && <input type="checkbox" checked={!hiddenMeshes.includes(name)} onClick={(event) => event.stopPropagation()} onChange={() => onToggleMesh(name)} />}<span>{name || 'Unnamed'}</span><small>{detail}</small>
@@ -347,13 +349,13 @@ function ResourceTree({ bfres, title, onSection, onMesh, onBone, onModel, onCont
                     <Folder label="Skeleton" detail={bones.length}>{boneNodes(-1)}</Folder>
                 </Folder>
             </Folder>
-            <Folder label="Textures" detail={textures.length + embeddedTextures.length}>
+            <Folder label="Textures" detail={textures.length + treeTextures.length}>
                 {textures.map((section) => node(section.name, 'Texture', () => onSection(section), `texture-${section.offset}`))}
-                {embeddedTextures.map((texture) => node(texture.name, `${texture.width} × ${texture.height}`, () => onSection(texture, 'texture'), `embedded-texture-${texture.name}`))}
+                {treeTextures.map((texture) => node(texture.name, `${texture.width} × ${texture.height}`, () => onSection(texture, 'texture'), `resolved-texture-${texture.path}`))}
             </Folder>
             <Folder label="Animations" detail={(bfres?.sections || []).filter((section) => ['FSKA', 'FSHU', 'FSHA', 'FVIS', 'FMAA'].includes(String.fromCharCode(...section.signature))).length} />
             <Folder label="Embedded Files" />
-            <Folder label="TexToGo" detail={texToGoTextures.length}>{texToGoTextures.map((texture) => node(texture.name, `${texture.width} × ${texture.height}`, () => onSection(texture, 'texture'), `textogo-${texture.name}`))}</Folder>
+            {!isG1m && <Folder label="TexToGo" detail={texToGoTextures.length}>{texToGoTextures.map((texture) => node(texture.name, `${texture.width} × ${texture.height}`, () => onSection(texture, 'texture'), `textogo-${texture.name}`))}</Folder>}
         </Folder>
     </nav>;
 }
@@ -454,6 +456,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [contextMenu, setContextMenu] = useState(null);
     const [modelVisible, setModelVisible] = useState(true);
     const [hiddenMeshes, setHiddenMeshes] = useState([]);
+    const isG1m = bfres?.format === 'G1M';
 
     useEffect(() => {
         localStorage.setItem('totkbits:3d-brightness-v3', String(brightness));
@@ -465,6 +468,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         const cached = modelInspectionCache.get(cacheKey);
         if (cached) {
             setBfres(cached);
+            setViewMode('default');
             setError('');
             return;
         }
@@ -488,6 +492,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 if (cancelled) return;
                 cacheModelInspection(cacheKey, value);
                 setBfres(value);
+                setViewMode('default');
                 if (value.materials) {
                     const requested = new Set(value.materials.flatMap((material) => material.texture_slots.map((slot) => slot.name))).size;
                     setStatusText(`Loaded ${value.resolvedTextures?.length || 0} of ${requested} referenced textures`);
@@ -540,7 +545,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         <header className="bfres-viewport-toolbar">
             <div className="bfres-toolbar-row bfres-toolbar-tabs">
                 <button type="button" onClick={() => setPanel('resources')} className={panel === 'resources' ? 'active' : ''}>Resources</button>
-                <button type="button" onClick={() => setPanel('parameters')} className={panel === 'parameters' ? 'active' : ''}>Parameters</button>
+                <button type="button" onClick={() => { if (!isG1m) setPanel('parameters'); }} className={panel === 'parameters' ? 'active' : ''}>Parameters</button>
                 <button type="button" onClick={() => setPanel('animations')} className={panel === 'animations' ? 'active' : ''}>Animations <small>{animations.length}</small></button>
             </div>
             <div className="bfres-toolbar-row bfres-toolbar-controls">
@@ -638,7 +643,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <div className="bfres-panel-divider right" role="separator" aria-orientation="vertical" onMouseDown={(event) => startPanelDrag('right', event)} />
             <aside className="bfres-inspector">
                 {panel === 'resources' && <NodeInspector detail={detail} />}
-                {panel === 'parameters' && bfres && <dl className="bfres-parameters">
+                {panel === 'parameters' && bfres && !isG1m && <dl className="bfres-parameters">
                     <dt>Version</dt><dd>{bfres.header.version.join('.')}</dd>
                     <dt>Endian</dt><dd>{bfres.header.endian}</dd>
                     <dt>Address size</dt><dd>{bfres.header.target_address_size || 8} bytes</dd>

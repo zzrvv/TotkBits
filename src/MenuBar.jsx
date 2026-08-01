@@ -26,7 +26,7 @@ function MenuBarDisplay({ updateButton = null }) {
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
     compareData, setCompareData,
-    setSavingFile, documentSnapshots,
+    setSavingFile, documentSnapshots, aocModelCatalog, setAocModelCatalog,
   } = useEditorContext();
 
   const [showDropdown, setShowDropdown] = useState({ file: false, view: false, tools: false, compare: false, about: false });
@@ -285,6 +285,22 @@ function MenuBarDisplay({ updateButton = null }) {
     window.addEventListener('totkbits:recent-files-changed', updateRecentFiles);
     return () => window.removeEventListener('totkbits:recent-files-changed', updateRecentFiles);
   }, []);
+
+  useEffect(() => {
+    const refresh = () => invoke('get_aoc_model_catalog')
+      .then(setAocModelCatalog)
+      .catch(() => setAocModelCatalog(null));
+    refresh();
+    window.addEventListener('totkbits:aoc-config-changed', refresh);
+    return () => window.removeEventListener('totkbits:aoc-config-changed', refresh);
+  }, [setAocModelCatalog]);
+
+  const handleOpenAocModels = (event) => {
+    event.stopPropagation();
+    closeMenu();
+    setActiveTab('AOC_MODELS');
+    setStatusText('Search Age of Calamity models by hash or name');
+  };
   const iconSize = '20px';
   const blankIcon = 'menu/blank.png';
   let isSaveEnabled = true;
@@ -318,6 +334,7 @@ function MenuBarDisplay({ updateButton = null }) {
       })),
     },
     { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
+    { label: 'AOC model', onClick: handleOpenAocModels, icon: blankIcon, shortcut: '', condition: aocModelCatalog !== null },
     { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S', condition: isSaveEnabled },
     { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S', condition: isSaveEnabled },
     { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },

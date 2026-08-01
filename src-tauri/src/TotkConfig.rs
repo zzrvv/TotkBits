@@ -44,6 +44,7 @@ pub struct TotkConfig {
     #[serde(skip)]
     pub config_path: String,
     pub botw_romfs_path: String,
+    pub aoc_path: String,
     pub stop_asking_for_romfs: bool,
     pub last_romfs_prompt: u64,
     pub recent_files: Vec<String>,
@@ -72,6 +73,7 @@ impl Default for TotkConfig {
             ],
             config_path: String::new(),
             botw_romfs_path: String::new(),
+            aoc_path: String::new(),
             stop_asking_for_romfs: false,
             last_romfs_prompt: 0,
             recent_files: Vec::new(),
@@ -183,6 +185,7 @@ impl TotkConfig {
             get_bool(&json_data, "ask for compression", self.ask_for_compression);
         self.romfs = get_string(&json_data, "romfs");
         self.botw_romfs_path = get_string(&json_data, "BOTW WIIU path (optional)");
+        self.aoc_path = get_string(&json_data, "AOC path (optional)");
         self.stop_asking_for_romfs = get_bool(
             &json_data,
             "Stop asking for romfs path",
@@ -225,6 +228,7 @@ impl TotkConfig {
             "Rotation in degrees": self.rotation_deg,
             "ask for compression": self.ask_for_compression,
             "BOTW WIIU path (optional)": self.botw_romfs_path,
+            "AOC path (optional)": self.aoc_path,
             "Stop asking for romfs path": self.stop_asking_for_romfs,
             "Last romfs path prompt": self.last_romfs_prompt,
             "Recent files": self.recent_files,

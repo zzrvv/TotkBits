@@ -72,13 +72,15 @@ pub fn inspect_3d_model(
 ) -> Result<serde_json::Value, String> {
     require_experimental_visuals()?;
     let documents = app_handle.state::<DocumentState>();
-    let (internal_bfres, internal_bfres_data, romfs) = documents.with(&documentId, |app| {
-        (
-            app.opened_file.bfres.clone(),
-            app.opened_file.bfres_data.clone(),
-            app.zstd.totk_config.romfs.clone(),
-        )
-    });
+    let (internal_bfres, internal_bfres_data, romfs, aoc_path) =
+        documents.with(&documentId, |app| {
+            (
+                app.opened_file.bfres.clone(),
+                app.opened_file.bfres_data.clone(),
+                app.zstd.totk_config.romfs.clone(),
+                app.zstd.totk_config.aoc_path.clone(),
+            )
+        });
     if let Some(bfres) = internal_bfres {
         let textures = resolve_bfres_textures(
             &bfres,
@@ -108,6 +110,24 @@ pub fn inspect_3d_model(
             .map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())
+    } else if data.starts_with(b"_M1G") || data.starts_with(b"G1M_") {
+        let g1m = crate::parser::AOC::g1m::G1mFile::parse(
+            &data,
+            Path::new(&path)
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("G1M"),
+        )
+        .map_err(|error| error.to_string())?;
+        let textures = g1m.resolve_textures(Path::new(&path), Path::new(&aoc_path));
+        let mut value = serde_json::to_value(g1m).map_err(|error| error.to_string())?;
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "resolvedTextures".into(),
+                serde_json::to_value(textures).map_err(|error| error.to_string())?,
+            );
+        }
+        Ok(value)
     } else {
         let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(&path)
             .map_err(|error| error.to_string())?;
@@ -916,6 +936,46 @@ pub fn get_recent_files() -> Result<Vec<String>, String> {
     crate::TotkConfig::TotkConfig::safe_new(false)
         .map(|config| config.recent_files)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn get_aoc_model_catalog() -> Result<Option<HashMap<String, String>>, String> {
+    let config =
+        crate::TotkConfig::TotkConfig::safe_new(false).map_err(|error| error.to_string())?;
+    let dump_path = Path::new(&config.aoc_path);
+    if config.aoc_path.is_empty()
+        || !dump_path
+            .join("KIDSSystemResource")
+            .join("kidsobjdb")
+            .join("CharacterEditor.kidsobjdb")
+            .is_file()
+    {
+        return Ok(None);
+    }
+
+    let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("bin")
+        .join("AOC_names.json");
+    let contents = fs::read_to_string(manifest_path).or_else(|_| {
+        let executable = env::current_exe()?;
+        let parent = executable.parent().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "executable directory is missing",
+            )
+        })?;
+        fs::read_to_string(parent.join("bin").join("AOC_names.json"))
+    });
+
+    let catalog = contents
+        .ok()
+        .and_then(|value| serde_json::from_str::<HashMap<String, String>>(&value).ok())
+        .unwrap_or_default();
+    if catalog.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(catalog))
+    }
 }
 
 #[tauri::command]

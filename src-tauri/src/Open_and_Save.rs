@@ -57,9 +57,9 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
         return None;
     }
     let path = filepath.as_ref().to_string_lossy().into_owned();
-    let (rawdata, compression) = zstd
-        .try_decompress_all_ordered(&data, &path)
-        .unwrap_or((data.clone(), ZstdDictionary::None));
+    let (rawdata, compression) = zstd.try_decompress_all_ordered_safe(&data, &path);
+    // .try_decompress_all_ordered(&data, &path)
+    // .unwrap_or((data.clone(), ZstdDictionary::None));
     println!("[COMPRESSION] {:?} for file {}", compression, &path);
     let compression = (compression != ZstdDictionary::None).then_some(compression);
 
@@ -619,6 +619,8 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
         crate::file_format::bphhb::BphhbFile::open(path)
     } else if uncompressed_name.ends_with(".bfres") || file_name.ends_with(".bfres.mc") {
         crate::file_format::Model3D::bfres::BfresFile::open(path, zstd)
+    } else if uncompressed_name.ends_with(".g1m") {
+        crate::parser::AOC::g1m::G1mFile::open(path)
     } else if uncompressed_name.ends_with(".fbx") {
         crate::parser::fbx::FbxFile::open(path)
     } else if uncompressed_name.ends_with(".bntx")
@@ -728,6 +730,7 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
         .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
         .or_else(|| MsbtFile::open_mstb(file_name))
         .or_else(|| crate::file_format::Model3D::bfres::BfresFile::open(file_name, zstd.clone()))
+        .or_else(|| crate::parser::AOC::g1m::G1mFile::open(file_name))
         .or_else(|| crate::parser::fbx::FbxFile::open(file_name))
         // Structured formats must run before the generic image detector. In
         // particular, many BFEVFL files use the shared `.zs` compression suffix.

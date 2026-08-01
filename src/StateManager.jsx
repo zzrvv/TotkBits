@@ -56,6 +56,7 @@ export const EditorProvider = ({ children }) => {
   const [treeFilterQuery, setTreeFilterQuery] = useState("");
 
   const [config, setConfig] = useState({});
+  const [aocModelCatalog, setAocModelCatalog] = useState(null);
   const [configLoading, setConfigLoading] = useState(false);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
 
@@ -75,7 +76,7 @@ export const EditorProvider = ({ children }) => {
   // Combine all states and functions into a single object
   const value = {
     isOptionsOpen, setIsOptionsOpen,
-    config, setConfig,
+    config, setConfig, aocModelCatalog, setAocModelCatalog,
     configLoading, setConfigLoading,
     updateState, setUpdateState,
     compareData, setCompareData,

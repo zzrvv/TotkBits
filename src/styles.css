@@ -533,6 +533,58 @@ button {
   background-color: transparent;
 }
 
+.aoc-model-view {
+  position: fixed;
+  inset: var(--main-top-offset) 0 22px 0;
+  overflow: auto;
+  padding: 24px;
+  box-sizing: border-box;
+  color: #ddd;
+  background: #181a1d;
+}
+
+.aoc-model-view header {
+  position: sticky;
+  top: -24px;
+  z-index: 1;
+  padding: 12px 0 18px;
+  background: #181a1d;
+}
+
+.aoc-model-view h2 {
+  margin: 0 0 12px;
+}
+
+.aoc-model-view input {
+  width: min(720px, 100%);
+  padding: 8px 10px;
+  border: 1px solid #666;
+  border-radius: 3px;
+  color: #eee;
+  background: #25282d;
+}
+
+.aoc-model-results {
+  width: min(900px, 100%);
+  border: 1px solid #444;
+}
+
+.aoc-model-result {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 16px;
+  padding: 7px 10px;
+  border-bottom: 1px solid #36393e;
+}
+
+.aoc-model-result:last-child {
+  border-bottom: 0;
+}
+
+.aoc-model-result code {
+  color: #8fc7ff;
+}
+
 
 
 /* OPTIONS EDITOR */
