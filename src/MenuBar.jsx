@@ -471,9 +471,9 @@ function MenuBarDisplay({ updateButton = null }) {
 
 }
 
-function MenuBarDisplayWithUpdater() {
+function MenuBarDisplayWithUpdateButton() {
   const {
-    updateState, setUpdateState, setStatusText, settings
+    updateState, setStatusText, settings
   } = useEditorContext();
   const handleUpdateClick = async (event) => {
     if (!updateState.isUpdateNeeded) { return null; }
@@ -495,7 +495,7 @@ function MenuBarDisplayWithUpdater() {
       // fontWeight: 'bold',
     }}>
       <MenuBarDisplay updateButton={SHOW_UPDATE_BUTTON ? <ImageButton
-        key={isUp ? 'UpdaterButton' : 'NoUpdaterButton'}
+        key={isUp ? 'UpdateAvailableButton' : 'NoUpdateButton'}
         src={isUp ? 'update.png' : 'noupdate.png'}
         alt={
           isUp
@@ -522,5 +522,4 @@ function MenuBarDisplayWithUpdater() {
   );
 }
 
-export { MenuBarDisplay, MenuBarDisplayWithUpdater };
-// export default MenuBarDisplayWithUpdater;
+export { MenuBarDisplay, MenuBarDisplayWithUpdateButton };

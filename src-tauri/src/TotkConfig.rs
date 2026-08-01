@@ -15,7 +15,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 //use roead::byml::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use updater::TotkbitsVersion::TotkbitsVersion;
 
 use crate::file_format::Pack::PackFile;
 use crate::Settings::write_string_to_file;
@@ -277,8 +276,10 @@ impl TotkConfig {
         let toml_str = toml::to_string_pretty(&json_data)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{:#?}", e)))?;
         let mut res = String::new();
-        let version = TotkbitsVersion::from_str(env!("CARGO_PKG_VERSION"));
-        res.push_str(&format!("# TotkBits v{} config\n#\n", version.as_str()));
+        res.push_str(&format!(
+            "# TotkBits v{} config\n#\n",
+            env!("CARGO_PKG_VERSION")
+        ));
         res.push_str(&format!(
             "# Available text editor themes: {}\n",
             self.available_themes.join(", ")

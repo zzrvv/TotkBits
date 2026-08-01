@@ -13,7 +13,7 @@ import ButtonsDisplay from "./Buttons";
 import DirectoryTree from "./DirectoryTree";
 import Comparer from "./Comparer";
 import { useFileDropHandler } from './FileDropHandler';
-import {MenuBarDisplayWithUpdater, MenuBarDisplay} from "./MenuBar";
+import { MenuBarDisplayWithUpdateButton } from "./MenuBar";
 import InitializeEditor from './MonacoEditor';
 import RstbTree from "./RstbTree";
 import { SearchTextInSarcPrompt } from './SearchTextInSarc';
@@ -260,7 +260,7 @@ function App() {
           </div>
         </div>
       )}
-      <MenuBarDisplayWithUpdater />
+      <MenuBarDisplayWithUpdateButton />
       <DocumentTabs />
       {/* {activeTab === 'LOADING' ? <div className="modal-overlay">Loading...</div> : null} */}
       <AddOrRenameFilePrompt

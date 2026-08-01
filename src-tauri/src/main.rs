@@ -2,11 +2,8 @@
 // #![windows_subsystem = "windows"]
 // #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(non_snake_case, non_camel_case_types)]
-use std::fs;
-use std::path::PathBuf;
 use std::{env, io};
 use tauri::Manager;
-use Settings::BACKUP_UPDATER_NAME;
 use Zstd::get_executable_dir;
 mod Cli;
 mod Comparer;
@@ -44,7 +41,7 @@ use crate::TauriCommands::{
     rename_bntx_texture, rename_internal_sarc_file, render_image, replace_bars_audio_from_folder,
     replace_bfwav_node, replace_bntx_image, replace_dds_image, restart_app, rstb_edit_entry,
     rstb_get_entries, rstb_remove_entry, save_as_click, save_file_struct, search_in_sarc,
-    update_app, update_toml_config, validate_bphcl_merge_documents, validate_physics_merge_request,
+    update_toml_config, validate_bphcl_merge_documents, validate_physics_merge_request,
 };
 
 fn main() -> io::Result<()> {
@@ -139,8 +136,7 @@ fn main() -> io::Result<()> {
             //COMPARER
             compare_files,
             compare_internal_file_with_vanila,
-            check_if_update_needed,
-            update_app
+            check_if_update_needed
         ])
         .run(tauri::generate_context!())
     {
@@ -158,16 +154,9 @@ fn main_initialization() -> io::Result<()> {
     let exe_cwd = get_executable_dir();
     if exe_cwd.len() > 0 {
         env::set_current_dir(&exe_cwd)?;
-        let backup_updater = PathBuf::from(&exe_cwd).join(BACKUP_UPDATER_NAME);
-        if backup_updater.exists() {
-            if let Ok(_) = fs::remove_file(&backup_updater) {
-                println!("[+] Removed {}", BACKUP_UPDATER_NAME);
-            }
-        }
     }
     let version = env!("CARGO_PKG_VERSION").to_string();
     println!("[+] Totkbits version: {}", &version);
     println!("[+] Current directory: {:?}", exe_cwd);
-    // let installed_ver = TotkbitsVersion::from_str(&version);
     Ok(())
 }

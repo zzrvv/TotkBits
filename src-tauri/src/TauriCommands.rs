@@ -1,8 +1,6 @@
 //tauri commands
 use crate::{
-    DocumentState::DocumentState,
-    Open_and_Save::SendData,
-    Settings::{spawn_updater, NO_WINDOW_FLAG},
+    DocumentState::DocumentState, Open_and_Save::SendData, Settings::NO_WINDOW_FLAG,
     TotkApp::SaveData,
 };
 use reqwest::blocking::Client;
@@ -17,7 +15,6 @@ use std::{
     process::{self, Command},
 };
 use tauri::Manager;
-use updater::TotkbitsVersion::TotkbitsVersion;
 
 #[derive(Serialize)]
 pub struct BfwavPreview {
@@ -1241,9 +1238,9 @@ pub fn check_if_update_needed() -> String {
             // println!("\n\nJson value: {:?}", json_value);
             if let Some(release_info) = json_value["tag_name"].as_str() {
                 // println!("\n\nRelease info: {}", release_info);
-                let installed_ver = TotkbitsVersion::from_str(env!("CARGO_PKG_VERSION"));
-                let latest_ver = TotkbitsVersion::from_str(release_info);
-                if latest_ver > installed_ver {
+                let installed_ver = parse_release_version(env!("CARGO_PKG_VERSION"));
+                let latest_ver = parse_release_version(release_info);
+                if latest_ver.is_some() && latest_ver > installed_ver {
                     return release_info.to_string();
                 }
             }
@@ -1252,11 +1249,26 @@ pub fn check_if_update_needed() -> String {
     String::new()
 }
 
-#[tauri::command]
-pub fn update_app(latestVer: String) -> String {
-    if let Err(e) = spawn_updater(latestVer.as_str()) {
-        return format!("Error spawning updater: {:?}", e);
+fn parse_release_version(version: &str) -> Option<(u32, u32, u32)> {
+    let version = version.trim().trim_start_matches(['v', 'V']);
+    let version = version.split_once('-').map_or(version, |(core, _)| core);
+    let mut parts = version.split('.');
+    let parsed = (
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+        parts.next()?.parse().ok()?,
+    );
+    parts.next().is_none().then_some(parsed)
+}
+
+#[cfg(test)]
+mod update_check_tests {
+    use super::parse_release_version;
+
+    #[test]
+    fn parses_github_release_tags() {
+        assert_eq!(parse_release_version("v1.2.3"), Some((1, 2, 3)));
+        assert_eq!(parse_release_version("1.2.3"), Some((1, 2, 3)));
+        assert_eq!(parse_release_version("not-a-version"), None);
     }
-    // process::exit(1);
-    String::new()
 }
