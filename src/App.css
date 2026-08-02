@@ -198,6 +198,39 @@ body {
   animation: loading-swirl 0.75s linear infinite;
 }
 
+.batch-render-progress {
+  width: min(420px, 72vw);
+  height: 18px;
+  accent-color: #8ca8ff;
+}
+
+.batch-render-options-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3100;
+  display: grid;
+  place-items: center;
+  background: rgba(20, 22, 28, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.batch-render-options {
+  width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 20px;
+  border: 1px solid #555b66;
+  border-radius: 6px;
+  background: #252830;
+  color: #eee;
+  box-shadow: 0 12px 40px #0009;
+}
+
+.batch-render-options h2 { margin: 0 0 18px; font-size: 20px; }
+.batch-render-options label { display: grid; gap: 7px; margin: 14px 0; }
+.batch-render-options select { padding: 7px; color: #eee; background: #343842; border: 1px solid #626875; }
+.batch-render-options footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.batch-render-options button { padding: 7px 18px; }
+
 @keyframes loading-swirl {
   to { transform: rotate(360deg); }
 }

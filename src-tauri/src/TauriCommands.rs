@@ -97,7 +97,10 @@ pub fn inspect_3d_model(
         }
         return Ok(value);
     }
-    let data = std::fs::read(&path).map_err(|error| error.to_string())?;
+    let source_data = std::fs::read(&path).map_err(|error| error.to_string())?;
+    let data = documents.with(&documentId, |app| {
+        app.zstd.try_decompress_safe(&source_data)
+    });
     if data.starts_with(b"Kaydara FBX Binary") {
         serde_json::to_value(
             crate::parser::fbx::FbxFile::parse(
@@ -137,7 +140,7 @@ pub fn inspect_3d_model(
         }
         Ok(value)
     } else {
-        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_path(&path)
+        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_bytes(&data)
             .map_err(|error| error.to_string())?;
         let textures = resolve_bfres_textures(&bfres, Path::new(&path), None, Path::new(&romfs));
         let mut value = serde_json::to_value(bfres).map_err(|error| error.to_string())?;
@@ -222,8 +225,37 @@ pub fn export_viewport_png(output: String, data_url: String) -> Result<String, S
     if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
         return Err("viewport render did not produce a PNG".into());
     }
+    if let Some(parent) = Path::new(&output).parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
     fs::write(&output, png).map_err(|error| error.to_string())?;
     Ok(output)
+}
+
+#[tauri::command]
+pub async fn inspect_batch_g1m(
+    path: String,
+) -> crate::file_format::Model3D::BatchRender::BatchG1mInspection {
+    crate::file_format::Model3D::BatchRender::inspect_batch_g1m(path).await
+}
+
+#[tauri::command]
+pub fn list_batch_render_files(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    source_root: String,
+    output_root: String,
+    existing_png: String,
+    model_kind: String,
+) -> Result<Vec<crate::file_format::Model3D::BatchRender::BatchRenderFile>, String> {
+    crate::file_format::Model3D::BatchRender::list_batch_render_files(
+        app_handle,
+        documentId,
+        source_root,
+        output_root,
+        existing_png,
+        model_kind,
+    )
 }
 
 fn resolve_bfres_textures(
@@ -1369,8 +1401,12 @@ pub fn open_file_dialog() -> Option<String> {
 }
 
 #[tauri::command]
-pub fn open_dir_dialog() -> Option<String> {
-    match rfd::FileDialog::new().pick_folder() {
+pub fn open_dir_dialog(title: Option<String>) -> Option<String> {
+    let mut dialog = rfd::FileDialog::new();
+    if let Some(title) = title {
+        dialog = dialog.set_title(title);
+    }
+    match dialog.pick_folder() {
         Some(path) => Some(path.to_string_lossy().to_string().replace("\\", "/")),
         None => None,
     }

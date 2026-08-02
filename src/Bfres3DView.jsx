@@ -1,8 +1,8 @@
 import Editor from '@monaco-editor/react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Grid, OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import { save } from '@tauri-apps/plugin-dialog';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { getDocumentsSnapshot, invoke, subscribeDocuments } from './DocumentState';
 import './Bfres3DView.css';
@@ -132,7 +132,7 @@ function boneWorldMatrices(bones, scaleMode = 'none') {
     return matrices;
 }
 
-function useResolvedTextures(entries) {
+function useResolvedTextures(entries, cacheTextures = true) {
     const [textures, setTextures] = useState(() => ({}));
     useEffect(() => {
         const loader = new THREE.TextureLoader();
@@ -141,7 +141,7 @@ function useResolvedTextures(entries) {
             const urls = entry.dataUrls?.length ? entry.dataUrls : [entry.dataUrl];
             const loadLayer = (url, suffix = '') => {
                 const cacheKey = `${entry.path || entry.name}:${suffix}:${url}`;
-                const cached = resolvedTextureCache.get(cacheKey);
+                const cached = cacheTextures ? resolvedTextureCache.get(cacheKey) : null;
                 if (cached) return cached;
                 const texture = loader.load(url);
                 texture.name = `${entry.name}${suffix}`;
@@ -150,14 +150,19 @@ function useResolvedTextures(entries) {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.userData.renderable = entry.renderable !== false;
-                resolvedTextureCache.set(cacheKey, texture);
+                if (cacheTextures) resolvedTextureCache.set(cacheKey, texture);
                 return texture;
             };
             loaded[entry.name] = loadLayer(urls[0]);
             if (urls.length > 1) loaded[`${entry.name}::last`] = loadLayer(urls.at(-1), ' [last layer]');
         }
         setTextures(loaded);
-    }, [entries]);
+        return () => {
+            if (!cacheTextures) {
+                Object.values(loaded).forEach((texture) => texture.dispose());
+            }
+        };
+    }, [entries, cacheTextures]);
     return textures;
 }
 
@@ -425,7 +430,37 @@ function ViewportCapture({ captureRef }) {
     return null;
 }
 
-function FrontCamera({ render, applyRigidTransform }) {
+function BatchViewportCapture({ captureRef }) {
+    const pendingRef = useRef(null);
+    useEffect(() => {
+        captureRef.current = () => new Promise((resolve) => {
+            pendingRef.current = resolve;
+        });
+        return () => {
+            captureRef.current = null;
+            pendingRef.current?.(null);
+            pendingRef.current = null;
+        };
+    }, [captureRef]);
+    useFrame(({ gl, scene, camera }) => {
+        const resolve = pendingRef.current;
+        if (!resolve) return;
+        pendingRef.current = null;
+        const background = scene.background;
+        const clearColor = gl.getClearColor(new THREE.Color()).clone();
+        const clearAlpha = gl.getClearAlpha();
+        scene.background = null;
+        gl.setClearColor(0x000000, 0);
+        gl.render(scene, camera);
+        const dataUrl = gl.domElement.toDataURL('image/png');
+        scene.background = background;
+        gl.setClearColor(clearColor, clearAlpha);
+        resolve(dataUrl);
+    });
+    return null;
+}
+
+function FrontCamera({ render, applyRigidTransform, onReady }) {
     const { camera, controls, size } = useThree();
     const bounds = useMemo(() => {
         const box = new THREE.Box3();
@@ -465,12 +500,13 @@ function FrontCamera({ render, applyRigidTransform }) {
             controls.target.copy(center);
             controls.update();
         }
-    }, [bounds, camera, controls, size.height, size.width]);
+        onReady?.();
+    }, [bounds, camera, controls, size.height, size.width, onReady]);
     return null;
 }
 
-function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShading, glow, culling, showSkeleton, showNormals, weightBone, weightPreviewColors, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes }) {
-    const textures = useResolvedTextures(bfres?.resolvedTextures);
+function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShading, glow, culling, showSkeleton, showNormals, weightBone, weightPreviewColors, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes, cacheTextures = true, onCameraReady }) {
+    const textures = useResolvedTextures(bfres?.resolvedTextures, cacheTextures);
     const applyRigidTransform = bfres?.format !== 'G1M';
     return <>
         <SceneExposure brightness={brightness} />
@@ -480,7 +516,7 @@ function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShadin
         <directionalLight position={[6, 10, 8]} intensity={celShading ? 2.2 : 3.5} />
         <PerspectiveCamera makeDefault position={[0, 0, 10]} up={[0, 1, 0]} fov={42} />
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
-        <FrontCamera render={render} applyRigidTransform={applyRigidTransform} />
+        <FrontCamera render={render} applyRigidTransform={applyRigidTransform} onReady={onCameraReady} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
         <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} applyRigidTransform={applyRigidTransform} culling={culling} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
         {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} />}
@@ -663,6 +699,16 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [exportingFbx, setExportingFbx] = useState(false);
     const [renderingViewport, setRenderingViewport] = useState(false);
     const captureViewportRef = useRef(null);
+    const batchCaptureRef = useRef(null);
+    const batchCameraReadyRef = useRef(null);
+    const batchRunningRef = useRef(false);
+    const [batchActive, setBatchActive] = useState(false);
+    const [batchModel, setBatchModel] = useState(null);
+    const signalBatchCameraReady = useCallback(() => {
+        const resolve = batchCameraReadyRef.current;
+        batchCameraReadyRef.current = null;
+        resolve?.();
+    }, []);
     const isG1m = bfres?.format === 'G1M';
     const hasGlow = useMemo(() => {
         const renderableTextures = new Set((bfres?.resolvedTextures || [])
@@ -726,6 +772,122 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         }, 300);
         return () => window.clearTimeout(timeout);
     }, [brightness, brightnessLoaded]);
+
+    useEffect(() => {
+        const receive = async (event) => {
+            if (batchRunningRef.current) {
+                setStatusText('A batch render is already running');
+                return;
+            }
+            const { sourceRoot, outputRoot } = event.detail || {};
+            if (!sourceRoot || !outputRoot) return;
+            batchRunningRef.current = true;
+            setBatchActive(true);
+            const operationId = `batch-render:${crypto.randomUUID()}`;
+            let rendered = 0;
+            let failed = 0;
+            const timedOut = [];
+            const updateProgress = (label, progress) => window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+                detail: { id: operationId, label, progress },
+            }));
+            updateProgress('Finding 3D files…', 0);
+            // Let the overlay paint before starting the first native parse.
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            try {
+                const files = await invoke('list_batch_render_files', {
+                    sourceRoot,
+                    outputRoot,
+                    existingPng: event.detail.existingPng,
+                    modelKind: event.detail.modelKind,
+                });
+                if (!files.length) {
+                    setStatusText(`No supported 3D files found in ${sourceRoot}`);
+                    return;
+                }
+                for (let index = 0; index < files.length; index += 1) {
+                    const file = files[index];
+                    const name = file.source.replace(/\\/g, '/').split('/').pop();
+                    updateProgress(`Rendering ${index + 1} of ${files.length}: ${name}`, (index / files.length) * 100);
+                    await new Promise((resolve) => requestAnimationFrame(resolve));
+                    try {
+                        let value;
+                        if (file.modelKind === 'g1m') {
+                            const inspection = await invoke('inspect_batch_g1m', { path: file.source });
+                            if (inspection.status === 'timeout') {
+                                timedOut.push(file.source);
+                                console.warn(`Batch render timed out after 60 seconds: ${file.source}`);
+                                throw new Error('G1M parsing timed out after 60 seconds');
+                            }
+                            if (inspection.status !== 'ok' || !inspection.model) {
+                                throw new Error(inspection.error || 'G1M worker failed');
+                            }
+                            value = inspection.model;
+                        } else {
+                            value = await invoke('inspect_3d_model', { path: file.source });
+                        }
+                        if (!value?.render?.meshes?.length) throw new Error('model contains no renderable meshes');
+                        // Decode embedded texture images before committing the scene, otherwise
+                        // TextureLoader can still be pending when the first frame is captured.
+                        const urls = (value.resolvedTextures || []).flatMap((texture) =>
+                            texture.dataUrls?.length ? texture.dataUrls : [texture.dataUrl]).filter(Boolean);
+                        await Promise.all(urls.map((url) => new Promise((resolve) => {
+                            const image = new Image();
+                            image.onload = resolve;
+                            image.onerror = resolve;
+                            image.src = url;
+                        })));
+                        const cameraReady = new Promise((resolve) => {
+                            batchCameraReadyRef.current = resolve;
+                        });
+                        setBatchModel(value);
+                        let cameraPositioned = false;
+                        cameraReady.then(() => { cameraPositioned = true; });
+                        for (let frame = 0; !cameraPositioned && frame < 120; frame += 1) {
+                            await new Promise((resolve) => requestAnimationFrame(resolve));
+                        }
+                        if (!cameraPositioned) throw new Error('batch camera did not finish positioning');
+                        // Allow the fitted camera and updated controls to be used by two
+                        // complete renderer frames before asking for the capture frame.
+                        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+                        let requestCapture = batchCaptureRef.current;
+                        for (let frame = 0; !requestCapture && frame < 60; frame += 1) {
+                            await new Promise((resolve) => requestAnimationFrame(resolve));
+                            requestCapture = batchCaptureRef.current;
+                        }
+                        if (!requestCapture) throw new Error('batch viewport is not ready');
+                        const dataUrl = await requestCapture();
+                        if (!dataUrl) throw new Error('batch viewport closed before capture');
+                        await invoke('export_viewport_png', { output: file.output, dataUrl });
+                        rendered += 1;
+                    } catch (reason) {
+                        failed += 1;
+                        console.error(`Batch render failed for ${file.source}:`, reason);
+                    }
+                    // Fully unmount this transient scene before parsing the next file.
+                    // Its geometries/materials are released by React Three Fiber and its
+                    // batch-only textures are disposed by useResolvedTextures cleanup.
+                    setBatchModel(null);
+                    batchCameraReadyRef.current = null;
+                    await new Promise((resolve) => requestAnimationFrame(resolve));
+                    updateProgress(`Rendered ${rendered} of ${files.length}${failed ? ` (${failed} failed)` : ''}`, ((index + 1) / files.length) * 100);
+                    await new Promise((resolve) => requestAnimationFrame(resolve));
+                }
+                if (timedOut.length) console.warn('Batch render timed-out G1M files:', timedOut);
+                setStatusText(`Batch render complete: ${rendered} PNG${rendered === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}${timedOut.length ? `, ${timedOut.length} timed out` : ''} → ${outputRoot}`);
+            } catch (reason) {
+                setStatusText(`Batch render failed: ${reason}`);
+            } finally {
+                setBatchModel(null);
+                setBatchActive(false);
+                batchRunningRef.current = false;
+                window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+                    detail: { id: operationId, done: true },
+                }));
+            }
+        };
+        window.addEventListener('totkbits:batch-render', receive);
+        return () => window.removeEventListener('totkbits:batch-render', receive);
+    }, [brightness, celShading, culling, glow, showSkeleton, showNormals, setStatusText]);
 
     useEffect(() => {
         if (activeTab !== '3D' || !document?.fullPath) return;
@@ -888,7 +1050,14 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         }
     };
 
-    return <main className="bfres-workspace" aria-hidden={activeTab !== '3D'} style={{ '--bfres-left-width': `${leftWidth}px`, '--bfres-right-width': `${rightWidth}px`, display: activeTab === '3D' ? 'grid' : 'none' }}>
+    return <>
+        {batchActive && <div className="bfres-batch-viewport" aria-hidden="true">
+            <Canvas dpr={1} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }}>
+                <BatchViewportCapture captureRef={batchCaptureRef} />
+                {batchModel?.render && <ResourceScene bfres={batchModel} render={batchModel.render} viewMode="default" uvIndex={0} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={-2} weightPreviewColors={null} selectedMesh="" selectedMaterial={null} modelVisible hiddenMeshes={[]} onSelectMesh={() => {}} cacheTextures={false} onCameraReady={signalBatchCameraReady} />}
+            </Canvas>
+        </div>}
+        <main className="bfres-workspace" aria-hidden={activeTab !== '3D'} style={{ '--bfres-left-width': `${leftWidth}px`, '--bfres-right-width': `${rightWidth}px`, display: activeTab === '3D' ? 'grid' : 'none' }}>
         <header className="bfres-viewport-toolbar">
             <div className="bfres-toolbar-row bfres-toolbar-tabs">
                 <button type="button" onClick={() => setPanel('resources')} className={panel === 'resources' ? 'active' : ''}>Resources</button>
@@ -1049,5 +1218,6 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             </aside>
             <ResourceContextMenu menu={contextMenu} close={() => setContextMenu(null)} action={(label, menu) => setStatusText(`${label}: ${menu.name}`)} />
         </>}
-    </main>;
+        </main>
+    </>;
 }

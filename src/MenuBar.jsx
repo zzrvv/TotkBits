@@ -32,6 +32,9 @@ function MenuBarDisplay({ updateButton = null }) {
   const [showDropdown, setShowDropdown] = useState({ file: false, view: false, tools: false, compare: false, about: false });
   const [recentFiles, setRecentFiles] = useState([]);
   const [isCommandsOpen, setIsCommandsOpen] = useState(false);
+  const [isBatchRenderOpen, setIsBatchRenderOpen] = useState(false);
+  const [existingPng, setExistingPng] = useState('overwrite');
+  const [batchModelKind, setBatchModelKind] = useState('g1m');
   const dropdownRefs = useRef({ file: null, view: null, tools: null, compare: null, about: null });
 
   const closeMenu = () => {
@@ -110,6 +113,23 @@ function MenuBarDisplay({ updateButton = null }) {
     closeMenu();
     extractRootFolderClick(setStatusText);
   }
+
+  const handleBatchRender = async (event) => {
+    event.stopPropagation();
+    closeMenu();
+    setIsBatchRenderOpen(true);
+  };
+
+  const startBatchRender = async () => {
+    const sourceRoot = await invoke('open_dir_dialog', { title: 'Select folder with 3d files' });
+    if (!sourceRoot) return;
+    const outputRoot = await invoke('open_dir_dialog', { title: 'Select output folder for renders' });
+    if (!outputRoot) return;
+    setIsBatchRenderOpen(false);
+    window.dispatchEvent(new CustomEvent('totkbits:batch-render', {
+      detail: { sourceRoot, outputRoot, existingPng, modelKind: batchModelKind },
+    }));
+  };
 
   const handleCompareFileInternalWithVanila = async (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
@@ -316,7 +336,6 @@ function MenuBarDisplay({ updateButton = null }) {
   // const isMonacoReadOnly = activeTab === 'YAML' && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly);
   // const isMonacoWriteable = !isMonacoReadOnly;
   // const isSaveEnabled = isMonacoWriteable || activeTab !== 'COMPARER';
-  console.log("save enabled?", activeTab, isSaveEnabled);
   // const isSaveEnabled = !(editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) && activeTab !== 'COMPARER';
 
   const fileMenuItems = [
@@ -347,6 +366,7 @@ function MenuBarDisplay({ updateButton = null }) {
   const isSarcOpened = paths.paths.length > 0 && activeTab === "SARC";
   const isInternalFileSelected = isSarcOpened && selectedPath.path !== '' && selectedPath.isfile;
   const toolsMenuItems = [
+    { label: 'Batch render', onClick: handleBatchRender, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Physics merge', onClick: handlePhysicsMerge, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.png', shortcut: '', condition: isSarcOpened },
     { label: 'Add folder', onClick: handleAddFolderClick, icon: 'menu/add_folder.png', shortcut: '', condition: isSarcOpened },
@@ -484,6 +504,28 @@ function MenuBarDisplay({ updateButton = null }) {
         </div>
       </div>
       <CommandsHelp isOpen={isCommandsOpen} onClose={() => setIsCommandsOpen(false)} />
+      {isBatchRenderOpen && <div className="batch-render-options-overlay" role="dialog" aria-modal="true" aria-labelledby="batch-render-options-title">
+        <section className="batch-render-options">
+          <h2 id="batch-render-options-title">Batch render PNG</h2>
+          <label>When PNG file exists
+            <select value={existingPng} onChange={(event) => setExistingPng(event.target.value)}>
+              <option value="skip">Skip</option>
+              <option value="overwrite">Overwrite</option>
+            </select>
+          </label>
+          <label>Models
+            <select value={batchModelKind} onChange={(event) => setBatchModelKind(event.target.value)}>
+              <option value="all">All</option>
+              <option value="g1m">G1M</option>
+              <option value="bfres">BFRES</option>
+            </select>
+          </label>
+          <footer>
+            <button type="button" onClick={() => setIsBatchRenderOpen(false)}>Cancel</button>
+            <button type="button" onClick={startBatchRender}>Render</button>
+          </footer>
+        </section>
+      </div>}
     </div>
   );
 

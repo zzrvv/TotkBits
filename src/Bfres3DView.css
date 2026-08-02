@@ -1,4 +1,5 @@
 .bfres-workspace { position: fixed; inset: calc(var(--menu-bar-h) + var(--document-tabs-h)) 0 var(--status-bar-h); display: grid; grid-template: 70px minmax(0, 1fr) / var(--bfres-left-width, 280px) minmax(320px, 1fr) var(--bfres-right-width, 340px); grid-template-areas: "tree tools inspector" "tree viewport inspector"; background: #11151b; color: #dce3ea; z-index: 2; }
+.bfres-batch-viewport { position: fixed; left: -1200px; top: 0; width: 1024px; height: 1024px; pointer-events: none; }
 .bfres-viewport-toolbar { grid-area: tools; min-width: 0; display: grid; grid-template-rows: 34px 35px; overflow: hidden; border-bottom: 1px solid #303946; background: #20252c; }
 .bfres-toolbar-row { min-width: 0; display: flex; align-items: center; gap: 4px; padding: 0 7px; overflow-x: auto; overflow-y: hidden; }
 .bfres-toolbar-tabs { border-bottom: 1px solid #303946; }

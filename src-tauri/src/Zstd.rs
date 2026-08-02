@@ -308,6 +308,14 @@ impl<'a> TotkZstd<'_> {
             .map(|(data, _)| data)
     }
 
+    /// Returns a decompressed payload when the input uses any supported
+    /// compression, or an owned copy of the original payload when it does not.
+    /// This is intended for content-based format detection where an ordinary
+    /// uncompressed file is not an error.
+    pub fn try_decompress_safe(&self, data: &[u8]) -> Vec<u8> {
+        self.try_decompress(data).unwrap_or_else(|_| data.to_vec())
+    }
+
     pub fn try_decompress_with_dictionary(
         &self,
         data: &[u8],

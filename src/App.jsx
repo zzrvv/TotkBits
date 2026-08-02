@@ -35,7 +35,7 @@ function App() {
   const { documents } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
   const [comparingFile, setComparingFile] = React.useState('');
   const [audioProcessing, setAudioProcessing] = React.useState('');
-  const [loadingModel, setLoadingModel] = React.useState('');
+  const [loadingModel, setLoadingModel] = React.useState(null);
 
   useEffect(() => {
     const receive = (event) => setAudioProcessing(event.detail || '');
@@ -49,8 +49,8 @@ function App() {
       const { id, label, done } = event.detail || {};
       if (!id) return;
       if (done) operations.delete(id);
-      else operations.set(id, label || 'Loading model…');
-      setLoadingModel(Array.from(operations.values()).at(-1) || '');
+      else operations.set(id, { label: label || 'Loading model…', progress: event.detail?.progress });
+      setLoadingModel(Array.from(operations.values()).at(-1) || null);
     };
     window.addEventListener('totkbits:model-loading', receive);
     return () => window.removeEventListener('totkbits:model-loading', receive);
@@ -253,7 +253,8 @@ function App() {
         <div className="parsing-overlay" role="status" aria-live="polite" aria-busy="true">
           <div className="parsing-content">
             <div className="loading-swirl" aria-hidden="true"></div>
-            <div>{loadingModel}</div>
+            <div>{loadingModel.label}</div>
+            {Number.isFinite(loadingModel.progress) && <progress className="batch-render-progress" max="100" value={loadingModel.progress} />}
           </div>
         </div>
       )}

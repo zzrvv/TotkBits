@@ -190,6 +190,32 @@ impl Pathlib {
         path.ends_with(".bfres") || path.ends_with(".bfres.mc") || path.ends_with(".bfres.zs")
     }
 
+    /// Detects standalone 3D models from their decompressed content. File
+    /// names and compressed-container signatures deliberately do not decide
+    /// the result.
+    pub fn is_3d_model_file<P: AsRef<Path>>(path: P, zstd: &crate::Zstd::TotkZstd<'_>) -> bool {
+        Self::get_3d_model_type(path, zstd).is_some()
+    }
+
+    pub fn get_3d_model_type<P: AsRef<Path>>(
+        path: P,
+        zstd: &crate::Zstd::TotkZstd<'_>,
+    ) -> Option<&'static str> {
+        let Ok(source) = std::fs::read(path) else {
+            return None;
+        };
+        let data = zstd.try_decompress_safe(&source);
+        if data.starts_with(b"FRES") {
+            Some("bfres")
+        } else if data.starts_with(b"G1M_") || data.starts_with(b"_M1G") {
+            Some("g1m")
+        } else if data.starts_with(b"Kaydara FBX Binary") {
+            Some("fbx")
+        } else {
+            None
+        }
+    }
+
     pub fn is_sarc_path<P: AsRef<Path>>(path: P) -> bool {
         let path = Self::lowercase(path);
         path.ends_with(".sarc")

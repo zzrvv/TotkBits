@@ -51,6 +51,7 @@ impl CliCommand {
                 | "decompress_dir"
                 | "compress"
                 | "replace_bars_from_folder"
+                | "batch_g1m_worker"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
         let valid_arguments = if operation == "decompress_dir" {
@@ -134,6 +135,7 @@ impl CliCommand {
             "decompress_dir" => self.decompress_dir(),
             "compress" => self.compress(),
             "replace_bars_from_folder" => self.replace_bars_from_folder(),
+            "batch_g1m_worker" => self.batch_g1m_worker(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -395,6 +397,39 @@ impl CliCommand {
             eprintln!("{failure}");
         }
         Ok(())
+    }
+
+    fn batch_g1m_worker(&self) -> Result<(), String> {
+        let source = fs::read(&self.input).map_err(|error| error.to_string())?;
+        let zstd = self.zstd()?;
+        let data = zstd.try_decompress_safe(&source);
+        if !(data.starts_with(b"G1M_") || data.starts_with(b"_M1G")) {
+            return Err("input is not a G1M model after decompression".into());
+        }
+        let model = crate::parser::AOC::g1m::G1mFile::parse(
+            &data,
+            self.input
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("G1M"),
+        )
+        .map_err(|error| error.to_string())?;
+        let resolution = model.resolve_textures(&self.input, Path::new(&zstd.totk_config.aoc_path));
+        let mut value = serde_json::to_value(model).map_err(|error| error.to_string())?;
+        if let Some(object) = value.as_object_mut() {
+            object.insert(
+                "resolvedTextures".into(),
+                serde_json::to_value(resolution.textures).map_err(|error| error.to_string())?,
+            );
+            object.insert(
+                "textureStats".into(),
+                serde_json::json!({ "total": resolution.total, "skipped": resolution.skipped }),
+            );
+        }
+        write_output(
+            &self.output,
+            &serde_json::to_vec(&value).map_err(|error| error.to_string())?,
+        )
     }
 }
 
