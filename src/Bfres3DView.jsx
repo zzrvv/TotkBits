@@ -202,7 +202,38 @@ function materialTextures(material, textures) {
     };
 }
 
-function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, glow, weightBone, showNormals, onSelect, textures }) {
+function weightPreviewBoneColor(index) {
+    // A golden-angle hue step keeps consecutive bone indices far apart. The
+    // alternating lightness adds separation even after weight colors blend.
+    const hue = (index * 0.3819660112501051) % 1;
+    const saturation = 0.9;
+    const lightness = index % 2 === 0 ? 0.48 : 0.64;
+    const color = new THREE.Color();
+    color.setHSL(hue, saturation, lightness, THREE.SRGBColorSpace);
+    return [color.r, color.g, color.b];
+}
+
+function buildWeightPreview(render) {
+    const boneColors = render.bones.map((_, index) => weightPreviewBoneColor(index));
+    return render.meshes.map((mesh) => {
+        const colors = new Float32Array(mesh.positions.length * 3);
+        for (let vertex = 0; vertex < mesh.positions.length; vertex += 1) {
+            const indices = mesh.bone_indices[vertex] || [];
+            const weights = mesh.bone_weights[vertex] || [];
+            for (let influence = 0; influence < indices.length; influence += 1) {
+                const color = boneColors[indices[influence]];
+                if (!color) continue;
+                const weight = weights[influence] ?? (influence === 0 ? 1 : 0);
+                colors[vertex * 3] += color[0] * weight;
+                colors[vertex * 3 + 1] += color[1] * weight;
+                colors[vertex * 3 + 2] += color[2] * weight;
+            }
+        }
+        return colors;
+    });
+}
+
+function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, glow, weightBone, weightPreviewColors, showNormals, onSelect, textures }) {
     const usesMaterialUvs = viewMode === 'default';
     ['base', 'normal', 'roughness', 'metalness', 'emission', 'mask', 'specular', 'ambientOcclusion'].forEach((kind) => {
         if (textures[kind]) textures[kind].channel = usesMaterialUvs ? (textures[`${kind}Uv`] ?? 0) : uvIndex;
@@ -258,6 +289,10 @@ function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, glo
             const normal = mesh.normals[vertex] || [0, 1, 0];
             const uv = activeUv[vertex] || [0, 0];
             let color = new THREE.Color('#aeb8c2');
+            if (viewMode === 'weightsPrev' && weightPreviewColors) {
+                colors.set(weightPreviewColors.subarray(vertex * 3, vertex * 3 + 3), vertex * 3);
+                return;
+            }
             if (viewMode === 'selectedBoneWeights') color = new THREE.Color().setHSL((1 - Math.min(strength, 1)) * 0.66, 1, 0.5);
             else if (viewMode === 'default' && weightBone >= 0) {
                 color = strength > 0
@@ -287,7 +322,7 @@ function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, glo
         result.setIndex(mesh.indices);
         result.computeBoundingSphere();
         return result;
-    }, [mesh, bones, scaleMode, viewMode, uvIndex, weightBone]);
+    }, [mesh, bones, scaleMode, viewMode, uvIndex, weightBone, weightPreviewColors]);
     useEffect(() => () => geometry.dispose(), [geometry]);
     const normalLines = useMemo(() => {
         const lineGeometry = new THREE.BufferGeometry();
@@ -433,7 +468,7 @@ function FrontCamera({ render }) {
     return null;
 }
 
-function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShading, glow, showSkeleton, showNormals, weightBone, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes }) {
+function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShading, glow, showSkeleton, showNormals, weightBone, weightPreviewColors, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes }) {
     const textures = useResolvedTextures(bfres?.resolvedTextures);
     return <>
         <SceneExposure brightness={brightness} />
@@ -445,7 +480,7 @@ function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShadin
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
         <FrontCamera render={render} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
-        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
+        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
         {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} />}
     </>;
 }
@@ -610,6 +645,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [showSkeleton, setShowSkeleton] = useState(true);
     const [showNormals, setShowNormals] = useState(false);
     const [weightBone, setWeightBone] = useState(-2);
+    const [weightPreviewColors, setWeightPreviewColors] = useState(null);
     const [detail, setDetail] = useState(null);
     const [showEditor, setShowEditor] = useState(false);
     const [selectedMesh, setSelectedMesh] = useState('');
@@ -633,6 +669,37 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             (material.texture_slots || []).some((slot) =>
                 slot.texture_type === 'Emission' && renderableTextures.has(slot.name)));
     }, [bfres]);
+    const hasSkeleton = (bfres?.render?.bones?.length || 0) > 0;
+    const hasMeshes = (bfres?.render?.meshes?.length || 0) > 0;
+
+    useEffect(() => {
+        setWeightPreviewColors(null);
+    }, [bfres]);
+
+    useEffect(() => {
+        if (viewMode !== 'weightsPrev' || !bfres?.render || !hasSkeleton || !hasMeshes || weightPreviewColors) return undefined;
+        let cancelled = false;
+        const operationId = `weights-preview:${document?.id || 'model'}:${crypto.randomUUID()}`;
+        window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+            detail: { id: operationId, label: 'Generating weight preview…' },
+        }));
+        const generate = async () => {
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            const colors = buildWeightPreview(bfres.render);
+            if (!cancelled) setWeightPreviewColors(colors);
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+                detail: { id: operationId, done: true },
+            }));
+        };
+        generate();
+        return () => {
+            cancelled = true;
+            window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+                detail: { id: operationId, done: true },
+            }));
+        };
+    }, [viewMode, bfres, hasSkeleton, hasMeshes, weightPreviewColors, document?.id]);
 
     useEffect(() => {
         const clearAocModels = () => clearModelCaches();
@@ -836,6 +903,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
 <option value="normalMap">NormalMap</option>
 <option value="specularMap">SpecularMap</option>
 <option value="selectedBoneWeights">Weights</option>
+{hasSkeleton && hasMeshes && <option value="weightsPrev">WeightsPrev</option>}
 <option value="emissionMap">EmissionMap</option>
 <option value="normal">Normal</option>
 {/* <option value="lighting">Lighting</option>
@@ -919,7 +987,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
                 <Canvas key={viewResetKey} dpr={[1, 2]} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
                     <ViewportCapture captureRef={captureViewportRef} />
-                    {bfres?.render && <ResourceScene bfres={bfres} render={bfres.render} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
+                    {bfres?.render && <ResourceScene bfres={bfres} render={bfres.render} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} weightPreviewColors={weightPreviewColors} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
                         setSelectedMesh(mesh.name);
                         setSelectedMaterial(null);
                         setWeightBone(-2);
