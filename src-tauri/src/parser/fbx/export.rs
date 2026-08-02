@@ -349,6 +349,7 @@ fn build_ascii(
     armature_name: &str,
 ) -> String {
     let mut ids = Ids::new();
+    let rotation_root_id = ids.take();
     let root_id = ids.take();
     let document_id = ids.take();
     let mut bone_ids = Vec::with_capacity(models.len());
@@ -375,6 +376,15 @@ fn build_ascii(
     }
 
     let mut objects = String::new();
+    write_model_object(
+        &mut objects,
+        rotation_root_id,
+        "G1M_Orientation",
+        "Null",
+        [0.0; 3],
+        [90.0, 0.0, 0.0],
+        [1.0; 3],
+    );
     write_model_object(
         &mut objects,
         root_id,
@@ -475,7 +485,8 @@ fn build_ascii(
     }
 
     let mut connections = String::new();
-    connection(&mut connections, root_id, 0);
+    connection(&mut connections, rotation_root_id, 0);
+    connection(&mut connections, root_id, rotation_root_id);
     for (model_index, input) in models.iter().enumerate() {
         for (index, bone) in input.model.render.bones.iter().enumerate() {
             connection(
@@ -542,7 +553,7 @@ fn build_ascii(
         .iter()
         .map(|link| usize::from(link.skin_id.is_some()) + link.clusters.len())
         .sum::<usize>();
-    let definition_count = 1
+    let definition_count = 2
         + bone_count * 2
         + mesh_count * 2
         + material_count
@@ -550,8 +561,8 @@ fn build_ascii(
         + deformer_count;
 
     let ascii = format!(
-        "; FBX 7.4.0 project file\nFBXHeaderExtension:  {{\n    FBXHeaderVersion: 1003\n    FBXVersion: 7400\n    Creator: \"TotkBits\"\n}}\nGlobalSettings:  {{\n    Version: 1000\n    Properties70:  {{\n        P: \"UpAxis\", \"int\", \"Integer\", \"\",1\n        P: \"UpAxisSign\", \"int\", \"Integer\", \"\",1\n        P: \"FrontAxis\", \"int\", \"Integer\", \"\",2\n        P: \"FrontAxisSign\", \"int\", \"Integer\", \"\",-1\n        P: \"CoordAxis\", \"int\", \"Integer\", \"\",0\n        P: \"CoordAxisSign\", \"int\", \"Integer\", \"\",1\n        P: \"UnitScaleFactor\", \"double\", \"Number\", \"\",1\n    }}\n}}\nDocuments:  {{\n    Count: 1\n    Document: {document_id}, \"Scene\", \"Scene\" {{\n        Properties70:  {{}}\n        RootNode: {root_id}\n    }}\n}}\nReferences:  {{}}\nDefinitions:  {{\n    Version: 100\n    Count: 7\n    ObjectType: \"Model\" {{ Count: {} }}\n    ObjectType: \"NodeAttribute\" {{ Count: {bone_count} }}\n    ObjectType: \"Geometry\" {{ Count: {mesh_count} }}\n    ObjectType: \"Material\" {{ Count: {material_count} }}\n    ObjectType: \"Texture\" {{ Count: {} }}\n    ObjectType: \"Video\" {{ Count: {} }}\n    ObjectType: \"Deformer\" {{ Count: {deformer_count} }}\n}}\nObjects:  {{\n{objects}}}\nConnections:  {{\n{connections}}}\n",
-        1 + bone_count + mesh_count,
+        "; FBX 7.4.0 project file\nFBXHeaderExtension:  {{\n    FBXHeaderVersion: 1003\n    FBXVersion: 7400\n    Creator: \"TotkBits\"\n}}\nGlobalSettings:  {{\n    Version: 1000\n    Properties70:  {{\n        P: \"UpAxis\", \"int\", \"Integer\", \"\",1\n        P: \"UpAxisSign\", \"int\", \"Integer\", \"\",1\n        P: \"FrontAxis\", \"int\", \"Integer\", \"\",2\n        P: \"FrontAxisSign\", \"int\", \"Integer\", \"\",-1\n        P: \"CoordAxis\", \"int\", \"Integer\", \"\",0\n        P: \"CoordAxisSign\", \"int\", \"Integer\", \"\",1\n        P: \"UnitScaleFactor\", \"double\", \"Number\", \"\",1\n    }}\n}}\nDocuments:  {{\n    Count: 1\n    Document: {document_id}, \"Scene\", \"Scene\" {{\n        Properties70:  {{}}\n        RootNode: {rotation_root_id}\n    }}\n}}\nReferences:  {{}}\nDefinitions:  {{\n    Version: 100\n    Count: 7\n    ObjectType: \"Model\" {{ Count: {} }}\n    ObjectType: \"NodeAttribute\" {{ Count: {bone_count} }}\n    ObjectType: \"Geometry\" {{ Count: {mesh_count} }}\n    ObjectType: \"Material\" {{ Count: {material_count} }}\n    ObjectType: \"Texture\" {{ Count: {} }}\n    ObjectType: \"Video\" {{ Count: {} }}\n    ObjectType: \"Deformer\" {{ Count: {deformer_count} }}\n}}\nObjects:  {{\n{objects}}}\nConnections:  {{\n{connections}}}\n",
+        2 + bone_count + mesh_count,
         texture_links.len(),
         texture_links.len(),
     );
@@ -669,6 +680,9 @@ fn write_model_object(
     property_vec3(out, "Lcl Translation", "Lcl Translation", translation);
     property_vec3(out, "Lcl Rotation", "Lcl Rotation", rotation);
     property_vec3(out, "Lcl Scaling", "Lcl Scaling", scale);
+    if kind == "Mesh" {
+        property_vec3(out, "GeometricRotation", "Vector3D", [-90.0, 0.0, 0.0]);
+    }
     writeln!(out, "        }}").unwrap();
     writeln!(out, "        Shading: T").unwrap();
     writeln!(out, "        Culling: \"CullingOff\"").unwrap();
