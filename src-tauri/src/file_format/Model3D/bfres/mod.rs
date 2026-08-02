@@ -182,7 +182,7 @@ impl BfresFile {
                 "MCPK save prompt is only available for BFRES version 10",
             ));
         }
-        if !serialized_bfres.starts_with(b"FRES") {
+        if !crate::Settings::Magic::is_bfres(serialized_bfres) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "BFRES serializer did not produce a raw FRES file",
@@ -243,10 +243,10 @@ impl BfresFile {
             "[BFRES] open {} compression {:?}, is bfres? {}",
             path.display(),
             compression,
-            source.starts_with(b"FRES")
+            crate::Settings::Magic::is_bfres(&source)
         );
 
-        if !source.starts_with(b"FRES") {
+        if !crate::Settings::Magic::is_bfres(&source) {
             return None;
         }
         let file = Self::from_bytes(&source).ok()?;
@@ -278,12 +278,12 @@ impl BfresFile {
     }
 
     pub fn from_bytes(data: &[u8]) -> Result<Self, BfresError> {
-        if data.starts_with(b"MCPK") {
+        if crate::Settings::Magic::is_mcpk(data) {
             let decompressed =
                 crate::compression::meshcodec::MeshCodec::decompress(data).map_err(|error| {
                     BfresError::new(0, format!("MCPK decompression failed: {error}"))
                 })?;
-            if !decompressed.starts_with(b"FRES") {
+            if !crate::Settings::Magic::is_bfres(&decompressed) {
                 return Err(BfresError::new(
                     0,
                     "MCPK payload is not a BFRES file (missing FRES signature)",
@@ -291,11 +291,11 @@ impl BfresFile {
             }
             return Self::from_bytes(&decompressed);
         }
-        if !data.starts_with(b"FRES") {
+        if !crate::Settings::Magic::is_bfres(data) {
             let decompressed = crate::Zstd::TotkZstd::decompress_empty(data).map_err(|error| {
                 BfresError::new(0, format!("Zstandard decompression failed: {error}"))
             })?;
-            if !decompressed.starts_with(b"FRES") {
+            if !crate::Settings::Magic::is_bfres(&decompressed) {
                 return Err(BfresError::new(
                     0,
                     "Zstandard payload is not a BFRES file (missing FRES signature)",

@@ -12,10 +12,6 @@ use meshcodec_bindings::MeshCodecBindings;
 pub struct MeshCodec;
 
 impl MeshCodec {
-    pub fn has_magic(data: &[u8]) -> bool {
-        data.starts_with(MCPK_MAGIC)
-    }
-
     pub fn new() -> io::Result<Self> {
         Self::ensure_platform()
     }
@@ -34,7 +30,7 @@ impl MeshCodec {
     }
 
     pub fn decompress(data: &[u8]) -> io::Result<Vec<u8>> {
-        if !Self::has_magic(data) {
+        if !crate::Settings::Magic::is_mcpk(data) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "input does not have MCPK magic",
@@ -55,7 +51,8 @@ impl MeshCodec {
     /// header followed by a dictionaryless, magicless ZSTD frame.
     pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
         let mut source = data.to_vec();
-        if source.starts_with(b"FRES") && source.len() > BFRES_MCPK_RESAVE_FLAG_OFFSET {
+        if crate::Settings::Magic::is_bfres(&source) && source.len() > BFRES_MCPK_RESAVE_FLAG_OFFSET
+        {
             source[BFRES_EXTERNAL_FLAGS_OFFSET] = 0;
             source[BFRES_MCPK_RESAVE_FLAG_OFFSET] = 1;
         }
@@ -137,7 +134,7 @@ mod tests {
         let input = std::fs::read(path).unwrap();
         let compressed = MeshCodec::compress(&input).unwrap();
 
-        assert!(MeshCodec::has_magic(&compressed));
+        assert!(crate::Settings::Magic::is_mcpk(&compressed));
         assert_eq!(&compressed[4..8], &[1, 1, 0, 0]);
         let flags = u32::from_le_bytes(compressed[8..12].try_into().unwrap());
         let expected_size = (input.len() + 0xfff) & !0xfff;

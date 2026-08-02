@@ -632,7 +632,7 @@ mod tests {
         for path in paths {
             let original =
                 fs::read(&path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-            let endian = if original.starts_with(b"YB") {
+            let endian = if crate::Settings::Magic::is_byml_little_endian(&original) {
                 roead::Endian::Big
             } else {
                 roead::Endian::Little

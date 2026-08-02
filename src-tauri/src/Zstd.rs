@@ -1,6 +1,6 @@
 use crate::file_format::Pack::PackFile;
 use crate::Open_and_Save::get_string_from_data;
-use crate::Settings::Pathlib;
+use crate::Settings::{Magic, Pathlib};
 use crate::TotkConfig::TotkConfig;
 use digest::Digest;
 use roead::sarc::*;
@@ -33,7 +33,6 @@ pub enum TotkFileType {
     MalsSarc,
     Byml,
     Aamp,
-    Bfres,
     Bntx,
     Bphcl,
     Bphhb,
@@ -47,6 +46,14 @@ pub enum TotkFileType {
     Other,
     //SMO
     SmoSaveFile,
+    //3D
+    Bfres,
+    Fbx,
+    G1M,
+    Image,
+    Archive,
+    Bars,
+    Compressed,
     None,
 }
 
@@ -223,17 +230,12 @@ pub enum ZstdDictionary {
 
 pub const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
 
-#[inline]
-pub fn is_zstd(data: &[u8]) -> bool {
-    data.starts_with(&ZSTD_MAGIC)
-}
-
 impl<'a> TotkZstd<'_> {
     pub fn compress_mcpk(&self, data: &[u8]) -> io::Result<Vec<u8>> {
         crate::compression::meshcodec::MeshCodec::compress(data)
     }
     pub fn decompress_mcpk(&self, data: &[u8]) -> io::Result<Vec<u8>> {
-        if !data.starts_with(b"MCPK") {
+        if !Magic::is_mcpk(data) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "input does not have MCPK magic",
@@ -243,7 +245,7 @@ impl<'a> TotkZstd<'_> {
     }
 
     pub fn decompress_empty(data: &[u8]) -> io::Result<Vec<u8>> {
-        if !is_zstd(data) {
+        if !Magic::is_zstd(data) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "input does not have Zstandard frame magic",
@@ -301,7 +303,7 @@ impl<'a> TotkZstd<'_> {
         }
     }
     pub fn try_decompress(&self, data: &[u8]) -> Result<Vec<u8>, io::Error> {
-        if crate::compression::meshcodec::MeshCodec::has_magic(data) {
+        if Magic::is_mcpk(data) {
             return crate::compression::meshcodec::MeshCodec::decompress(data);
         }
         self.try_decompress_with_dictionary(data)
@@ -320,7 +322,7 @@ impl<'a> TotkZstd<'_> {
         &self,
         data: &[u8],
     ) -> Result<(Vec<u8>, ZstdDictionary), io::Error> {
-        if data.starts_with(b"Yaz0") {
+        if Magic::is_yaz0(data) {
             return Self::decompress_yaz0(data).map(|data| (data, ZstdDictionary::Yaz0));
         }
         self.try_decompress_zstd_ordered(data, None)
@@ -331,7 +333,7 @@ impl<'a> TotkZstd<'_> {
         path: impl AsRef<Path>,
         data: &[u8],
     ) -> Result<(Vec<u8>, ZstdDictionary), io::Error> {
-        if data.starts_with(b"Yaz0") {
+        if Magic::is_yaz0(data) {
             return Self::decompress_yaz0(data).map(|data| (data, ZstdDictionary::Yaz0));
         }
         self.try_decompress_zstd_ordered(data, preferred_dictionary_for_path(path))
@@ -428,7 +430,7 @@ impl<'a> TotkZstd<'_> {
         data: &[u8],
         preferred: Option<ZstdDictionary>,
     ) -> Result<(Vec<u8>, ZstdDictionary), io::Error> {
-        if !is_zstd(data) {
+        if !Magic::is_zstd(data) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "input does not have Zstandard frame magic",
@@ -470,7 +472,7 @@ impl<'a> TotkZstd<'_> {
         if dictionary == ZstdDictionary::Mcpk {
             return self.decompress_mcpk(data);
         }
-        if !is_zstd(data) {
+        if !Magic::is_zstd(data) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "input does not have Zstandard frame magic",
@@ -509,7 +511,7 @@ impl<'a> TotkZstd<'_> {
     }
 
     pub fn decompress_yaz0(data: &[u8]) -> io::Result<Vec<u8>> {
-        if !data.starts_with(b"Yaz0") {
+        if !Magic::is_yaz0(data) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "input does not have Yaz0 magic",
@@ -751,7 +753,7 @@ impl<'a> ZstdDecompressor<'_> {
     }
 
     fn decompress(&self, data: &[u8], ddict: &DecoderDictionary) -> Result<Vec<u8>, io::Error> {
-        if !is_zstd(data) {
+        if !Magic::is_zstd(data) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "input does not have Zstandard frame magic",
@@ -876,48 +878,6 @@ impl<'a> ZstdCompressor<'_> {
 }
 
 #[inline]
-pub fn is_byml(data: &[u8]) -> bool {
-    data.starts_with(b"BY") || data.starts_with(b"YB")
-}
-
-#[inline]
-pub fn is_sarc(data: &[u8]) -> bool {
-    data.starts_with(b"SARC")
-}
-
-#[inline]
-pub fn is_aamp(data: &[u8]) -> bool {
-    data.starts_with(b"AAMP")
-}
-
-#[inline]
-pub fn is_msyt(data: &[u8]) -> bool {
-    data.starts_with(b"MsgStd")
-}
-#[inline]
-pub fn is_ainb(data: &[u8]) -> bool {
-    data.starts_with(b"AIB")
-}
-#[inline]
-pub fn is_xlink(data: &[u8]) -> bool {
-    data.starts_with(b"XLNK")
-}
-#[inline]
-pub fn is_asb(data: &[u8]) -> bool {
-    data.starts_with(b"ASB ")
-}
-
-#[inline]
-pub fn is_evfl(data: &[u8]) -> bool {
-    data.starts_with(b"BFEVFL") && is_little_endian(data)
-}
-
-#[inline]
-pub fn is_restbl(data: &[u8]) -> bool {
-    data.starts_with(b"RSTB") || data.starts_with(b"REST")
-}
-
-#[inline]
 pub fn is_gamedatalist<P: AsRef<Path>>(path: P) -> bool {
     path.as_ref()
         .file_name()
@@ -986,7 +946,7 @@ pub fn get_executable_dir() -> String {
 #[cfg(test)]
 mod yaz0_tests {
     use super::{
-        is_zstd, preferred_dictionary_for_path, sha256, TotkZstd, ZstdDictionary,
+        preferred_dictionary_for_path, sha256, TotkZstd, ZstdDictionary,
         TOTK_ZSTD_COMPRESSION_LEVEL,
     };
     use crate::TotkConfig::TotkConfig;
@@ -1000,7 +960,7 @@ mod yaz0_tests {
             .map(|index| ((index * 73 + index / 251) & 0xff) as u8)
             .collect();
         let compressed = TotkZstd::compress_yaz0(&data).unwrap();
-        assert!(compressed.starts_with(b"Yaz0"));
+        assert!(crate::Settings::Magic::is_yaz0(&compressed));
         assert_eq!(TotkZstd::decompress_yaz0(&compressed).unwrap(), data);
     }
 
@@ -1038,7 +998,7 @@ mod yaz0_tests {
 
             let source = std::fs::read(&path).unwrap();
             assert!(
-                source.starts_with(b"Yaz0"),
+                crate::Settings::Magic::is_yaz0(&source),
                 "{} is not a Yaz0 stream",
                 path.display()
             );
@@ -1137,9 +1097,11 @@ mod yaz0_tests {
 
     #[test]
     fn recognizes_only_standard_zstd_frame_magic() {
-        assert!(is_zstd(&[0x28, 0xB5, 0x2F, 0xFD, 0]));
-        assert!(!is_zstd(b"Yaz0"));
-        assert!(!is_zstd(b"plain text"));
+        assert!(crate::Settings::Magic::is_zstd(&[
+            0x28, 0xB5, 0x2F, 0xFD, 0
+        ]));
+        assert!(!crate::Settings::Magic::is_zstd(b"Yaz0"));
+        assert!(!crate::Settings::Magic::is_zstd(b"plain text"));
     }
 
     #[test]

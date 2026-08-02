@@ -7,7 +7,8 @@ use crate::{
         detect_archive_magic, ArchiveCodec, ArchiveMagic, Rar::RarFile, RootArchive,
         SevenZip::SevenZipFile, Zip::ZipFile,
     },
-    Zstd::{is_sarc, TotkZstd},
+    Settings::Magic,
+    Zstd::TotkZstd,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -51,9 +52,9 @@ impl NestedArchive {
                 kind: NestedKind::Generic(archive),
             });
         }
-        let (raw, encoding) = if is_sarc(data) {
+        let (raw, encoding) = if Magic::is_sarc(data) {
             (data.to_vec(), NestedEncoding::Raw)
-        } else if data.starts_with(b"Yaz0") {
+        } else if Magic::is_yaz0(data) {
             (
                 roead::yaz0::decompress(data)
                     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?,
@@ -69,7 +70,7 @@ impl NestedArchive {
                 "entry is not a raw, Yaz0, or Zstd SARC",
             ));
         };
-        if !is_sarc(&raw) {
+        if !Magic::is_sarc(&raw) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "decoded entry does not contain SARC data",

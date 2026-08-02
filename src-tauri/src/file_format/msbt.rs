@@ -3,8 +3,9 @@ use crate::{
     parser::{binary::Endian as BinaryEndian, msbt::Msbt},
     InternalFile::InternalFile,
     Open_and_Save::SendData,
+    Settings::Magic,
     Settings::Pathlib,
-    Zstd::{is_msyt, TotkFileType, ZstdDictionary},
+    Zstd::{TotkFileType, ZstdDictionary},
 };
 use std::path::Path;
 
@@ -16,7 +17,7 @@ pub struct MsbtFile {
 }
 impl MsbtFile {
     fn parse(data: &[u8]) -> Option<(Msbt, String, roead::Endian)> {
-        if !is_msyt(data) {
+        if !Magic::is_msbt(data) {
             return None;
         }
         let msbt = Msbt::from_bytes(data).ok()?;

@@ -3,7 +3,8 @@ use crate::Open_and_Save::SendData;
 use crate::Settings::Pathlib;
 use crate::{
     file_format::BinTextFile::{BymlFile, FileData},
-    Zstd::{is_byml, TotkFileType, TotkZstd},
+    Settings::Magic,
+    Zstd::{TotkFileType, TotkZstd},
 };
 use roead::byml::Byml;
 use std::{
@@ -212,7 +213,7 @@ impl<'a> SmoSaveFile<'a> {
 
     #[inline]
     pub fn is_smo_save_binary(data: &[u8]) -> bool {
-        data.len() == SMO_SAVE_FILE_SIZE && is_byml(&data[SMO_HEADER_SIZE..])
+        data.len() == SMO_SAVE_FILE_SIZE && Magic::is_byml(&data[SMO_HEADER_SIZE..])
     }
 
     pub fn backup_file<P: AsRef<Path>>(path: P) -> io::Result<()> {

@@ -212,7 +212,7 @@ mod tests {
             .join("../tmp/_ss/AssassinSenior_Katagoki.bwav");
         let data = std::fs::read(&source).expect("failed to read BWAV export fixture");
         let wav = to_wav(&data).expect("failed to export WAV");
-        assert!(wav.starts_with(b"RIFF"));
+        assert!(crate::Settings::Magic::is_riff(&wav));
 
         let mp3 = to_mp3(&data).expect("failed to export MP3");
         assert!(!mp3.is_empty());

@@ -24,7 +24,7 @@ impl AsbFile {
     ) -> Option<(OpenedFile<'a>, SendData)> {
         let path = path.as_ref();
         let asb_data = read_maybe_compressed(path, &zstd, b"ASB ").ok()?;
-        if !asb_data.starts_with(b"ASB ") {
+        if !crate::Settings::Magic::is_asb(&asb_data) {
             return None;
         }
 
@@ -185,7 +185,11 @@ mod tests {
                 };
                 let rebuilt = AsbFile::text_to_binary(&yaml, None)
                     .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-                assert!(rebuilt.starts_with(b"ASB "), "{}", path.display());
+                assert!(
+                    crate::Settings::Magic::is_asb(&rebuilt),
+                    "{}",
+                    path.display()
+                );
                 AsbFile::binary_to_text(&rebuilt).expect("parse rebuilt ASB");
                 *tested += 1;
             }

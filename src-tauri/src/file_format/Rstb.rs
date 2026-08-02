@@ -8,8 +8,9 @@ use std::sync::Arc;
 use crate::file_format::BinTextFile::OpenedFile;
 use crate::parser::rstb::ResourceSizeTable;
 use crate::Open_and_Save::SendData;
+use crate::Settings::Magic;
 use crate::Settings::{list_files_recursively, Pathlib};
-use crate::Zstd::{is_restbl, TotkFileType, TotkZstd, ZstdDictionary};
+use crate::Zstd::{TotkFileType, TotkZstd, ZstdDictionary};
 // use serde_json::to_string_pretty;
 
 use super::Pack::PackFile;
@@ -138,7 +139,7 @@ impl<'a> Restbl<'_> {
         let mut buffer = Vec::new();
         f_handle.read_to_end(&mut buffer).ok()?;
         let (buffer, compression) = zstd.try_decompress_all_ordered_safe(&buffer, &path);
-        if !is_restbl(&buffer) {
+        if !Magic::is_restbl(&buffer) {
             return None; //invalid rstb
         }
 

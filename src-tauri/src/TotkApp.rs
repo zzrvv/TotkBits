@@ -35,59 +35,10 @@ pub struct InternalParentLink {
     pub inner_path: String,
 }
 
-fn known_internal_magic(data: &[u8]) -> Option<&'static str> {
-    if crate::Zstd::is_byml(data) {
-        Some("BYML")
-    } else if crate::Zstd::is_sarc(data) {
-        Some("SARC")
-    } else if crate::Zstd::is_aamp(data) {
-        Some("AAMP")
-    } else if crate::Zstd::is_msyt(data) {
-        Some("MSBT")
-    } else if crate::Zstd::is_ainb(data) {
-        Some("AINB")
-    } else if crate::Zstd::is_xlink(data) {
-        Some("Xlink")
-    } else if crate::Zstd::is_asb(data) {
-        Some("ASB")
-    } else if crate::Zstd::is_evfl(data) {
-        Some("BFEVFL")
-    } else if crate::Zstd::is_restbl(data) {
-        Some("RSTB")
-    } else if data.starts_with(b"FRES") {
-        Some("BFRES")
-    } else if data.starts_with(b"Phive\0") {
-        Some("BPHCL")
-    } else if crate::file_format::hkcl::HkclFile::is_hkcl_magic(data) {
-        Some("HKCL")
-    } else if data.starts_with(b"BNTX") {
-        Some("BNTX")
-    } else if data.starts_with(b"DDS ") {
-        Some("DDS")
-    } else if data.starts_with(b"\x89PNG\r\n\x1A\n") {
-        Some("PNG")
-    } else if data.starts_with(b"PK\x03\x04") {
-        Some("ZIP")
-    } else if data.starts_with(b"7z\xBC\xAF\x27\x1C") {
-        Some("7-Zip")
-    } else if data.starts_with(b"Rar!\x1A\x07") {
-        Some("RAR")
-    } else if data.starts_with(b"BARS") {
-        Some("BARS")
-    } else if data.starts_with(b"Yaz0") {
-        Some("Yaz0")
-    } else if crate::Zstd::is_zstd(data) {
-        Some("Zstandard")
-    } else if data.starts_with(b"MCPK") {
-        Some("MCPK")
-    } else {
-        None
-    }
-}
-
 fn internal_open_error(path: &str, bytes: &[u8], zstd: &TotkZstd<'_>) -> SendData {
     let (decoded, _) = zstd.try_decompress_all_ordered_safe(bytes, path);
-    let recognized = known_internal_magic(&decoded).or_else(|| known_internal_magic(bytes));
+    let recognized = crate::Settings::Magic::format_name(&decoded)
+        .or_else(|| crate::Settings::Magic::format_name(bytes));
     let mut data = SendData::default();
     data.tab = "ERROR".into();
     data.status_text = match recognized {

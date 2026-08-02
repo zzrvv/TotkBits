@@ -46,7 +46,7 @@ fn crc32(parts: &[Vec<u8>]) -> u32 {
 }
 
 fn header(data: &[u8]) -> Result<(usize, usize), String> {
-    if !data.starts_with(b"BWAV") || data.len() < 0x10 {
+    if !crate::Settings::Magic::is_bwav(data) || data.len() < 0x10 {
         return Err("not a BWAV file".into());
     }
     if data.get(4..6) != Some(b"\xff\xfe") {

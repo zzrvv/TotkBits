@@ -2,8 +2,9 @@ use std::{fs, io::Read, path::Path};
 
 use super::BinTextFile::OpenedFile;
 use crate::Open_and_Save::SendData;
+use crate::Settings::Magic;
 use crate::Settings::Pathlib;
-use crate::Zstd::{is_aamp, TotkFileType};
+use crate::Zstd::TotkFileType;
 use roead::aamp::ParameterIO;
 
 use super::bphcl::safe_aamp_yaml;
@@ -18,7 +19,7 @@ impl AampFile {
         let pathlib_var = Pathlib::new(path_ref);
         print!("Is {} an aamp? ", &pathlib_var.full_path);
         let raw_data = std::fs::read(path_ref).ok()?;
-        if is_aamp(&raw_data) {
+        if Magic::is_aamp(&raw_data) {
             let pio = ParameterIO::from_binary(&raw_data).ok()?; // Parse AAMP from binary data
             println!(" yes!");
             opened_file.path = pathlib_var.clone();
@@ -78,7 +79,7 @@ mod tests {
                 continue;
             }
             let bytes = std::fs::read(entry.path()).expect("read GameScene AAMP fixture");
-            if !bytes.starts_with(b"AAMP") {
+            if !crate::Settings::Magic::is_aamp(&bytes) {
                 continue;
             }
             let parameter_io = ParameterIO::from_binary(&bytes).unwrap_or_else(|error| {

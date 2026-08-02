@@ -161,7 +161,7 @@ impl CliCommand {
                 .map_err(|e| format!("input could not be converted to AINB text: {e}"))?;
             return write_output(&self.output, text.as_bytes());
         }
-        let is_zstandard = bytes.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]);
+        let is_zstandard = crate::Settings::Magic::is_zstd(&bytes);
         let (parsed, text) = get_string_from_data(&self.input, bytes, self.zstd()?).ok_or_else(|| {
             if is_zstandard {
                 "input could not be converted to text; it may require a game Zstandard dictionary unavailable in lightweight CLI mode".to_string()
@@ -266,7 +266,7 @@ impl CliCommand {
                     continue;
                 }
             };
-            let result = if crate::compression::meshcodec::MeshCodec::has_magic(&bytes) {
+            let result = if crate::Settings::Magic::is_mcpk(&bytes) {
                 crate::compression::meshcodec::MeshCodec::decompress(&bytes)
             } else {
                 zstd.try_decompress_for_path(&source, &bytes)
@@ -403,7 +403,7 @@ impl CliCommand {
         let source = fs::read(&self.input).map_err(|error| error.to_string())?;
         let zstd = self.zstd()?;
         let data = zstd.try_decompress_safe(&source);
-        if !(data.starts_with(b"G1M_") || data.starts_with(b"_M1G")) {
+        if !crate::Settings::Magic::is_g1m(&data) {
             return Err("input is not a G1M model after decompression".into());
         }
         let model = crate::parser::AOC::g1m::G1mFile::parse(

@@ -1154,7 +1154,7 @@ mod tests {
         )
         .unwrap();
         let exported = fs::read(&output).unwrap();
-        assert!(exported.starts_with(b"Kaydara FBX Binary"));
+        assert!(crate::Settings::Magic::is_fbx(&exported));
         let parsed = crate::parser::fbx::FbxFile::parse(&exported, "roundtrip").unwrap();
         assert_eq!(parsed.render.meshes.len(), model.render.meshes.len());
         if std::env::var_os("TOTKBITS_KEEP_TEST_FBX").is_none() {

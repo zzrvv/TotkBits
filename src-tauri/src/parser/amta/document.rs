@@ -66,7 +66,7 @@ pub struct AmtaFile {
 
 impl AmtaFile {
     pub fn parse(data: &[u8]) -> Result<Self, String> {
-        if !data.starts_with(b"AMTA") || data.len() < 0x1c {
+        if !crate::Settings::Magic::is_amta(data) || data.len() < 0x1c {
             return Err("not an AMTA file".into());
         }
         let (little, byte_order_mark) = match data.get(4..6) {

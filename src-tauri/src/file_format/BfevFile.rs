@@ -44,7 +44,7 @@ impl BfevFile {
     ) -> Option<(OpenedFile<'a>, SendData)> {
         let path = path.as_ref();
         let source = std::fs::read(path).ok()?;
-        let bytes = if source.starts_with(b"BFEVFL") {
+        let bytes = if crate::Settings::Magic::is_evfl(&source) {
             source
         } else {
             zstd.decompressor.decompress_zs(&source).ok()?

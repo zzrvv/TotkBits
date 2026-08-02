@@ -133,7 +133,7 @@ impl ImageDocument {
         }
         let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
         opened.path = crate::Settings::Pathlib::new(path);
-        opened.file_type = if data.starts_with(b"BNTX") || bntx_dictionary.is_some() {
+        opened.file_type = if crate::Settings::Magic::is_bntx(&data) || bntx_dictionary.is_some() {
             crate::Zstd::TotkFileType::Bntx
         } else {
             crate::Zstd::TotkFileType::Other
@@ -177,9 +177,7 @@ impl ImageDocument {
         let source = std::fs::read(path)?;
         let data = maybe_zstd(&source, zstd)?;
         let mut entries = Vec::new();
-        let (rgba, format, mip_count, dds_type) = if data.starts_with(b"GT1G")
-            || data.starts_with(b"G1TG")
-        {
+        let (rgba, format, mip_count, dds_type) = if crate::Settings::Magic::is_g1t(&data) {
             let archive = crate::parser::AOC::g1t::G1tFile::parse(&data)?;
             entries = archive
                 .textures
@@ -223,7 +221,7 @@ impl ImageDocument {
                 1,
                 Some(format!("0x{:02X}", texture.texture_type)),
             )
-        } else if data.starts_with(b"BNTX") {
+        } else if crate::Settings::Magic::is_bntx(&data) {
             let bntx = crate::parser::bntx::BntxFile::parse(&data).map_err(invalid)?;
             entries = bntx
                 .textures
@@ -390,7 +388,7 @@ impl ImageDocument {
                 u32::from(txtg.header.mip_count),
                 Some(format_name),
             )
-        } else if data.starts_with(b"DDS ") {
+        } else if crate::Settings::Magic::is_dds(&data) {
             let header = super::dds::DdsHeader::parse(&data)?;
             let dds = image_dds::ddsfile::Dds::read(&mut std::io::Cursor::new(&data))
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
@@ -690,18 +688,17 @@ impl ImageDocument {
     }
 
     fn supports(path: &Path, data: &[u8], zstd: Option<&crate::Zstd::TotkZstd<'_>>) -> bool {
-        if data.starts_with(b"DDS ")
-            || data.starts_with(b"BNTX")
-            || data.starts_with(b"GT1G")
-            || data.starts_with(b"G1TG")
+        if crate::Settings::Magic::is_dds(data)
+            || crate::Settings::Magic::is_bntx(data)
+            || crate::Settings::Magic::is_g1t(data)
             || data.get(4..8) == Some(b"6PK0")
-            || data.starts_with(b"\x89PNG\r\n\x1a\n")
+            || crate::Settings::Magic::is_png(data)
         {
             return true;
         }
-        if data.starts_with(b"\x28\xB5\x2F\xFD") {
+        if crate::Settings::Magic::is_zstd(data) {
             if let Ok(decoded) = maybe_zstd(data, zstd) {
-                return decoded.starts_with(b"BNTX");
+                return crate::Settings::Magic::is_bntx(&decoded);
             }
         }
         matches!(
@@ -746,7 +743,7 @@ fn subimages(array_count: u32, mip_count: u32, width: u32, height: u32) -> Vec<I
 }
 
 fn maybe_zstd(data: &[u8], zstd: Option<&crate::Zstd::TotkZstd<'_>>) -> io::Result<Vec<u8>> {
-    if data.starts_with(b"\x28\xB5\x2F\xFD") {
+    if crate::Settings::Magic::is_zstd(data) {
         if let Some(zstd) = zstd {
             decode_compressed_bntx(data, Some(zstd)).map(|(decoded, _)| decoded)
         } else {
@@ -761,10 +758,10 @@ fn decode_compressed_bntx(
     data: &[u8],
     zstd: Option<&crate::Zstd::TotkZstd<'_>>,
 ) -> io::Result<(Vec<u8>, Option<crate::Zstd::ZstdDictionary>)> {
-    if data.starts_with(b"BNTX") {
+    if crate::Settings::Magic::is_bntx(data) {
         return Ok((data.to_vec(), None));
     }
-    if !data.starts_with(b"\x28\xB5\x2F\xFD") {
+    if !crate::Settings::Magic::is_zstd(data) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "data is neither BNTX nor Zstandard",
@@ -772,12 +769,14 @@ fn decode_compressed_bntx(
     }
     let Some(zstd) = zstd else {
         let decoded = crate::Zstd::TotkZstd::decompress_empty(data)?;
-        return decoded
-            .starts_with(b"BNTX")
-            .then_some((decoded, None))
-            .ok_or_else(|| {
-                io::Error::new(io::ErrorKind::InvalidData, "Zstandard payload is not BNTX")
-            });
+        return if crate::Settings::Magic::is_bntx(&decoded) {
+            Ok((decoded, None))
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Zstandard payload is not BNTX",
+            ))
+        };
     };
     for dictionary in [
         crate::Zstd::ZstdDictionary::Zs,
@@ -786,7 +785,7 @@ fn decode_compressed_bntx(
         crate::Zstd::ZstdDictionary::Bcett,
     ] {
         if let Ok(decoded) = zstd.try_decompress_using(data, dictionary) {
-            if decoded.starts_with(b"BNTX") {
+            if crate::Settings::Magic::is_bntx(&decoded) {
                 return Ok((decoded, Some(dictionary)));
             }
         }

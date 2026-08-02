@@ -265,7 +265,7 @@ impl Archive {
                         .ok_or_else(|| invalid("AAMP range overflow"))?,
             )
             .ok_or_else(|| invalid("AAMP range exceeds BPHCL"))?;
-        if wrapper.len() < 0x30 || !wrapper.starts_with(b"AAMP") {
+        if wrapper.len() < 0x30 || !crate::Settings::Magic::is_aamp(wrapper) {
             return Err(invalid("BPHCL parameter archive is not AAMP"));
         }
         let declared = read_u32(wrapper, 0x0c)? as usize;
@@ -631,7 +631,7 @@ impl AampSection {
                     .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "AAMP range overflow"))?,
             )
             .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "AAMP outside BPHCL"))?;
-        if !raw.starts_with(b"AAMP") {
+        if !crate::Settings::Magic::is_aamp(raw) {
             return Err(io::Error::new(
                 ErrorKind::InvalidData,
                 "parameter section is not AAMP",

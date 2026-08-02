@@ -289,7 +289,7 @@ impl G1mFile {
         crate::Open_and_Save::SendData,
     )> {
         let magic = std::fs::read(path).ok()?;
-        if !matches!(magic.get(..4), Some(b"_M1G") | Some(b"G1M_")) {
+        if !crate::Settings::Magic::is_g1m(&magic) {
             return None;
         }
         let mut opened = crate::file_format::BinTextFile::OpenedFile::default();

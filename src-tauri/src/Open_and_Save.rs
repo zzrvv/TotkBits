@@ -1,3 +1,4 @@
+use crate::Settings::Magic;
 use crate::{
     file_format::{
         asb::AsbFile,
@@ -16,10 +17,7 @@ use crate::{
     Comparer::DiffComparer,
     InternalFile::InternalFile,
     Settings::Pathlib,
-    Zstd::{
-        is_aamp, is_ainb, is_asb, is_byml, is_esetb, is_evfl, is_gamedatalist, is_tagproduct,
-        TotkFileType, TotkZstd, ZstdDictionary,
-    },
+    Zstd::{is_esetb, is_gamedatalist, is_tagproduct, TotkFileType, TotkZstd, ZstdDictionary},
 };
 use rfd::{FileDialog, MessageDialog};
 use roead::{aamp::ParameterIO, byml::Byml};
@@ -38,8 +36,7 @@ pub fn get_string_from_data<P: AsRef<Path>>(
     zstd: Arc<TotkZstd>,
 ) -> Option<(InternalFile, String)> {
     let path = filepath.as_ref().to_string_lossy().into_owned();
-    let yaz0_alignment = data
-        .starts_with(b"Yaz0")
+    let yaz0_alignment = Magic::is_yaz0(&data)
         .then(|| TotkZstd::yaz0_alignment(&data))
         .unwrap_or_default();
     let (mut internal_file, text) = get_string_from_decoded_data(&path, data, zstd)?;
@@ -90,7 +87,7 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
         }
     }
 
-    if is_byml(&rawdata) {
+    if Magic::is_byml(&rawdata) {
         if let Ok(file_data) = BymlFile::byml_data_to_bytes(&rawdata, zstd.clone()) {
             if let Ok(byml_file) = BymlFile::from_binary(file_data, zstd.clone(), path.clone()) {
                 let text = byml_file.to_string();
@@ -105,7 +102,7 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
         println!("Unable to parse named BYML archive entry {path}");
         return None;
     }
-    if is_asb(&rawdata) {
+    if Magic::is_asb(&rawdata) {
         if let Ok(text) = AsbFile::binary_to_text(&rawdata) {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
@@ -115,7 +112,7 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
         }
     }
 
-    if is_ainb(&rawdata) {
+    if Magic::is_ainb(&rawdata) {
         if let Ok(text) = AinbFile::binary_to_text(&rawdata) {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
@@ -124,7 +121,7 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
             return Some((internal_file, text));
         }
     }
-    if is_evfl(&rawdata) {
+    if Magic::is_evfl(&rawdata) {
         if let Ok(text) = BfevFile::binary_to_text(&rawdata) {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
@@ -137,7 +134,7 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
         return Some(xlink);
     }
 
-    if is_aamp(&rawdata) {
+    if Magic::is_aamp(&rawdata) {
         let pio = ParameterIO::from_binary(&rawdata).ok()?;
         let text = crate::file_format::bphcl::safe_aamp_yaml(&pio).ok()?;
         internal_file.endian = None;
@@ -678,7 +675,7 @@ mod remembered_compression_tests {
         let compressed =
             apply_remembered_compression(raw, &app.zstd, ZstdDictionary::Yaz0, 0x80).unwrap();
 
-        assert!(compressed.starts_with(b"Yaz0"));
+        assert!(Magic::is_yaz0(&compressed));
         assert_eq!(TotkZstd::yaz0_alignment(&compressed), 0x80);
         assert_eq!(TotkZstd::decompress_yaz0(&compressed).unwrap(), raw);
     }
@@ -704,7 +701,7 @@ mod internal_format_tests {
         );
         assert_ne!(edited, text);
         let rebuilt = AinbFile::text_to_binary(&edited).unwrap();
-        assert!(rebuilt.starts_with(b"AIB "));
+        assert!(Magic::is_ainb(&rebuilt));
         assert!(!rebuilt.is_empty());
         assert_ne!(rebuilt, bytes);
         let reparsed = AinbFile::binary_to_text(&rebuilt).unwrap();

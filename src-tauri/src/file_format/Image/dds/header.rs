@@ -9,7 +9,7 @@ pub struct DdsHeader {
 
 impl DdsHeader {
     pub fn parse(data: &[u8]) -> io::Result<Self> {
-        if data.len() < 128 || !data.starts_with(b"DDS ") {
+        if data.len() < 128 || !crate::Settings::Magic::is_dds(data) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "invalid DDS header",

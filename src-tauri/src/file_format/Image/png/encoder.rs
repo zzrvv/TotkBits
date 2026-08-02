@@ -15,6 +15,6 @@ mod tests {
     fn emits_png_signature() {
         let image = image::RgbaImage::from_pixel(2, 2, image::Rgba([10, 20, 30, 255]));
         let png = super::encode(&image).unwrap();
-        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert!(crate::Settings::Magic::is_png(&png));
     }
 }

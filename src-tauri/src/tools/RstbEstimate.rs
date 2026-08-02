@@ -1,6 +1,7 @@
 use crate::{
     file_format::Pack::get_sarc_entries_data,
-    Zstd::{is_sarc, is_zstd, sha256, TotkFileType, TotkZstd},
+    Settings::Magic,
+    Zstd::{sha256, TotkFileType, TotkZstd},
 };
 use roead::sarc::Sarc;
 use std::{
@@ -218,7 +219,7 @@ impl<'a> RstbEstimator<'a> {
         data: &[u8],
     ) -> Result<u32, RstbEstimateError> {
         let path = normalize_path(resource_path.as_ref());
-        if !path.ends_with(".ta.zs") && is_zstd(data) {
+        if !path.ends_with(".ta.zs") && Magic::is_zstd(data) {
             return Err(RstbEstimateError::new(
                 "compressed Zstandard input requires estimate_maybe_compressed",
             ));
@@ -247,7 +248,7 @@ impl<'a> RstbEstimator<'a> {
         data: &'b [u8],
     ) -> Result<Cow<'b, [u8]>, RstbEstimateError> {
         let path = normalize_path(resource_path);
-        if !path.ends_with(".ta.zs") && is_zstd(data) {
+        if !path.ends_with(".ta.zs") && Magic::is_zstd(data) {
             let (decompressed, _) = self
                 .zstd
                 .try_decompress_for_path(resource_path, data)
@@ -411,7 +412,13 @@ impl SizeRule {
                 ));
             }
             TotkFileType::Aamp
+            | TotkFileType::Archive
+            | TotkFileType::Bars
+            | TotkFileType::Compressed
+            | TotkFileType::Fbx
+            | TotkFileType::G1M
             | TotkFileType::Hkcl
+            | TotkFileType::Image
             | TotkFileType::Msbt
             | TotkFileType::Other
             | TotkFileType::SmoSaveFile => rule_from_path(resource_path),
@@ -718,14 +725,14 @@ fn strip_zstd_suffix(path: &str) -> String {
 }
 
 fn sarc_payload(data: &[u8]) -> Result<Option<Cow<'_, [u8]>>, RstbEstimateError> {
-    if is_sarc(data) {
+    if Magic::is_sarc(data) {
         return Ok(Some(Cow::Borrowed(data)));
     }
-    if data.starts_with(b"Yaz0") {
+    if Magic::is_yaz0(data) {
         let decompressed = TotkZstd::decompress_yaz0(data).map_err(|error| {
             RstbEstimateError::new(format!("failed to decompress Yaz0 data: {error}"))
         })?;
-        if is_sarc(&decompressed) {
+        if Magic::is_sarc(&decompressed) {
             return Ok(Some(Cow::Owned(decompressed)));
         }
     }

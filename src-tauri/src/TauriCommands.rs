@@ -101,7 +101,7 @@ pub fn inspect_3d_model(
     let data = documents.with(&documentId, |app| {
         app.zstd.try_decompress_safe(&source_data)
     });
-    if data.starts_with(b"Kaydara FBX Binary") {
+    if crate::Settings::Magic::is_fbx(&data) {
         serde_json::to_value(
             crate::parser::fbx::FbxFile::parse(
                 &data,
@@ -113,7 +113,7 @@ pub fn inspect_3d_model(
             .map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())
-    } else if data.starts_with(b"_M1G") || data.starts_with(b"G1M_") {
+    } else if crate::Settings::Magic::is_g1m(&data) {
         let g1m = crate::parser::AOC::g1m::G1mFile::parse(
             &data,
             Path::new(&path)
@@ -222,7 +222,7 @@ pub fn export_viewport_png(output: String, data_url: String) -> Result<String, S
     let png = base64::engine::general_purpose::STANDARD
         .decode(encoded)
         .map_err(|error| error.to_string())?;
-    if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
+    if !crate::Settings::Magic::is_png(&png) {
         return Err("viewport render did not produce a PNG".into());
     }
     if let Some(parent) = Path::new(&output).parent() {

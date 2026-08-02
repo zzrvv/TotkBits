@@ -11,9 +11,10 @@ use std::sync::Arc;
 //mod Zstd;
 
 use crate::Open_and_Save::SendData;
+use crate::Settings::Magic;
 use crate::Settings::{makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{is_sarc, sha256, TotkFileType, TotkZstd, ZstdDictionary};
+use crate::Zstd::{sha256, TotkFileType, TotkZstd, ZstdDictionary};
 
 // use super::SarcEntriesData::get_sarc_entries_data;
 
@@ -540,18 +541,17 @@ impl<'a> PackFile<'_> {
     // }
 
     pub fn from_binary(data: &[u8], zstd: Arc<TotkZstd<'a>>) -> io::Result<PackFile<'a>> {
-        let yaz0_alignment = data
-            .starts_with(b"Yaz0")
+        let yaz0_alignment = Magic::is_yaz0(data)
             .then(|| TotkZstd::yaz0_alignment(data))
             .unwrap_or_default();
-        let (rawdata, compression) = if is_sarc(&data) {
+        let (rawdata, compression) = if Magic::is_sarc(&data) {
             (data.to_vec(), ZstdDictionary::None)
-        } else if data.starts_with(b"Yaz0") {
+        } else if Magic::is_yaz0(&data) {
             (TotkZstd::decompress_yaz0(data)?, ZstdDictionary::Yaz0)
         } else {
             zstd.try_decompress_all_ordered_safe(data, "some_example.pack.zs")
         };
-        if !is_sarc(&rawdata) {
+        if !Magic::is_sarc(&rawdata) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "ERROR: Not a sarc data",
@@ -586,13 +586,13 @@ impl<'a> PackFile<'_> {
         let mut f_handle: fs::File = fs::File::open(&path)?;
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;
-        if buffer.starts_with(b"Yaz0") {
+        if Magic::is_yaz0(&buffer) {
             self.yaz0_alignment = TotkZstd::yaz0_alignment(&buffer);
             if let Ok(dec_data) = TotkZstd::decompress_yaz0(&buffer) {
                 buffer = dec_data;
                 self.compression = Some(ZstdDictionary::Yaz0);
             }
-            if is_sarc(&buffer) {
+            if Magic::is_sarc(&buffer) {
                 self.data = buffer.clone();
                 self.sarc = Sarc::new(buffer)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
@@ -606,7 +606,7 @@ impl<'a> PackFile<'_> {
             .ends_with(".zs")
         {
             if let Ok(dec_data) = self.zstd.decompress_pack(&buffer) {
-                if is_sarc(&dec_data) {
+                if Magic::is_sarc(&dec_data) {
                     self.data = dec_data.clone();
                     self.sarc = Sarc::new(dec_data)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
@@ -616,7 +616,7 @@ impl<'a> PackFile<'_> {
                 }
             }
             if let Ok(dec_data) = self.zstd.decompressor.decompress_zs(&buffer) {
-                if is_sarc(&dec_data) {
+                if Magic::is_sarc(&dec_data) {
                     self.data = dec_data.clone();
                     self.sarc = Sarc::new(dec_data)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
@@ -626,7 +626,7 @@ impl<'a> PackFile<'_> {
                 }
             }
         }
-        if is_sarc(&buffer) {
+        if Magic::is_sarc(&buffer) {
             self.compression = None;
             self.data = buffer.clone();
             self.sarc =
@@ -742,7 +742,7 @@ mod tests {
         assert!(destination.is_file());
         let saved = fs::read(&destination).expect("read saved SARC");
         let _ = fs::remove_file(destination);
-        assert!(is_sarc(&saved));
+        assert!(Magic::is_sarc(&saved));
     }
 
     #[test]
@@ -764,7 +764,7 @@ mod tests {
             .unwrap();
         let actual = fs::read(&destination).unwrap();
         let _ = fs::remove_file(destination);
-        assert!(actual.starts_with(b"Yaz0"));
+        assert!(Magic::is_yaz0(&actual));
         assert_eq!(TotkZstd::yaz0_alignment(&actual), pack.yaz0_alignment);
         assert_eq!(
             TotkZstd::decompress_yaz0(&actual).unwrap(),

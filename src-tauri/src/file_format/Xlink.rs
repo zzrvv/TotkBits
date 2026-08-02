@@ -7,8 +7,9 @@ use crate::{
     file_format::BinTextFile::OpenedFile,
     InternalFile::InternalFile,
     Open_and_Save::SendData,
+    Settings::Magic,
     Settings::Pathlib,
-    Zstd::{is_xlink, TotkFileType, TotkZstd, ZstdDictionary},
+    Zstd::{TotkFileType, TotkZstd, ZstdDictionary},
 };
 
 /// A lazily-created handle to the native XLink converter.
@@ -34,14 +35,14 @@ impl<'a> Xlink_rs<'a> {
     }
 
     pub fn binary_to_yaml(&self, data: &[u8]) -> io::Result<String> {
-        let rawdata = if is_xlink(data) {
+        let rawdata = if Magic::is_xlink(data) {
             data.to_vec()
         } else {
             self.zstd
                 .try_decompress(data)
                 .map_err(|err| io::Error::other(err.to_string()))?
         };
-        if !is_xlink(&rawdata) {
+        if !Magic::is_xlink(&rawdata) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "not a valid XLink binary (missing XLNK magic)",
@@ -76,7 +77,7 @@ impl<'a> Xlink_rs<'a> {
             }
             let binary = std::slice::from_raw_parts(binary_ptr as *const u8, out_size).to_vec();
             xlink_bindings::free_binary(binary_ptr);
-            if !is_xlink(&binary) {
+            if !Magic::is_xlink(&binary) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     "XLink converter returned binary data without XLNK magic",
@@ -93,7 +94,7 @@ impl<'a> Xlink_rs<'a> {
         compression: Option<ZstdDictionary>,
     ) -> Option<(InternalFile<'static>, String)> {
         let path = path.as_ref();
-        if !is_xlink(data) {
+        if !Magic::is_xlink(data) {
             return None;
         }
         let text = match Self::new(zstd).and_then(|xlink| xlink.binary_to_yaml(data)) {
@@ -134,7 +135,7 @@ impl<'a> Xlink_rs<'a> {
         let path = path.as_ref();
         let pathlib = Pathlib::new(path);
         let rawdata = std::fs::read(path).ok()?;
-        if !is_xlink(&rawdata) {
+        if !Magic::is_xlink(&rawdata) {
             return None;
         }
         print!("Is {} an XLink file? ", path.display());
@@ -190,7 +191,7 @@ mod tests {
         let rebuilt = converter
             .yaml_to_binary(&yaml)
             .expect("rebuild ELink from YAML");
-        assert!(crate::Zstd::is_xlink(&rebuilt));
+        assert!(crate::Settings::Magic::is_xlink(&rebuilt));
     }
 
     #[test]
@@ -207,7 +208,7 @@ mod tests {
         let binary = converter
             .yaml_to_binary(&yaml)
             .expect("convert YAML fixture to ELink binary");
-        assert!(crate::Zstd::is_xlink(&binary));
+        assert!(crate::Settings::Magic::is_xlink(&binary));
         let rebuilt_yaml = converter
             .binary_to_yaml(&binary)
             .expect("convert rebuilt ELink binary to YAML");

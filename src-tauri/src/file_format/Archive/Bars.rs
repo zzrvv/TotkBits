@@ -51,7 +51,7 @@ fn safe_name(value: &str, index: usize) -> String {
 }
 
 fn amta_name(data: &[u8], index: usize) -> String {
-    if !data.starts_with(b"AMTA") || data.len() < 0x1c {
+    if !crate::Settings::Magic::is_amta(data) || data.len() < 0x1c {
         return format!("asset_{index:04}");
     }
     if data.get(7) == Some(&5) && data.len() >= 0x28 {
@@ -96,7 +96,7 @@ fn audio_extension(data: &[u8]) -> &'static str {
 
 impl ArchiveCodec for BarsFile {
     fn from_bytes(data: &[u8]) -> ArchiveResult<Self> {
-        if !data.starts_with(b"BARS") || data.len() < 0x10 {
+        if !crate::Settings::Magic::is_bars(data) || data.len() < 0x10 {
             return Err("not a BARS archive".into());
         }
         let declared = u32_at(data, 4)? as usize;
@@ -281,7 +281,7 @@ mod tests {
                 if name.ends_with(".bfwav") || name.ends_with(".bwav") {
                     let decoded = crate::file_format::Audio::decode(data)
                         .unwrap_or_else(|error| panic!("{}::{name}: {error}", path.display()));
-                    if data.starts_with(b"BWAV")
+                    if crate::Settings::Magic::is_bwav(data)
                         && !decoded.channels.first().is_none_or(Vec::is_empty)
                     {
                         let codec = u16::from_le_bytes([data[0x10], data[0x11]]);

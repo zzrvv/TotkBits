@@ -17,7 +17,7 @@ pub struct ResourceSizeTable {
 }
 impl ResourceSizeTable {
     pub fn from_bytes(data: &[u8]) -> Result<Self, RstbError> {
-        if !(data.starts_with(b"RSTB") || data.starts_with(b"RESTBL")) {
+        if !crate::Settings::Magic::is_restbl(data) {
             return Err(RstbError::InvalidMagic);
         }
         let mut errors = None;
@@ -30,7 +30,7 @@ impl ResourceSizeTable {
         Err(errors.unwrap_or(RstbError::InvalidMagic))
     }
     fn parse(data: &[u8], endian: Endian) -> Result<Self, RstbError> {
-        let dynamic = data.starts_with(b"RESTBL");
+        let dynamic = crate::Settings::Magic::is_restbl_dynamic(data);
         let mut r = BinaryReader::with_endian(data, endian);
         let header = if dynamic {
             r.read_bytes(6)?;

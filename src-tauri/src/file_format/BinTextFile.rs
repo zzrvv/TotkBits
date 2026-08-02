@@ -4,8 +4,9 @@ use super::Rstb::Restbl;
 use crate::file_format::TagProduct::TagProduct;
 use crate::parser::msbt::Msbt;
 use crate::Open_and_Save::SendData;
+use crate::Settings::Magic;
 use crate::Settings::Pathlib;
-use crate::Zstd::{is_byml, is_gamedatalist, TotkFileType, TotkZstd, ZstdDictionary};
+use crate::Zstd::{is_gamedatalist, TotkFileType, TotkZstd, ZstdDictionary};
 use regex::Regex;
 use roead::byml::Byml;
 use std::any::type_name;
@@ -158,19 +159,19 @@ impl<'a> BymlFile<'_> {
     }
 
     pub fn get_endiannes_from_self(&self) -> roead::Endian {
-        if self.file_data.data.starts_with(b"BY") {
+        if Magic::is_byml_big_endian(&self.file_data.data) {
             return roead::Endian::Big;
-        } else if self.file_data.data.starts_with(b"YB") {
+        } else if Magic::is_byml_little_endian(&self.file_data.data) {
             return roead::Endian::Little;
         }
         return roead::Endian::Little;
     }
 
     pub fn get_endiannes(data: &Vec<u8>) -> Option<roead::Endian> {
-        if data.starts_with(b"BY") {
+        if Magic::is_byml_big_endian(data) {
             return Some(roead::Endian::Big);
         }
-        if data.starts_with(b"YB") {
+        if Magic::is_byml_little_endian(data) {
             return Some(roead::Endian::Little);
         }
         None
@@ -182,14 +183,14 @@ impl<'a> BymlFile<'_> {
     ) -> Result<FileData, io::Error> {
         let mut buffer = rawdata.clone();
         let mut data = FileData::new();
-        if buffer.starts_with(b"Yaz0") {
+        if Magic::is_yaz0(&buffer) {
             data.yaz0_alignment = TotkZstd::yaz0_alignment(&buffer);
             if let Ok(dec_data) = TotkZstd::decompress_yaz0(&buffer) {
                 buffer = dec_data;
                 data.compression = Some(ZstdDictionary::Yaz0);
             }
         }
-        if is_byml(&buffer) {
+        if Magic::is_byml(&buffer) {
             //regular byml file,
             data.data = buffer;
             data.file_type = TotkFileType::Byml;
@@ -198,7 +199,7 @@ impl<'a> BymlFile<'_> {
             match zstd.decompressor.decompress_zs(&buffer) {
                 //regular byml file compressed with zs
                 Ok(res) => {
-                    if is_byml(&res) {
+                    if Magic::is_byml(&res) {
                         data.data = res;
                         data.file_type = TotkFileType::Byml;
                         data.compression = Some(ZstdDictionary::Zs);
@@ -207,13 +208,13 @@ impl<'a> BymlFile<'_> {
                 Err(_err) => {}
             }
         }
-        if !is_byml(&data.data) {
+        if !Magic::is_byml(&data.data) {
             match zstd.decompressor.decompress_bcett(&buffer) {
                 //bcett map file
                 Ok(res) => {
                     data.data = res;
                     data.file_type = TotkFileType::Byml;
-                    if is_byml(&data.data) {
+                    if Magic::is_byml(&data.data) {
                         data.file_type = TotkFileType::Bcett;
                         data.compression = Some(ZstdDictionary::Bcett);
                     }
@@ -222,7 +223,7 @@ impl<'a> BymlFile<'_> {
             }
         }
 
-        if !is_byml(&data.data) {
+        if !Magic::is_byml(&data.data) {
             match zstd.try_decompress(&buffer) {
                 //try decompressing with other dicts
                 Ok(res) => {
@@ -232,7 +233,7 @@ impl<'a> BymlFile<'_> {
                 Err(_err) => {}
             }
         }
-        if is_byml(&data.data) {
+        if Magic::is_byml(&data.data) {
             if data.file_type != TotkFileType::Bcett {
                 data.file_type = TotkFileType::Byml;
             }
@@ -256,10 +257,10 @@ impl<'a> BymlFile<'_> {
         println!(
             "[BYML] Binary comp dict {:?}, is byml? {}",
             &compression,
-            is_byml(&rawdata)
+            Magic::is_byml(&rawdata)
         );
 
-        if !is_byml(&rawdata) {
+        if !Magic::is_byml(&rawdata) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!("File {} is not a byml file", &path.display()),

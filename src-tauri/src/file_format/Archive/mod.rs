@@ -101,16 +101,13 @@ pub fn detect_archive_magic(data: &[u8]) -> Option<ArchiveMagic> {
     if data.is_empty() {
         return None;
     }
-    if data.starts_with(b"PK\x03\x04")
-        || data.starts_with(b"PK\x05\x06")
-        || data.starts_with(b"PK\x07\x08")
-    {
+    if crate::Settings::Magic::is_zip(data) {
         Some(ArchiveMagic::Zip)
-    } else if data.starts_with(b"7z\xBC\xAF\x27\x1C") {
+    } else if crate::Settings::Magic::is_seven_zip(data) {
         Some(ArchiveMagic::SevenZip)
-    } else if data.starts_with(b"Rar!\x1A\x07\x00") || data.starts_with(b"Rar!\x1A\x07\x01\x00") {
+    } else if crate::Settings::Magic::is_rar(data) {
         Some(ArchiveMagic::Rar)
-    } else if data.starts_with(b"BARS") {
+    } else if crate::Settings::Magic::is_bars(data) {
         Some(ArchiveMagic::Bars)
     } else {
         None
@@ -229,18 +226,20 @@ impl ArchiveDocument {
         let source =
             fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
         let decompressed;
-        // Only BARS uses the archive layer's Zs wrapper. Other ZSTD-framed
-        // formats (notably BCETT BYML) need their own dictionaries and must be
-        // allowed to continue to their format-specific openers.
-        let lower_path = path.to_string_lossy().to_ascii_lowercase();
-        // let bars_path = lower_path.ends_with(".bars") || lower_path.ends_with(".bars.zs");
-        let dictionary = (source.starts_with(b"\x28\xB5\x2F\xFD") && zstd.is_some())
-            .then_some(ZstdDictionary::Zs);
-        let bytes = if let Some(dictionary) = dictionary {
-            let decoder = zstd.ok_or("zs decompressor is unavailable")?;
-            decompressed = decoder
-                .try_decompress_using(&source, dictionary)
-                .map_err(|e| format!("failed to decompress BARS with {dictionary:?}: {e}"))?;
+        let mut dictionary = None;
+        let bytes = if crate::Settings::Magic::is_zstd(&source) {
+            let Some(decoder) = zstd else {
+                return Ok(None);
+            };
+            let Ok((data, detected_dictionary)) = decoder.try_decompress_with_dictionary(&source)
+            else {
+                return Ok(None);
+            };
+            decompressed = data;
+            if detect_archive_magic(&decompressed).is_none() {
+                return Ok(None);
+            }
+            dictionary = Some(detected_dictionary);
             decompressed.as_slice()
         } else {
             source.as_slice()
@@ -641,12 +640,12 @@ mod tests {
             .save_atomic_with_zstd(&path, &app.zstd)
             .expect("failed to save zs-compressed BARS");
         let saved = fs::read(&path).expect("failed to read saved BARS");
-        assert!(saved.starts_with(b"\x28\xB5\x2F\xFD"));
+        assert!(crate::Settings::Magic::is_zstd(&saved));
         let decoded = app
             .zstd
             .try_decompress_using(&saved, crate::Zstd::ZstdDictionary::Zs)
             .expect("saved BARS is not valid zs compression");
-        assert!(decoded.starts_with(b"BARS"));
+        assert!(crate::Settings::Magic::is_bars(&decoded));
         let _ = fs::remove_file(path);
     }
 

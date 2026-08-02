@@ -59,7 +59,7 @@ pub struct DecodedAudio {
 }
 
 pub fn decode(data: &[u8]) -> Result<DecodedAudio, String> {
-    if !data.starts_with(b"FWAV") || data.len() < 0x20 {
+    if !crate::Settings::Magic::is_bfwav(data) || data.len() < 0x20 {
         return Err("not a BFWAV file".into());
     }
     let endian = match &data[4..6] {

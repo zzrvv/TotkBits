@@ -1,4 +1,3 @@
-use crate::parser::hkcl::header::PACKFILE_MAGIC;
 use crate::parser::hkcl::{HkclDocument, HkclLeaf};
 use std::io::ErrorKind;
 use std::{io, path::Path};
@@ -34,7 +33,7 @@ impl HkclFile {
     }
 
     pub fn from_binary(data: &[u8], path: Option<&Path>) -> io::Result<Self> {
-        if !Self::is_hkcl_magic(data) {
+        if !crate::Settings::Magic::is_hkcl(data) {
             return Err(io::Error::new(
                 ErrorKind::InvalidData,
                 "missing HKCL Havok packfile header",
@@ -46,11 +45,6 @@ impl HkclFile {
             source_path: path.map(|path| path.to_string_lossy().into_owned()),
             document,
         })
-    }
-
-    #[inline]
-    pub fn is_hkcl_magic(data: &[u8]) -> bool {
-        data.starts_with(&PACKFILE_MAGIC)
     }
 
     pub fn open(

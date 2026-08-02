@@ -205,11 +205,11 @@ impl Pathlib {
             return None;
         };
         let data = zstd.try_decompress_safe(&source);
-        if data.starts_with(b"FRES") {
+        if crate::Settings::Magic::is_bfres(&data) {
             Some("bfres")
-        } else if data.starts_with(b"G1M_") || data.starts_with(b"_M1G") {
+        } else if crate::Settings::Magic::is_g1m(&data) {
             Some("g1m")
-        } else if data.starts_with(b"Kaydara FBX Binary") {
+        } else if crate::Settings::Magic::is_fbx(&data) {
             Some("fbx")
         } else {
             None

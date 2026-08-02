@@ -114,7 +114,7 @@ impl FbxFile {
         // }
 
         let data = std::fs::read(path).ok()?;
-        if !data.starts_with(b"Kaydara FBX Binary") {
+        if !crate::Settings::Magic::is_fbx(&data) {
             return None;
         }
         let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
