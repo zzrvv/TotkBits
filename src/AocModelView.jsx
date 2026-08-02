@@ -12,6 +12,7 @@ export default function AocModelView({ activeTab }) {
     const minCharCount = 3;
     const [filter, setFilter] = useState('');
     const [hideMissingPreviews, setHideMissingPreviews] = useState(false);
+    const [hideFarLod, setHideFarLod] = useState(true);
     const [missingPreviewHashes, setMissingPreviewHashes] = useState(() => new Set());
     const [selectedHashes, setSelectedHashes] = useState(() => new Set());
     const query = filter.trim().toLowerCase();
@@ -20,11 +21,12 @@ export default function AocModelView({ activeTab }) {
         return Object.entries(aocModelCatalog)
             .filter(([hash, name]) => String(hash).toLowerCase().includes(query)
                 || String(name).toLowerCase().includes(query))
+            .filter(([, name]) => !hideFarLod || !String(name).toLowerCase().includes('far'))
             .sort((left, right) => String(left[1]).localeCompare(String(right[1]), undefined, {
                 numeric: true,
                 sensitivity: 'base',
             }));
-    }, [aocModelCatalog, query]);
+    }, [aocModelCatalog, query, hideFarLod]);
     const matches = useMemo(() => hideMissingPreviews
         ? allMatches.filter(([hash]) => !missingPreviewHashes.has(hash))
         : allMatches, [allMatches, hideMissingPreviews, missingPreviewHashes]);
@@ -106,14 +108,26 @@ export default function AocModelView({ activeTab }) {
                 placeholder="Filter by hash or name"
                 aria-label="Filter AOC models"
             />
-            <label className="aoc-model-preview-filter">
-                <input
-                    type="checkbox"
-                    checked={hideMissingPreviews}
-                    onChange={(event) => setHideMissingPreviews(event.target.checked)}
-                />
-                Hide entries without preview image
-            </label>
+            <div className="aoc-model-filters">
+                <div className="aoc-model-preview-filter">
+                    <input
+                        type="checkbox"
+                        checked={hideMissingPreviews}
+                        onChange={(event) => setHideMissingPreviews(event.target.checked)}
+                        aria-label="Hide entries without preview image"
+                    />
+                    <span>Hide entries without preview image</span>
+                </div>
+                <div className="aoc-model-preview-filter">
+                    <input
+                        type="checkbox"
+                        checked={hideFarLod}
+                        onChange={(event) => setHideFarLod(event.target.checked)}
+                        aria-label="Hide far/LOD"
+                    />
+                    <span>Hide far/LOD</span>
+                </div>
+            </div>
             {selectedHashes.size > 0 && <div className="aoc-model-selection-actions">
                 {selectedHashes.size > 1 && <button
                     className="aoc-model-import-selected"

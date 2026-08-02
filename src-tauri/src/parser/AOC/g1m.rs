@@ -1622,6 +1622,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn supplied_73c7ab44_resolves_character_singleton_textures() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_aocss/73c7ab44.g1m");
+        if !path.is_file() {
+            return;
+        }
+        let pair = paired_texture_info(&path).unwrap();
+        assert_eq!(pair.ktid_hash.as_deref(), Some("52b84bb7"));
+        assert_eq!(
+            pair.kidsobjdb.as_deref(),
+            Some("CharacterEditor.kidssingletondb")
+        );
+        let Ok(config) = crate::TotkConfig::TotkConfig::safe_new(false) else {
+            return;
+        };
+        if config.aoc_path.is_empty() {
+            return;
+        }
+        let model = G1mFile::from_path(&path).unwrap();
+        let resolution = model.resolve_textures(&path, Path::new(&config.aoc_path));
+        assert!(resolution
+            .textures
+            .iter()
+            .any(|texture| texture.name == "1"));
+        assert!(resolution
+            .textures
+            .iter()
+            .any(|texture| texture.name == "7"));
+    }
+
+    #[test]
     fn parses_legacy_g1m_corpus() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/g1m");
         let mut parsed = 0;

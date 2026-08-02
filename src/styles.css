@@ -566,20 +566,26 @@ button {
   background: #25282d;
 }
 
+.aoc-model-view .aoc-model-filters {
+  display: flex;
+  justify-content: space-between;
+  width: min(720px, 100%);
+  margin-top: 10px;
+}
+
 .aoc-model-view .aoc-model-preview-filter {
   display: flex;
   align-items: center;
   gap: 8px;
   width: fit-content;
-  margin-top: 10px;
   color: #c9d0d8;
-  cursor: pointer;
 }
 
 .aoc-model-view .aoc-model-preview-filter input {
   width: auto;
   margin: 0;
   accent-color: #4f91c5;
+  cursor: pointer;
 }
 
 .aoc-model-results {

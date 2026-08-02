@@ -233,7 +233,8 @@ function buildWeightPreview(render) {
     });
 }
 
-function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, glow, weightBone, weightPreviewColors, showNormals, onSelect, textures }) {
+function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, culling, viewMode, uvIndex, celShading, glow, weightBone, weightPreviewColors, showNormals, onSelect, textures }) {
+    const materialSide = culling ? THREE.FrontSide : THREE.DoubleSide;
     const usesMaterialUvs = viewMode === 'default';
     ['base', 'normal', 'roughness', 'metalness', 'emission', 'mask', 'specular', 'ambientOcclusion'].forEach((kind) => {
         if (textures[kind]) textures[kind].channel = usesMaterialUvs ? (textures[`${kind}Uv`] ?? 0) : uvIndex;
@@ -245,9 +246,9 @@ function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, glo
         const positions = new Float32Array(mesh.positions.flat());
         const normals = mesh.normals.length === mesh.positions.length ? new Float32Array(mesh.normals.flat()) : null;
         // Smooth-skinned and unskinned vertices are stored in model bind space.
-        // One-bone shapes are stored in bone-local space and need their rest-pose
-        // bone transform restored (the inverse operation used by BFRES writers).
-        if (mesh.vertex_skin_count === 1 && bones.length) {
+        // BFRES one-bone shapes are stored in bone-local space and need their
+        // rest transform restored. G1M rigid vertices are already in model space.
+        if (applyRigidTransform && mesh.vertex_skin_count === 1 && bones.length) {
             const worlds = boneWorldMatrices(bones, scaleMode);
             for (let index = 0; index < mesh.positions.length; index += 1) {
                 const boneIndex = mesh.bone_indices[index]?.[0] ?? mesh.bone_index;
@@ -322,7 +323,7 @@ function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, glo
         result.setIndex(mesh.indices);
         result.computeBoundingSphere();
         return result;
-    }, [mesh, bones, scaleMode, viewMode, uvIndex, weightBone, weightPreviewColors]);
+    }, [mesh, bones, scaleMode, applyRigidTransform, viewMode, uvIndex, weightBone, weightPreviewColors]);
     useEffect(() => () => geometry.dispose(), [geometry]);
     const normalLines = useMemo(() => {
         const lineGeometry = new THREE.BufferGeometry();
@@ -346,32 +347,32 @@ function RenderMesh({ mesh, bones, scaleMode, viewMode, uvIndex, celShading, glo
     return <group>
         <mesh geometry={geometry} visible={!mesh.hidden} onClick={(event) => { event.stopPropagation(); onSelect(mesh); }} castShadow receiveShadow>
             {viewMode === 'normal'
-                ? <meshNormalMaterial wireframe={false} side={THREE.DoubleSide} />
+                ? <meshNormalMaterial wireframe={false} side={materialSide} />
                 : viewMode === 'blank'
-                    ? <meshStandardMaterial color="#aeb8c2" roughness={0.8} metalness={0} side={THREE.DoubleSide} />
+                    ? <meshStandardMaterial color="#aeb8c2" roughness={0.8} metalness={0} side={materialSide} />
                 : viewMode === 'normalMap' && textures.normal
-                    ? <meshBasicMaterial key={`normal-${uvIndex}`} map={textures.normal} side={THREE.DoubleSide} />
+                    ? <meshBasicMaterial key={`normal-${uvIndex}`} map={textures.normal} side={materialSide} />
                 : viewMode === 'specularMap' && textures.specular
-                    ? <meshBasicMaterial key={`specular-${uvIndex}`} map={textures.specular} side={THREE.DoubleSide} />
+                    ? <meshBasicMaterial key={`specular-${uvIndex}`} map={textures.specular} side={materialSide} />
                 : viewMode === 'metalnessMap' && textures.metalness
-                    ? <meshBasicMaterial key={`metalness-${uvIndex}`} map={textures.metalness} side={THREE.DoubleSide} />
+                    ? <meshBasicMaterial key={`metalness-${uvIndex}`} map={textures.metalness} side={materialSide} />
                 : viewMode === 'roughnessMap' && textures.roughness
-                    ? <meshBasicMaterial key={`roughness-${uvIndex}`} map={textures.roughness} side={THREE.DoubleSide} />
+                    ? <meshBasicMaterial key={`roughness-${uvIndex}`} map={textures.roughness} side={materialSide} />
                 : viewMode === 'emissionMap' && textures.emission
-                    ? <meshBasicMaterial key={`emission-${uvIndex}`} map={textures.emission} side={THREE.DoubleSide} />
+                    ? <meshBasicMaterial key={`emission-${uvIndex}`} map={textures.emission} side={materialSide} />
                 : viewMode === 'diffuse' && textures.base
-                    ? <meshBasicMaterial key={`diffuse-${uvIndex}`} map={textures.base} side={THREE.DoubleSide} transparent alphaTest={0.02} />
+                    ? <meshBasicMaterial key={`diffuse-${uvIndex}`} map={textures.base} side={materialSide} transparent alphaTest={0.02} />
                 : celShading && ['default', 'lighting', 'wireframe'].includes(viewMode)
-                    ? <meshToonMaterial key={`cel-${viewMode}`} map={textures.base} normalMap={textures.normal} gradientMap={celGradient} alphaMap={textures.mask} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base} wireframe={viewMode === 'wireframe'} side={THREE.DoubleSide} transparent={Boolean(textures.mask || textures.base)} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
+                    ? <meshToonMaterial key={`cel-${viewMode}`} map={textures.base} normalMap={textures.normal} gradientMap={celGradient} alphaMap={textures.mask} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base} wireframe={viewMode === 'wireframe'} side={materialSide} transparent={Boolean(textures.mask || textures.base)} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
                 : ['default', 'lighting', 'wireframe'].includes(viewMode)
-                    ? <meshPhysicalMaterial key={`${viewMode}-${uvIndex}`} map={textures.base} normalMap={textures.normal} roughnessMap={textures.roughness} metalnessMap={textures.metalness} alphaMap={textures.mask} aoMap={textures.ambientOcclusion} aoMapIntensity={0.35} specularColorMap={textures.specular} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base} wireframe={viewMode === 'wireframe'} roughness={0.72} metalness={viewMode === 'lighting' ? 0 : 0.05} side={THREE.DoubleSide} transparent={Boolean(textures.mask || textures.base)} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
-                    : <meshBasicMaterial vertexColors side={THREE.DoubleSide} />}
+                    ? <meshPhysicalMaterial key={`${viewMode}-${uvIndex}`} map={textures.base} normalMap={textures.normal} roughnessMap={textures.roughness} metalnessMap={textures.metalness} alphaMap={textures.mask} aoMap={textures.ambientOcclusion} aoMapIntensity={0.35} specularColorMap={textures.specular} emissiveMap={glow && viewMode === 'default' ? textures.emission : null} emissive={glow && viewMode === 'default' && textures.emission ? '#ffffff' : '#000000'} vertexColors={!textures.base} wireframe={viewMode === 'wireframe'} roughness={0.72} metalness={viewMode === 'lighting' ? 0 : 0.05} side={materialSide} transparent={Boolean(textures.mask || textures.base)} alphaTest={textures.mask ? 0.2 : textures.base ? 0.02 : 0} />
+                    : <meshBasicMaterial vertexColors side={materialSide} />}
         </mesh>
         {viewMode === 'default' && weightBone >= 0 && !mesh.hidden && <mesh geometry={geometry} renderOrder={2}>
-            <meshBasicMaterial vertexColors transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} side={THREE.DoubleSide} />
+            <meshBasicMaterial vertexColors transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} side={materialSide} />
         </mesh>}
         {mesh.selected && !mesh.hidden && ['default', 'diffuse'].includes(viewMode) && <mesh geometry={geometry} renderOrder={19}>
-            <meshBasicMaterial color="#00d9ff" transparent opacity={0.22} depthTest={false} depthWrite={false} side={THREE.DoubleSide} />
+            <meshBasicMaterial color="#00d9ff" transparent opacity={0.22} depthTest={false} depthWrite={false} side={materialSide} />
         </mesh>}
         {mesh.selected && !mesh.hidden && <lineSegments geometry={selectedEdges} renderOrder={20}><lineBasicMaterial color="#00e5ff" depthTest={false} transparent opacity={1} /></lineSegments>}
         {showNormals && <lineSegments geometry={normalLines}><lineBasicMaterial color="#55e6ff" depthTest={false} transparent opacity={0.8} /></lineSegments>}
@@ -424,7 +425,7 @@ function ViewportCapture({ captureRef }) {
     return null;
 }
 
-function FrontCamera({ render }) {
+function FrontCamera({ render, applyRigidTransform }) {
     const { camera, controls, size } = useThree();
     const bounds = useMemo(() => {
         const box = new THREE.Box3();
@@ -433,7 +434,7 @@ function FrontCamera({ render }) {
         for (const mesh of render.meshes || []) {
             for (let index = 0; index < mesh.positions.length; index += 1) {
                 point.fromArray(mesh.positions[index]);
-                if (mesh.vertex_skin_count === 1) {
+                if (applyRigidTransform && mesh.vertex_skin_count === 1) {
                     const boneIndex = mesh.bone_indices[index]?.[0] ?? mesh.bone_index;
                     if (worlds[boneIndex]) point.applyMatrix4(worlds[boneIndex]);
                 }
@@ -441,7 +442,7 @@ function FrontCamera({ render }) {
             }
         }
         return box;
-    }, [render]);
+    }, [render, applyRigidTransform]);
     useEffect(() => {
         if (bounds.isEmpty()) return;
         const center = bounds.getCenter(new THREE.Vector3());
@@ -468,8 +469,9 @@ function FrontCamera({ render }) {
     return null;
 }
 
-function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShading, glow, showSkeleton, showNormals, weightBone, weightPreviewColors, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes }) {
+function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShading, glow, culling, showSkeleton, showNormals, weightBone, weightPreviewColors, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes }) {
     const textures = useResolvedTextures(bfres?.resolvedTextures);
+    const applyRigidTransform = bfres?.format !== 'G1M';
     return <>
         <SceneExposure brightness={brightness} />
         <color attach="background" args={['#11151b']} />
@@ -478,9 +480,9 @@ function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShadin
         <directionalLight position={[6, 10, 8]} intensity={celShading ? 2.2 : 3.5} />
         <PerspectiveCamera makeDefault position={[0, 0, 10]} up={[0, 1, 0]} fov={42} />
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
-        <FrontCamera render={render} />
+        <FrontCamera render={render} applyRigidTransform={applyRigidTransform} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
-        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
+        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} applyRigidTransform={applyRigidTransform} culling={culling} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
         {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} />}
     </>;
 }
@@ -638,6 +640,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [panel, setPanel] = useState('resources');
     const [viewMode, setViewMode] = useState('default');
     const [celShading, setCelShading] = useState(true);
+    const [culling, setCulling] = useState(true);
     const [glow, setGlow] = useState(false);
     const [uvIndex, setUvIndex] = useState(0);
     const [brightness, setBrightness] = useState(1.0);
@@ -987,7 +990,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
                 <Canvas key={viewResetKey} dpr={[1, 2]} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
                     <ViewportCapture captureRef={captureViewportRef} />
-                    {bfres?.render && <ResourceScene bfres={bfres} render={bfres.render} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} weightPreviewColors={weightPreviewColors} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
+                    {bfres?.render && <ResourceScene bfres={bfres} render={bfres.render} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} weightPreviewColors={weightPreviewColors} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
                         setSelectedMesh(mesh.name);
                         setSelectedMaterial(null);
                         setWeightBone(-2);
@@ -1002,6 +1005,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <aside className="bfres-inspector">
                 {bfres?.render && <section className="bfres-export-panel">
                     <header><strong>Viewport</strong></header>
+                    <button type="button" onClick={() => setCulling((value) => !value)} className={culling ? 'active' : ''} aria-pressed={culling}>Culling</button>
                     <button type="button" onClick={renderViewport} disabled={renderingViewport || !bfres.render.meshes?.length}>
                         {renderingViewport ? 'Rendering…' : 'Render'}
                     </button>
