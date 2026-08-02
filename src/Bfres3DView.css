@@ -85,6 +85,8 @@ button.bfres-row:hover, button.bfres-row.selected { background: #253543; }
 .bfres-texture-table { width: 100%; border-collapse: collapse; color: #dce3ea; }
 .bfres-texture-table th, .bfres-texture-table td { padding: 7px 8px; border-bottom: 1px solid #303946; text-align: left; }
 .bfres-texture-table th { color: #9ca9b6; font-weight: 500; }
+.bfres-texture-table tbody tr { cursor: pointer; }
+.bfres-texture-table tbody tr:hover, .bfres-texture-table tbody tr.selected { background: #2d3945; }
 .bfres-action-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 10px; }
 .bfres-action-grid button { padding: 7px; border: 1px solid #46515d; background: #252d36; color: #dce3ea; }
 .bfres-resource-menu { position: fixed; z-index: 10000; display: grid; min-width: 245px; padding: 4px; border: 1px solid #77818b; background: #20252b; box-shadow: 0 8px 24px #0009; }
@@ -103,6 +105,8 @@ button.bfres-row:hover, button.bfres-row.selected { background: #253543; }
     border-radius: 4px;
     background: repeating-conic-gradient(#30363d 0 25%, #22272e 0 50%) 50% / 16px 16px;
 }
+.bfres-material-texture-preview { display: grid; place-items: center; min-height: 96px; margin: 0 10px 10px; color: #8f9baa; border: 1px solid #394550; border-radius: 4px; background: #171c22; }
+.bfres-material-texture-preview img { display: block; width: min(100%, 280px); max-height: 220px; object-fit: contain; background: repeating-conic-gradient(#30363d 0 25%, #22272e 0 50%) 50% / 16px 16px; }
 .bfres-export-panel {
     display: flex;
     align-items: end;

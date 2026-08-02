@@ -728,8 +728,9 @@ fn build_meshes(
         let mut colors = vec![[1.0; 4]; vertex_count];
         let mut bone_indices = vec![[0; 4]; vertex_count];
         let mut bone_weights = vec![[0.0; 4]; vertex_count];
+        let mut bone_index_layers: Vec<Vec<[u16; 4]>> = Vec::new();
+        let mut bone_weight_layers: Vec<Vec<[f32; 4]>> = Vec::new();
         let mut has_bone_indices = false;
-        let mut has_bone_weights = false;
         let mut blend_controls = vec![[0.0; 4]; vertex_count];
         let mut cloth_psize = vec![[0.0; 4]; vertex_count];
         let mut cloth_texcoord = vec![[0.0; 4]; vertex_count];
@@ -767,20 +768,29 @@ fn build_meshes(
                         position4[vertex] = values;
                     }
                     1 => {
-                        has_bone_weights = true;
-                        bone_weights[vertex] = values;
+                        let layer = attribute.layer as usize;
+                        while bone_weight_layers.len() <= layer {
+                            bone_weight_layers.push(vec![[0.0; 4]; vertex_count]);
+                        }
+                        bone_weight_layers[layer][vertex] = values;
                     }
                     2 => {
                         has_bone_indices = true;
-                        blend_controls[vertex] = values;
+                        let layer = attribute.layer as usize;
+                        while bone_index_layers.len() <= layer {
+                            bone_index_layers.push(vec![[0; 4]; vertex_count]);
+                        }
+                        if layer == 0 {
+                            blend_controls[vertex] = values;
+                        }
                         let palette = geometry.palettes.get(submesh.bone_palette);
                         for component in 0..4 {
                             let local = values[component] as usize / 3;
-                            bone_indices[vertex][component] = palette
+                            let joint = palette
                                 .and_then(|p| p.get(local))
                                 .copied()
-                                .unwrap_or(local as u32)
-                                as u16;
+                                .unwrap_or(local as u32);
+                            bone_index_layers[layer][vertex][component] = joint as u16;
                         }
                     }
                     3 => {
@@ -806,12 +816,21 @@ fn build_meshes(
             }
         }
         let is_rigid = submesh.submesh_type & 0x2 != 0;
-        let rigid_bone = geometry
+        if has_bone_indices {
+            collapse_skin_influences(
+                &bone_index_layers,
+                &bone_weight_layers,
+                &mut bone_indices,
+                &mut bone_weights,
+            );
+        }
+        let rigid_joint = geometry
             .palettes
             .get(submesh.bone_palette)
             .and_then(|palette| palette.first())
             .copied()
-            .unwrap_or(submesh.bone_index) as u16;
+            .unwrap_or(submesh.bone_index);
+        let rigid_bone = rigid_joint as u16;
         let vertex_skin_count = if is_rigid {
             // Project-G1M binds rigid submeshes to local palette index zero,
             // overriding skin attributes that may exist in a shared buffer.
@@ -819,25 +838,6 @@ fn build_meshes(
             bone_weights.fill([1.0, 0.0, 0.0, 0.0]);
             1
         } else if has_bone_indices {
-            if !has_bone_weights {
-                bone_weights.fill([1.0, 0.0, 0.0, 0.0]);
-            } else {
-                for weights in &mut bone_weights {
-                    for weight in weights.iter_mut() {
-                        if !weight.is_finite() || *weight < 0.0 {
-                            *weight = 0.0;
-                        }
-                    }
-                    let sum: f32 = weights.iter().sum();
-                    if sum > f32::EPSILON {
-                        for weight in weights.iter_mut() {
-                            *weight /= sum;
-                        }
-                    } else {
-                        *weights = [1.0, 0.0, 0.0, 0.0];
-                    }
-                }
-            }
             // A single non-zero weight does not make a G1M submesh rigid.
             // Non-rigid vertices remain in model bind space even when every
             // vertex happens to use only one influence. Only submesh_type bit
@@ -850,13 +850,21 @@ fn build_meshes(
             if *cloth_id == 1 {
                 let nuno_index = (*nun_id % 10_000) as usize;
                 if let Some(entry) = nuno_entries.get(nuno_index) {
+                    // NUNO controls and weights are layer-paired. The merged
+                    // skin weights are correct for rendering/export, but the
+                    // cloth position solver must use the layer-zero weights
+                    // alongside the layer-zero controls captured above.
+                    let cloth_weights = bone_weight_layers
+                        .first()
+                        .map(Vec::as_slice)
+                        .unwrap_or(&bone_weights);
                     reconstruct_nuno_mesh(
                         &mut positions,
                         &mut normals,
                         &position4,
                         &normal4,
                         &blend_controls,
-                        &bone_weights,
+                        cloth_weights,
                         &cloth_psize,
                         &cloth_texcoord,
                         &cloth_binormal,
@@ -911,6 +919,55 @@ fn build_meshes(
         });
     }
     Ok(meshes)
+}
+
+fn collapse_skin_influences(
+    index_layers: &[Vec<[u16; 4]>],
+    weight_layers: &[Vec<[f32; 4]>],
+    indices: &mut [[u16; 4]],
+    weights: &mut [[f32; 4]],
+) {
+    for vertex in 0..indices.len() {
+        let mut combined = std::collections::BTreeMap::<u16, f32>::new();
+        for (layer, layer_indices) in index_layers.iter().enumerate() {
+            let Some(vertex_indices) = layer_indices.get(vertex) else {
+                continue;
+            };
+            let vertex_weights = weight_layers
+                .get(layer)
+                .and_then(|values| values.get(vertex));
+            for influence in 0..4 {
+                let weight = vertex_weights.map_or(
+                    if layer == 0 && influence == 0 {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                    |values| values[influence],
+                );
+                if weight.is_finite() && weight > 0.0 {
+                    *combined.entry(vertex_indices[influence]).or_default() += weight;
+                }
+            }
+        }
+        let mut combined: Vec<_> = combined.into_iter().collect();
+        combined.sort_by(|left, right| right.1.total_cmp(&left.1));
+        let total: f32 = combined.iter().take(4).map(|(_, weight)| weight).sum();
+        indices[vertex] = [0; 4];
+        weights[vertex] = [0.0; 4];
+        if total > f32::EPSILON {
+            for (influence, (bone, weight)) in combined.into_iter().take(4).enumerate() {
+                indices[vertex][influence] = bone;
+                weights[vertex][influence] = weight / total;
+            }
+        } else {
+            indices[vertex][0] = index_layers
+                .first()
+                .and_then(|layer| layer.get(vertex))
+                .map_or(0, |value| value[0]);
+            weights[vertex][0] = 1.0;
+        }
+    }
 }
 
 fn reconstruct_nuno_mesh(
@@ -1836,6 +1893,49 @@ mod tests {
             .all(|(indices, weights)| (0..4).all(|index| {
                 weights[index] == 0.0 || (indices[index] as usize) < model.render.bones.len()
             })));
+    }
+
+    #[test]
+    fn supplied_4d_model_combines_both_skin_layers() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_aocss/4d58bba9.g1m");
+        if !path.is_file() {
+            return;
+        }
+        let model = G1mFile::from_path(path).unwrap();
+        let body = &model.render.meshes[8];
+        let waist_weight: f32 = body
+            .bone_indices
+            .iter()
+            .zip(&body.bone_weights)
+            .map(|(indices, weights)| {
+                (0..4)
+                    .filter(|&influence| indices[influence] == 2)
+                    .map(|influence| weights[influence])
+                    .sum::<f32>()
+            })
+            .sum();
+        assert!(waist_weight < body.positions.len() as f32 * 0.1);
+        assert!(body
+            .bone_weights
+            .iter()
+            .all(|weights| { (weights.iter().sum::<f32>() - 1.0).abs() < 1.0e-4 }));
+    }
+
+    #[test]
+    fn supplied_642_model_skinning_remains_valid() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_aocss/64200672.g1m");
+        if !path.is_file() {
+            return;
+        }
+        let model = G1mFile::from_path(path).unwrap();
+        let bone_count = model.render.bones.len();
+        assert!(model.render.meshes.iter().all(|mesh| mesh
+            .bone_indices
+            .iter()
+            .zip(&mesh.bone_weights)
+            .all(|(indices, weights)| (0..4).all(|influence| {
+                weights[influence] == 0.0 || (indices[influence] as usize) < bone_count
+            }))));
     }
 
     #[test]

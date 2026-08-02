@@ -530,11 +530,11 @@ function PropertyList({ value }) {
     </dl>;
 }
 
-function NodeInspector({ detail }) {
+function NodeInspector({ detail, textures }) {
     if (!detail) return <div className="bfres-empty-detail">Select a node in the scene collection to inspect its parsed properties.</div>;
     if (detail.type === 'model') return <ModelInspector model={detail.value} />;
     if (detail.type === 'mesh') return <MeshInspector mesh={detail.value} />;
-    if (detail.type === 'material') return <MaterialInspector material={detail.value} />;
+    if (detail.type === 'material') return <MaterialInspector material={detail.value} textures={textures} />;
     if (detail.type === 'texture') return <section className="bfres-selected-detail bfres-texture-preview">
         <header><strong>{detail.value.name || 'Texture'}</strong><small>TEXTURE</small></header>
         {detail.value.dataUrl && <img src={detail.value.dataUrl} alt={detail.value.name || 'Texture preview'} />}
@@ -568,12 +568,21 @@ function MeshInspector({ mesh }) {
     </section>;
 }
 
-function MaterialInspector({ material }) {
+function MaterialInspector({ material, textures }) {
     const [tab, setTab] = useState('Textures');
+    const [selectedSlot, setSelectedSlot] = useState(null);
+    useEffect(() => setSelectedSlot(null), [material]);
+    const preview = selectedSlot
+        ? (textures || []).find((texture) => texture.name === selectedSlot.name)
+        : null;
     return <section className="bfres-selected-detail bfres-special-inspector"><header><strong>{material.name}</strong><small>MATERIAL</small></header>
         <div className="bfres-form-grid"><label>Name<input value={material.name} readOnly /></label><label className="bfres-check"><input type="checkbox" defaultChecked />Visible</label><label>Shader Archive<input value="material" readOnly /></label><label>Shader Model<input value="material" readOnly /></label><label>Sampler Inputs<input value={material.texture_slots.length} readOnly /></label><label>Attribute Inputs<input value="—" readOnly /></label></div>
         <InspectorTabs tabs={['Textures', 'Parameters', 'Render Info', 'Shader Options', 'User Data']} active={tab} setActive={setTab} />
-        {tab === 'Textures' ? <><table className="bfres-texture-table"><thead><tr><th>Texture</th><th>Type</th><th>Sampler</th></tr></thead><tbody>{material.texture_slots.map((slot) => <tr key={slot.index}><td>{slot.name}</td><td>{slot.texture_type}</td><td>{slot.sampler || '—'}</td></tr>)}</tbody></table><div className="bfres-action-grid"><button type="button">Add</button><button type="button">Remove</button><button type="button">Edit</button></div></> : <div className="bfres-empty-detail">No decoded {tab.toLowerCase()} entries.</div>}
+        {tab === 'Textures' ? <><table className="bfres-texture-table"><thead><tr><th>Texture</th><th>Type</th><th>Sampler</th></tr></thead><tbody>{material.texture_slots.map((slot) => <tr key={slot.index} className={selectedSlot?.index === slot.index ? 'selected' : ''} onClick={() => setSelectedSlot(slot)}><td>{slot.name}</td><td>{slot.texture_type}</td><td>{slot.sampler || '—'}</td></tr>)}</tbody></table><div className="bfres-action-grid">
+            {/* <button type="button">Add</button>
+            <button type="button">Remove</button>
+            <button type="button">Edit</button> */}
+            </div>{selectedSlot && <div className="bfres-material-texture-preview">{preview?.dataUrl ? <img src={preview.dataUrl} alt={`${selectedSlot.name} preview`} /> : <span>Preview unavailable</span>}</div>}</> : <div className="bfres-empty-detail">No decoded {tab.toLowerCase()} entries.</div>}
     </section>;
 }
 
@@ -944,7 +953,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     </label>
                     
                 </section>}
-                {panel === 'resources' && <NodeInspector detail={detail} />}
+                {panel === 'resources' && <NodeInspector detail={detail} textures={bfres?.resolvedTextures} />}
                 {panel === 'parameters' && bfres && !isG1m && <dl className="bfres-parameters">
                     <dt>Version</dt><dd>{bfres.header.version.join('.')}</dd>
                     <dt>Endian</dt><dd>{bfres.header.endian}</dd>

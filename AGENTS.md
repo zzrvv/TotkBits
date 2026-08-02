@@ -4,7 +4,7 @@
 
 TotkBits is a Windows-focused Tauri application. The React/Vite frontend lives in `src/`; `main.jsx` is the entry point, UI components use PascalCase filenames, and shared styles are in `App.css` and `styles.css`. Static images belong in `public/`, while release screenshots are kept in `preview/`.
 
-The Rust backend is under `src-tauri/src/`. Tauri commands are defined in `TauriCommands.rs`, application logic in `TotkApp.rs`, and format handlers in `file_format/`. Runtime helper scripts and binary lookup data live in `src-tauri/misc/`. 
+The Rust backend is under `src-tauri/src/`. Tauri commands are defined in `TauriCommands.rs`, application logic in `TotkApp.rs`, and format handlers in `file_format/`. Runtime helper scripts and binary lookup data live in `src-tauri/misc/`. Skip and never read `*.rs` files in `src-tauri/misc/` - those are meant for backup.
 
 ## Build, Test, and Development Commands
 
