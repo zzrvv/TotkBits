@@ -473,9 +473,12 @@ impl<'a> TotkZstd<'_> {
             ZstdDictionary::Pack => self.decompressor.packzs.as_deref(),
             ZstdDictionary::Empty => Some(self.decompressor.empty.as_ref()),
             ZstdDictionary::Bcett => self.decompressor.bcett.as_deref(),
-            ZstdDictionary::Yaz0 => unreachable!(),
-            ZstdDictionary::Mcpk => unreachable!(),
-            ZstdDictionary::None => unreachable!(),
+            ZstdDictionary::Yaz0 | ZstdDictionary::Mcpk | ZstdDictionary::None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "compression format does not use a Zstandard dictionary",
+                ));
+            }
         }
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "dictionary is unavailable"))?;
         self.decompressor.decompress(data, dict)

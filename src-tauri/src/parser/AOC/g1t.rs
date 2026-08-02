@@ -94,7 +94,7 @@ impl G1tFile {
             return Err(invalid("invalid G1T texture offset table"));
         }
         let table = BinaryReader::with_endian(data, endian);
-        let mut textures = Vec::new();
+        let mut textures = Vec::with_capacity(texture_count);
         for index in 0..texture_count {
             let relative = table.read_u32_at(offsets_offset + index * 4)? as usize;
             let next_relative = if index + 1 < texture_count {

@@ -16,7 +16,7 @@ impl KtidFile {
             ));
         }
         let reader = BinaryReader::with_endian(data, Endian::Little);
-        let mut entries = HashMap::new();
+        let mut entries = HashMap::with_capacity(data.len() / 8);
         // Match the Python importer: consume every complete pair and tolerate
         // an incomplete trailing record.
         for offset in (0..data.len().saturating_sub(7)).step_by(8) {

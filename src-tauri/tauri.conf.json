@@ -9,8 +9,7 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "bin",
-      "misc"
+      "bin"
     ],
     "icon": [
       "icons/32x32.png",

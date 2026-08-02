@@ -146,7 +146,9 @@ pub fn murmur3_32(value: &str) -> u32 {
     let mut hash = 0u32;
     let mut chunks = bytes.chunks_exact(4);
     for chunk in &mut chunks {
-        let mut k = u32::from_le_bytes(chunk.try_into().expect("four-byte chunk"));
+        let mut bytes = [0; 4];
+        bytes.copy_from_slice(chunk);
+        let mut k = u32::from_le_bytes(bytes);
         k = k.wrapping_mul(0xcc9e_2d51);
         k = k.rotate_left(15);
         k = k.wrapping_mul(0x1b87_3593);

@@ -103,3 +103,26 @@ button.bfres-row:hover, button.bfres-row.selected { background: #253543; }
     border-radius: 4px;
     background: repeating-conic-gradient(#30363d 0 25%, #22272e 0 50%) 50% / 16px 16px;
 }
+.bfres-export-panel {
+    display: flex;
+    align-items: end;
+    gap: 10px;
+    padding: 12px;
+    border-bottom: 1px solid var(--border-color, #3c424a);
+}
+
+.bfres-export-panel header {
+    margin-right: auto;
+    align-self: center;
+}
+
+.bfres-export-panel label {
+    display: grid;
+    gap: 4px;
+    font-size: 11px;
+}
+
+.bfres-export-panel select,
+.bfres-export-panel button {
+    min-height: 28px;
+}

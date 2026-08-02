@@ -525,8 +525,8 @@ impl ImageDocument {
                 ),
             ));
         }
-        let length = u16::try_from(new_name.as_bytes().len())
-            .unwrap()
+        let length = u16::try_from(new_name.len())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "BNTX name is too long"))?
             .to_le_bytes();
         data[texture.name_offset..texture.name_offset + 2].copy_from_slice(&length);
         let start = texture.name_offset + 2;

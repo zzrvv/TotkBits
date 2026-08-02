@@ -229,18 +229,10 @@ fn read_integer(data: &[u8], offset: u32, kind: PrimitiveKind) -> io::Result<u16
     let value = match kind {
         PrimitiveKind::U8 => read_bytes(data, offset, 1)?[0] as i64,
         PrimitiveKind::I8 => i8::from_le_bytes([read_bytes(data, offset, 1)?[0]]) as i64,
-        PrimitiveKind::U16 => {
-            u16::from_le_bytes(read_bytes(data, offset, 2)?.try_into().unwrap()) as i64
-        }
-        PrimitiveKind::I16 => {
-            i16::from_le_bytes(read_bytes(data, offset, 2)?.try_into().unwrap()) as i64
-        }
-        PrimitiveKind::U32 => {
-            u32::from_le_bytes(read_bytes(data, offset, 4)?.try_into().unwrap()) as i64
-        }
-        PrimitiveKind::I32 => {
-            i32::from_le_bytes(read_bytes(data, offset, 4)?.try_into().unwrap()) as i64
-        }
+        PrimitiveKind::U16 => u16::from_le_bytes(read_array(data, offset)?) as i64,
+        PrimitiveKind::I16 => i16::from_le_bytes(read_array(data, offset)?) as i64,
+        PrimitiveKind::U32 => u32::from_le_bytes(read_array(data, offset)?) as i64,
+        PrimitiveKind::I32 => i32::from_le_bytes(read_array(data, offset)?) as i64,
         PrimitiveKind::Real => {
             return Err(invalid(
                 "particle index is stored as a floating-point value",
@@ -254,19 +246,11 @@ fn read_number(data: &[u8], offset: u32, kind: PrimitiveKind) -> io::Result<f32>
     Ok(match kind {
         PrimitiveKind::U8 => read_bytes(data, offset, 1)?[0] as f32,
         PrimitiveKind::I8 => i8::from_le_bytes([read_bytes(data, offset, 1)?[0]]) as f32,
-        PrimitiveKind::U16 => {
-            u16::from_le_bytes(read_bytes(data, offset, 2)?.try_into().unwrap()) as f32
-        }
-        PrimitiveKind::I16 => {
-            i16::from_le_bytes(read_bytes(data, offset, 2)?.try_into().unwrap()) as f32
-        }
-        PrimitiveKind::U32 => {
-            u32::from_le_bytes(read_bytes(data, offset, 4)?.try_into().unwrap()) as f32
-        }
-        PrimitiveKind::I32 => {
-            i32::from_le_bytes(read_bytes(data, offset, 4)?.try_into().unwrap()) as f32
-        }
-        PrimitiveKind::Real => f32::from_le_bytes(read_bytes(data, offset, 4)?.try_into().unwrap()),
+        PrimitiveKind::U16 => u16::from_le_bytes(read_array(data, offset)?) as f32,
+        PrimitiveKind::I16 => i16::from_le_bytes(read_array(data, offset)?) as f32,
+        PrimitiveKind::U32 => u32::from_le_bytes(read_array(data, offset)?) as f32,
+        PrimitiveKind::I32 => i32::from_le_bytes(read_array(data, offset)?) as f32,
+        PrimitiveKind::Real => f32::from_le_bytes(read_array(data, offset)?),
     })
 }
 
@@ -316,9 +300,13 @@ fn write_number(data: &mut [u8], offset: u32, kind: PrimitiveKind, value: f32) -
 }
 
 fn read_u32(data: &[u8], offset: u32) -> io::Result<u32> {
-    Ok(u32::from_le_bytes(
-        read_bytes(data, offset, 4)?.try_into().unwrap(),
-    ))
+    Ok(u32::from_le_bytes(read_array(data, offset)?))
+}
+
+fn read_array<const N: usize>(data: &[u8], offset: u32) -> io::Result<[u8; N]> {
+    let mut bytes = [0; N];
+    bytes.copy_from_slice(read_bytes(data, offset, N)?);
+    Ok(bytes)
 }
 
 fn read_bytes(data: &[u8], offset: u32, size: usize) -> io::Result<&[u8]> {

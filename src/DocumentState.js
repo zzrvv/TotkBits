@@ -13,7 +13,7 @@ const documentCommands = new Set([
     'remove_bphcl_node',
     'mutate_nested_archive',
     'open_bfwav_node', 'replace_bfwav_node', 'replace_bars_audio_from_folder', 'export_bfwav_node', 'open_amta_node',
-    'inspect_3d_model',
+    'inspect_3d_model', 'export_g1m_fbx',
     'render_image', 'export_image_png', 'rename_bntx_texture', 'replace_bntx_image',
 ]);
 

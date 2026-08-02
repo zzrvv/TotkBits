@@ -192,6 +192,14 @@ impl G1mFile {
     }
 
     pub fn parse(data: &[u8], name: &str) -> io::Result<Self> {
+        Self::parse_internal(data, name, false)
+    }
+
+    pub fn parse_for_export(data: &[u8], name: &str) -> io::Result<Self> {
+        Self::parse_internal(data, name, true)
+    }
+
+    fn parse_internal(data: &[u8], name: &str, include_hidden_meshes: bool) -> io::Result<Self> {
         let endian = match data.get(..4) {
             Some(b"_M1G") => Endian::Little,
             Some(b"G1M_") => Endian::Big,
@@ -209,14 +217,15 @@ impl G1mFile {
             return Err(invalid("invalid G1M header"));
         }
         reader.seek(chunk_offset)?;
-        let mut sections = Vec::new();
+        let mut sections = Vec::with_capacity(chunk_count);
         let mut bones = Vec::new();
         let mut bone_ids = Vec::new();
         let mut nuno_entries = Vec::new();
         let mut geometry = None;
         for _ in 0..chunk_count {
             let start = reader.position();
-            let signature: [u8; 4] = reader.read_bytes(4)?.try_into().unwrap();
+            let mut signature = [0; 4];
+            signature.copy_from_slice(reader.read_bytes(4)?);
             reader.skip(4)?;
             let size = reader.read_u32()? as usize;
             if size < 12 || start.checked_add(size).is_none_or(|end| end > data.len()) {
@@ -237,7 +246,15 @@ impl G1mFile {
             reader.seek(start + size)?;
         }
         let geometry = geometry.ok_or_else(|| invalid("G1M has no G1MG geometry chunk"))?;
-        let meshes = build_meshes(data, &geometry, endian, &bones, &bone_ids, &nuno_entries)?;
+        let meshes = build_meshes(
+            data,
+            &geometry,
+            endian,
+            &bones,
+            &bone_ids,
+            &nuno_entries,
+            include_hidden_meshes,
+        )?;
         let display_name = AOC_NAMES
             .get(&name.to_ascii_lowercase())
             .filter(|value| !value.is_empty())
@@ -387,6 +404,7 @@ fn parse_nuno(data: &[u8], endian: Endian) -> io::Result<Vec<NunoEntry>> {
             reader.skip(4)?;
         }
         if kind == 0x0003_0001 {
+            entries.reserve(entry_count);
             for _ in 0..entry_count {
                 let parent_bone_id = reader.read_u16()?;
                 reader.skip(2)?;
@@ -458,11 +476,12 @@ fn parse_geometry(data: &[u8], endian: Endian, file_offset: usize) -> io::Result
             .ok_or_else(|| invalid("section overflow"))?;
         match kind {
             0x0001_0002 => {
+                geometry.materials.reserve(count);
                 for material_index in 0..count {
                     reader.skip(4)?;
                     let texture_count = reader.read_u32()? as usize;
                     reader.skip(8)?;
-                    let mut slots = Vec::new();
+                    let mut slots = Vec::with_capacity(texture_count);
                     for slot_index in 0..texture_count {
                         let id = reader.read_u16()?;
                         let layer = reader.read_u16()?;
@@ -486,6 +505,7 @@ fn parse_geometry(data: &[u8], endian: Endian, file_offset: usize) -> io::Result
                 }
             }
             0x0001_0004 => {
+                geometry.vertex_buffers.reserve(count);
                 for _ in 0..count {
                     reader.skip(4)?;
                     let stride = reader.read_u32()? as usize;
@@ -507,6 +527,7 @@ fn parse_geometry(data: &[u8], endian: Endian, file_offset: usize) -> io::Result
                 }
             }
             0x0001_0005 => {
+                geometry.attributes.reserve(count);
                 for _ in 0..count {
                     let list_count = reader.read_u32()? as usize;
                     let mut buffers = Vec::with_capacity(list_count);
@@ -537,6 +558,7 @@ fn parse_geometry(data: &[u8], endian: Endian, file_offset: usize) -> io::Result
                 }
             }
             0x0001_0006 => {
+                geometry.palettes.reserve(count);
                 for _ in 0..count {
                     let joint_count = reader.read_u32()? as usize;
                     let mut palette = Vec::with_capacity(joint_count);
@@ -548,6 +570,7 @@ fn parse_geometry(data: &[u8], endian: Endian, file_offset: usize) -> io::Result
                 }
             }
             0x0001_0007 => {
+                geometry.index_buffers.reserve(count);
                 for _ in 0..count {
                     let index_count = reader.read_u32()? as usize;
                     let bits = reader.read_u32()? as usize;
@@ -570,10 +593,12 @@ fn parse_geometry(data: &[u8], endian: Endian, file_offset: usize) -> io::Result
                 }
             }
             0x0001_0008 => {
+                geometry.submeshes.reserve(count);
                 for _ in 0..count {
-                    let values: Vec<u32> = (0..14)
-                        .map(|_| reader.read_u32())
-                        .collect::<io::Result<_>>()?;
+                    let mut values = [0; 14];
+                    for value in &mut values {
+                        *value = reader.read_u32()?;
+                    }
                     geometry.submeshes.push(Submesh {
                         submesh_type: values[0],
                         vertex_buffer: values[1] as usize,
@@ -648,14 +673,16 @@ fn build_meshes(
     bones: &[BfresBone],
     bone_ids: &[u16],
     nuno_entries: &[NunoEntry],
+    include_hidden_meshes: bool,
 ) -> io::Result<Vec<BfresMesh>> {
     let source = BinaryReader::with_endian(data, endian);
-    let mut meshes = Vec::new();
+    let mut meshes = Vec::with_capacity(geometry.submeshes.len());
     for (mesh_index, submesh) in geometry.submeshes.iter().enumerate() {
-        if geometry
-            .visible_submeshes
-            .as_ref()
-            .is_some_and(|visible| !visible.contains(&mesh_index))
+        if !include_hidden_meshes
+            && geometry
+                .visible_submeshes
+                .as_ref()
+                .is_some_and(|visible| !visible.contains(&mesh_index))
         {
             continue;
         }
@@ -697,7 +724,7 @@ fn build_meshes(
         let mut position4 = vec![[0.0; 4]; vertex_count];
         let mut normals = vec![[0.0; 3]; vertex_count];
         let mut normal4 = vec![[0.0; 4]; vertex_count];
-        let mut uv_maps: Vec<Vec<[f32; 2]>> = Vec::new();
+        let mut uv_maps: Vec<Vec<[f32; 2]>> = Vec::with_capacity(attrs.attributes.len());
         let mut colors = vec![[1.0; 4]; vertex_count];
         let mut bone_indices = vec![[0; 4]; vertex_count];
         let mut bone_weights = vec![[0.0; 4]; vertex_count];
@@ -1206,7 +1233,7 @@ fn half(value: u16) -> f32 {
 }
 
 fn strip_to_triangles(strip: &[u32]) -> Vec<u32> {
-    let mut output = Vec::new();
+    let mut output = Vec::with_capacity(strip.len().saturating_sub(2).saturating_mul(3));
     for index in 0..strip.len().saturating_sub(2) {
         let triangle = if index % 2 == 0 {
             [strip[index], strip[index + 1], strip[index + 2]]
@@ -1789,6 +1816,26 @@ mod tests {
                     .all(|weights| *weights == [1.0, 0.0, 0.0, 0.0]));
             }
         }
+    }
+
+    #[test]
+    fn supplied_4d_model_uses_direct_geometry_palette_joints() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_aocss/4d58bba9.g1m");
+        if !path.is_file() {
+            return;
+        }
+        let model = G1mFile::from_path(path).unwrap();
+        let hair = &model.render.meshes[0];
+        assert_eq!(hair.vertex_skin_count, 4);
+        assert!(hair.skin_bones.contains(&123));
+        assert!(hair.skin_bones.contains(&225));
+        assert!(hair
+            .bone_indices
+            .iter()
+            .zip(&hair.bone_weights)
+            .all(|(indices, weights)| (0..4).all(|index| {
+                weights[index] == 0.0 || (indices[index] as usize) < model.render.bones.len()
+            })));
     }
 
     #[test]

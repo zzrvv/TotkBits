@@ -324,13 +324,13 @@ impl EvflWriter {
             self.align(8)?;
         }
 
-        let timeline_parameters = if timeline
+        let timeline_parameters = if let Some(parameters) = timeline
             .parameters
             .as_ref()
-            .is_some_and(|parameters| !parameters.is_empty())
+            .filter(|parameters| !parameters.is_empty())
         {
             let offset = self.pos();
-            self.write_container(timeline.parameters.as_ref().unwrap())?;
+            self.write_container(parameters)?;
             offset
         } else {
             0
@@ -768,35 +768,62 @@ impl EvflWriter {
         self.u32(0);
         self.u64(0);
         match kind {
-            0 => self.inline_strings(2, &[item.argument.as_deref().unwrap()])?,
+            0 => self.inline_strings(
+                2,
+                &[item
+                    .argument
+                    .as_deref()
+                    .ok_or_else(|| invalid("missing EVFL argument"))?],
+            )?,
             1 => {
-                let items = item.items.as_ref().unwrap();
+                let items = item
+                    .items
+                    .as_ref()
+                    .ok_or_else(|| invalid("missing EVFL container"))?;
                 self.write_radix(items.keys().map(String::as_str))?;
                 for value in items.values() {
                     self.write_container_item(value)?;
                 }
             }
-            2 => self.i32(item.int.unwrap()),
-            3 => self.u32(if item.bool.unwrap() { 0x8000_0001 } else { 0 }),
-            4 => self.f32(item.float.unwrap()),
-            5 => self.inline_strings(2, &[item.string.as_deref().unwrap()])?,
-            6 => self.inline_strings(2, &[item.w_string.as_deref().unwrap()])?,
+            2 => self.i32(item.int.ok_or_else(|| invalid("missing EVFL integer"))?),
+            3 => self.u32(
+                if item.bool.ok_or_else(|| invalid("missing EVFL boolean"))? {
+                    0x8000_0001
+                } else {
+                    0
+                },
+            ),
+            4 => self.f32(item.float.ok_or_else(|| invalid("missing EVFL float"))?),
+            5 => self.inline_strings(
+                2,
+                &[item
+                    .string
+                    .as_deref()
+                    .ok_or_else(|| invalid("missing EVFL string"))?],
+            )?,
+            6 => self.inline_strings(
+                2,
+                &[item
+                    .w_string
+                    .as_deref()
+                    .ok_or_else(|| invalid("missing EVFL wide string"))?],
+            )?,
             7 => item
                 .int_array
                 .as_ref()
-                .unwrap()
+                .ok_or_else(|| invalid("missing EVFL integer array"))?
                 .iter()
                 .for_each(|v| self.i32(*v)),
             8 => item
                 .bool_array
                 .as_ref()
-                .unwrap()
+                .ok_or_else(|| invalid("missing EVFL boolean array"))?
                 .iter()
                 .for_each(|v| self.u32(if *v { 0x8000_0001 } else { 0 })),
             9 => item
                 .float_array
                 .as_ref()
-                .unwrap()
+                .ok_or_else(|| invalid("missing EVFL float array"))?
                 .iter()
                 .for_each(|v| self.f32(*v)),
             10 => self.inline_strings(
@@ -804,7 +831,7 @@ impl EvflWriter {
                 &item
                     .string_array
                     .as_ref()
-                    .unwrap()
+                    .ok_or_else(|| invalid("missing EVFL string array"))?
                     .iter()
                     .map(String::as_str)
                     .collect::<Vec<_>>(),
@@ -814,16 +841,19 @@ impl EvflWriter {
                 &item
                     .w_string_array
                     .as_ref()
-                    .unwrap()
+                    .ok_or_else(|| invalid("missing EVFL wide string array"))?
                     .iter()
                     .map(String::as_str)
                     .collect::<Vec<_>>(),
             )?,
             12 => {
-                let id = item.actor_identifier.as_ref().unwrap();
+                let id = item
+                    .actor_identifier
+                    .as_ref()
+                    .ok_or_else(|| invalid("missing EVFL actor identifier"))?;
                 self.inline_strings(2, &[&id.item1, &id.item2])?;
             }
-            _ => unreachable!(),
+            _ => return Err(invalid("unsupported EVFL container item type")),
         }
         Ok(())
     }

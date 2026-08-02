@@ -51,8 +51,8 @@ const ButtonsDisplay = () => {
     setSavingFile, documentSnapshots
   } = useEditorContext();
 
-  const displayButtons = activeTab === "SARC" || activeTab === "AUDIO" || activeTab === "YAML" || activeTab === "RSTB";
-
+  const displayButtons = activeTab === "SARC" || activeTab === "AUDIO" || activeTab === "YAML" || activeTab === "RSTB" || activeTab !== "AOC_MODELS";
+  // console.log("Display buttons? ", displayButtons);
   const handlePathToClipboard = (text) => {
     navigator.clipboard.writeText(text).then(() => {
       console.log('Text copied to clipboard');

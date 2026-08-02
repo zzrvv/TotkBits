@@ -163,21 +163,27 @@ fn read_u16_at(data: &[u8], offset: usize) -> io::Result<u16> {
     let bytes = data
         .get(offset..offset + 2)
         .ok_or_else(|| io::Error::new(ErrorKind::UnexpectedEof, "EVFL u16"))?;
-    Ok(u16::from_le_bytes(bytes.try_into().unwrap()))
+    let mut value = [0; 2];
+    value.copy_from_slice(bytes);
+    Ok(u16::from_le_bytes(value))
 }
 
 fn read_u32_at(data: &[u8], offset: usize) -> io::Result<u32> {
     let bytes = data
         .get(offset..offset + 4)
         .ok_or_else(|| io::Error::new(ErrorKind::UnexpectedEof, "EVFL u32"))?;
-    Ok(u32::from_le_bytes(bytes.try_into().unwrap()))
+    let mut value = [0; 4];
+    value.copy_from_slice(bytes);
+    Ok(u32::from_le_bytes(value))
 }
 
 fn read_u64_at(data: &[u8], offset: usize) -> io::Result<u64> {
     let bytes = data
         .get(offset..offset + 8)
         .ok_or_else(|| io::Error::new(ErrorKind::UnexpectedEof, "EVFL u64"))?;
-    Ok(u64::from_le_bytes(bytes.try_into().unwrap()))
+    let mut value = [0; 8];
+    value.copy_from_slice(bytes);
+    Ok(u64::from_le_bytes(value))
 }
 
 fn read_document_flow_offsets(data: &[u8]) -> io::Result<Vec<u64>> {

@@ -37,13 +37,13 @@ def download_files():
 
 def remove_file(file):
     x = Path(file)
-    if x.is_file():
-        file_str = str(x)
-        try:
-            subprocess.run(["cmd", "/c", "del", file_str], check=True)
-            print(f"[+] Removed: {file_str}")
-        except subprocess.CalledProcessError:
-            print(f"[-] Failed to remove: {file_str}")
+    if not x.is_file(): return
+    file_str = str(x)
+    try:
+        subprocess.run(["cmd", "/c", "del", file_str], check=True)
+        print(f"[+] Removed: {file_str}")
+    except subprocess.CalledProcessError:
+        print(f"[-] Failed to remove: {file_str}")
 
 
 def rename_directory(source, new_name):
@@ -88,50 +88,48 @@ def copy_files(bin_path):
         shutil.copyfile(file1, file2)
         print(f"[+] Copied {file1} -> {file2}")
 
+def safe_copy(file1, file2, verbose=True):
+    file1, file2 = Path(file1), Path(file2)
+    if not file1.is_file(): return
+    if file2.is_file(): return
+    if verbose: print(f"Copying: {file1.name}")
+    shutil.copyfile(file1, file2)
+    
+def safe_copy_dir(dir1, dir2, verbose=True):
+    dir1, dir2 = Path(dir1), Path(dir2)
+    if not dir1.is_dir(): return
+    if dir2.is_dir() and next(dir2.glob("*"), None) is not None: return
+    if verbose: print(f"Copying folder: {dir1.name}")
+    shutil.copytree(dir1, dir2)
 
 def repo_init():
     cwd_path = Path(__file__).parent
     cwd = str(cwd_path)
-    bin_path = "src-tauri/bin"
-    bin_path_p = Path(bin_path)
-    if bin_path_p.exists() and bin_path_p.is_dir():
+    misc_dir = cwd_path / "src-tauri/misc"
+    bin_path = cwd_path / "src-tauri/bin"
+    dll_dir = bin_path / "dlls"
+    if bin_path.is_dir():
         shutil.rmtree(bin_path)
-    bin_path_p.mkdir(parents=True, exist_ok=True)
+    bin_path.mkdir(parents=True, exist_ok=True)
     (cwd_path / "tmp").mkdir(parents=True, exist_ok=True)
 
     print(f"[+] Copying compressed json files")
 
     # Copy zlib compressed json files
-    misc_dir = cwd_path / "src-tauri/misc"
-    dll_dir = cwd_path / "src-tauri/bin/dlls"
     dll_dir.mkdir(parents=True, exist_ok=True)
     for file in misc_dir.glob("*.dll"):
-        if not file.is_file(): continue
-        destfile = dll_dir / file.name
-        if destfile.is_file(): continue
-        shutil.copyfile(file, destfile)
+        safe_copy(file, dll_dir / file.name)
         
     files = list(misc_dir.glob("*.bin"))
     files += list(misc_dir.glob("*.json"))
     files += list(misc_dir.glob("*.txt"))
     for file in files:
-        if not file.is_file():
-            continue
-        destfile = cwd_path / "src-tauri/bin" / file.name
-        if not destfile.is_file():
-            print(f"Copying: {file.name}")
-            shutil.copyfile(file, destfile)
+        safe_copy(file, cwd_path / "src-tauri/bin" / file.name)
 
     # Copy directories
     dirs_to_copy = {}
     for src_dir, dest_dir in dirs_to_copy.items():
-        src_dir_path = Path(src_dir)
-        dest_dir_path = Path(dest_dir)
-        if not dest_dir_path.is_dir():
-            shutil.copytree(src_dir_path, dest_dir_path)
-            print(f"[+] Copied {src_dir} -> {dest_dir}")
-        else:
-            print(f"[+] Directory already exists: {dest_dir}")
+        safe_copy_dir(src_dir, dest_dir)
 
     # Download dlls
     download_files()

@@ -151,6 +151,81 @@ pub fn inspect_3d_model(
     }
 }
 
+#[tauri::command]
+pub fn export_g1m_fbx(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    source_paths: Vec<String>,
+    output: String,
+    texture_format: String,
+) -> Result<String, String> {
+    require_experimental_visuals()?;
+    if source_paths.is_empty() {
+        return Err("no G1M source paths were supplied".into());
+    }
+    let documents = app_handle.state::<DocumentState>();
+    let aoc_path = documents.with(&documentId, |app| app.zstd.totk_config.aoc_path.clone());
+    let mut parsed = Vec::with_capacity(source_paths.len());
+    for source in &source_paths {
+        let path = Path::new(source);
+        let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        let model = crate::parser::AOC::g1m::G1mFile::parse_for_export(
+            &bytes,
+            path.file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("G1M"),
+        )
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+        let textures = model.resolve_textures(path, Path::new(&aoc_path)).textures;
+        let prefix = if source_paths.len() > 1 {
+            format!(
+                "{}: ",
+                path.file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("model")
+            )
+        } else {
+            String::new()
+        };
+        parsed.push((model, textures, prefix));
+    }
+    let borrowed: Vec<_> = parsed
+        .iter()
+        .map(|(model, textures, prefix)| (model, textures.as_slice(), prefix.clone()))
+        .collect();
+    let armature_name = Path::new(&source_paths[0])
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("G1M");
+    crate::parser::fbx::export_g1m(
+        &borrowed,
+        Path::new(&output),
+        crate::parser::fbx::TextureExportFormat::parse(&texture_format)
+            .map_err(|error| error.to_string())?,
+        armature_name,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(output)
+}
+
+#[tauri::command]
+pub fn export_viewport_png(output: String, data_url: String) -> Result<String, String> {
+    use base64::Engine;
+
+    let encoded = data_url
+        .strip_prefix("data:image/png;base64,")
+        .ok_or_else(|| "invalid viewport PNG data URL".to_string())?;
+    let png = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|error| error.to_string())?;
+    if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("viewport render did not produce a PNG".into());
+    }
+    fs::write(&output, png).map_err(|error| error.to_string())?;
+    Ok(output)
+}
+
 fn resolve_bfres_textures(
     bfres: &crate::file_format::Model3D::bfres::BfresFile,
     source: &Path,

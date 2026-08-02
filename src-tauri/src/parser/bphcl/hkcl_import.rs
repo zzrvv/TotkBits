@@ -309,22 +309,22 @@ fn materialize_collidable(
         write_vec4(
             &mut builder.data,
             checked_add(offset, 32)?,
-            transform[0..4].try_into().unwrap(),
+            [transform[0], transform[1], transform[2], transform[3]],
         )?;
         write_vec4(
             &mut builder.data,
             checked_add(offset, 48)?,
-            transform[4..8].try_into().unwrap(),
+            [transform[4], transform[5], transform[6], transform[7]],
         )?;
         write_vec4(
             &mut builder.data,
             checked_add(offset, 64)?,
-            transform[8..12].try_into().unwrap(),
+            [transform[8], transform[9], transform[10], transform[11]],
         )?;
         write_vec4(
             &mut builder.data,
             checked_add(offset, 80)?,
-            transform[12..16].try_into().unwrap(),
+            [transform[12], transform[13], transform[14], transform[15]],
         )?;
     }
     write_bytes(
@@ -496,12 +496,12 @@ fn write_u16(data: &mut [u8], offset: u32, value: u16) -> io::Result<()> {
 
 fn read_u32(data: &[u8], offset: u32) -> io::Result<u32> {
     let offset = offset as usize;
-    Ok(u32::from_le_bytes(
-        data.get(offset..offset + 4)
-            .ok_or_else(|| invalid("BPHCL read exceeds DATA"))?
-            .try_into()
-            .unwrap(),
-    ))
+    let source = data
+        .get(offset..offset + 4)
+        .ok_or_else(|| invalid("BPHCL read exceeds DATA"))?;
+    let mut bytes = [0; 4];
+    bytes.copy_from_slice(source);
+    Ok(u32::from_le_bytes(bytes))
 }
 
 fn write_u32(data: &mut [u8], offset: u32, value: u32) -> io::Result<()> {

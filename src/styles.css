@@ -4,6 +4,7 @@
   --text-color: #fff;
   
   --main-top-offset: calc(var(--menu-bar-h) + var(--document-tabs-h) + var(--buttons-h));
+  --main-top-offset-no-buttons: calc(var(--menu-bar-h) + var(--document-tabs-h));
   font-family:  Consolas,Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 24px;
@@ -535,7 +536,8 @@ button {
 
 .aoc-model-view {
   position: fixed;
-  inset: var(--main-top-offset) 0 22px 0;
+  inset: var( --main-top-offset-no-buttons) 0 9px 0;
+  /* inset: var(--main-top-offset) 0 22px 0; */
   overflow: auto;
   padding: 0 24px 24px;
   box-sizing: border-box;
@@ -547,7 +549,7 @@ button {
   position: sticky;
   top: 0;
   z-index: 1;
-  padding: 0 0 18px;
+  padding: 15px 0 18px;
   background: #181a1d;
 }
 

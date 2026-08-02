@@ -306,7 +306,7 @@ function MenuBarDisplay({ updateButton = null }) {
   const iconSize = '20px';
   const blankIcon = 'menu/blank.png';
   let isSaveEnabled = true;
-  if (activeTab === 'COMPARER' || activeTab === '3D') {
+  if (activeTab === 'COMPARER' || activeTab === '3D' || activeTab === 'AOC_MODELS') {
     isSaveEnabled = false;
   } else if (activeTab === 'YAML' && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) {
     isSaveEnabled = false;

@@ -1,7 +1,8 @@
 import Editor from '@monaco-editor/react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { Bounds, Grid, OrbitControls, PerspectiveCamera } from '@react-three/drei';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { Grid, OrbitControls, PerspectiveCamera } from '@react-three/drei';
+import { save } from '@tauri-apps/plugin-dialog';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { getDocumentsSnapshot, invoke, subscribeDocuments } from './DocumentState';
 import './Bfres3DView.css';
@@ -365,6 +366,73 @@ function SceneExposure({ brightness }) {
     return null;
 }
 
+function ViewportCapture({ captureRef }) {
+    const { gl, scene, camera } = useThree();
+    useEffect(() => {
+        captureRef.current = () => {
+            const background = scene.background;
+            const clearColor = gl.getClearColor(new THREE.Color()).clone();
+            const clearAlpha = gl.getClearAlpha();
+            scene.background = null;
+            gl.setClearColor(0x000000, 0);
+            gl.render(scene, camera);
+            const dataUrl = gl.domElement.toDataURL('image/png');
+            scene.background = background;
+            gl.setClearColor(clearColor, clearAlpha);
+            gl.render(scene, camera);
+            return dataUrl;
+        };
+        return () => {
+            captureRef.current = null;
+        };
+    }, [camera, captureRef, gl, scene]);
+    return null;
+}
+
+function FrontCamera({ render }) {
+    const { camera, controls, size } = useThree();
+    const bounds = useMemo(() => {
+        const box = new THREE.Box3();
+        const point = new THREE.Vector3();
+        const worlds = boneWorldMatrices(render.bones || [], render.scale_mode);
+        for (const mesh of render.meshes || []) {
+            for (let index = 0; index < mesh.positions.length; index += 1) {
+                point.fromArray(mesh.positions[index]);
+                if (mesh.vertex_skin_count === 1) {
+                    const boneIndex = mesh.bone_indices[index]?.[0] ?? mesh.bone_index;
+                    if (worlds[boneIndex]) point.applyMatrix4(worlds[boneIndex]);
+                }
+                box.expandByPoint(point);
+            }
+        }
+        return box;
+    }, [render]);
+    useEffect(() => {
+        if (bounds.isEmpty()) return;
+        const center = bounds.getCenter(new THREE.Vector3());
+        const dimensions = bounds.getSize(new THREE.Vector3());
+        const fov = THREE.MathUtils.degToRad(camera.fov || 42);
+        const aspect = Math.max(size.width / Math.max(size.height, 1), 0.01);
+        const distance = Math.max(
+            dimensions.y / (2 * Math.tan(fov / 2)),
+            dimensions.x / (2 * Math.tan(fov / 2) * aspect),
+            dimensions.z,
+            0.01,
+        ) * 1.15;
+        camera.up.set(0, 1, 0);
+        camera.position.set(center.x, center.y, center.z + distance);
+        camera.near = Math.max(distance / 10_000, 0.0001);
+        camera.far = Math.max(distance * 100, 1000);
+        camera.lookAt(center);
+        camera.updateProjectionMatrix();
+        if (controls) {
+            controls.target.copy(center);
+            controls.update();
+        }
+    }, [bounds, camera, controls, size.height, size.width]);
+    return null;
+}
+
 function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShading, glow, showSkeleton, showNormals, weightBone, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes }) {
     const textures = useResolvedTextures(bfres?.resolvedTextures);
     return <>
@@ -373,13 +441,12 @@ function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShadin
         <ambientLight intensity={celShading ? 1.4 : 2.8} />
         {!celShading && <hemisphereLight args={['#ffffff', '#56616f', 2.0]} />}
         <directionalLight position={[6, 10, 8]} intensity={celShading ? 2.2 : 3.5} />
-        <PerspectiveCamera makeDefault position={[8, 6, 10]} fov={42} />
+        <PerspectiveCamera makeDefault position={[0, 0, 10]} up={[0, 1, 0]} fov={42} />
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
+        <FrontCamera render={render} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
-        <Bounds fit clip observe margin={1.15}>
-            <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
-            {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} />}
-        </Bounds>
+        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
+        {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} />}
     </>;
 }
 
@@ -544,6 +611,10 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [modelVisible, setModelVisible] = useState(true);
     const [hiddenMeshes, setHiddenMeshes] = useState([]);
     const [viewResetKey, setViewResetKey] = useState(0);
+    const [fbxTextureFormat, setFbxTextureFormat] = useState('png');
+    const [exportingFbx, setExportingFbx] = useState(false);
+    const [renderingViewport, setRenderingViewport] = useState(false);
+    const captureViewportRef = useRef(null);
     const isG1m = bfres?.format === 'G1M';
     const hasGlow = useMemo(() => {
         const renderableTextures = new Set((bfres?.resolvedTextures || [])
@@ -684,6 +755,59 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     };
     const showYamlButtonFlag = false;
     const showNormalsButtonFlag = false;
+    const exportFbx = async () => {
+        if (!isG1m || !document?.fullPath || exportingFbx) return;
+        const sourcePaths = document.modelPaths?.length ? document.modelPaths : [document.fullPath];
+        const stem = sourcePaths.length > 1
+            ? 'selected_aoc_models'
+            : (document.title || 'model').replace(/\.g1m$/i, '');
+        const output = await save({
+            defaultPath: `${stem}.fbx`,
+            filters: [{ name: 'FBX model', extensions: ['fbx'] }],
+        });
+        if (!output) return;
+        const operationId = `fbx-export:${document.id}:${crypto.randomUUID()}`;
+        window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+            detail: { id: operationId, label: 'Exporting FBX model…' },
+        }));
+        setExportingFbx(true);
+        setStatusText(`Exporting ${sourcePaths.length === 1 ? document.title || 'G1M' : `${sourcePaths.length} G1M models`} as FBX…`);
+        try {
+            const written = await invoke('export_g1m_fbx', {
+                sourcePaths,
+                output,
+                textureFormat: fbxTextureFormat,
+            });
+            setStatusText(`Exported FBX ${written}`);
+        } catch (reason) {
+            setStatusText(`FBX export failed: ${reason}`);
+        } finally {
+            setExportingFbx(false);
+            window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+                detail: { id: operationId, done: true },
+            }));
+        }
+    };
+    const renderViewport = async () => {
+        if (!captureViewportRef.current || renderingViewport) return;
+        const stem = (document?.title || bfres?.name || 'model').replace(/\.[^.]+$/, '');
+        const output = await save({
+            defaultPath: `${stem}_render.png`,
+            filters: [{ name: 'PNG image', extensions: ['png'] }],
+        });
+        if (!output) return;
+        setRenderingViewport(true);
+        setStatusText('Rendering transparent viewport PNG…');
+        try {
+            const dataUrl = captureViewportRef.current();
+            await invoke('export_viewport_png', { output, dataUrl });
+            setStatusText(`Rendered viewport PNG ${output}`);
+        } catch (reason) {
+            setStatusText(`Viewport render failed: ${reason}`);
+        } finally {
+            setRenderingViewport(false);
+        }
+    };
 
     return <main className="bfres-workspace" aria-hidden={activeTab !== '3D'} style={{ '--bfres-left-width': `${leftWidth}px`, '--bfres-right-width': `${rightWidth}px`, display: activeTab === '3D' ? 'grid' : 'none' }}>
         <header className="bfres-viewport-toolbar">
@@ -784,7 +908,8 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             }} />
             <div className="bfres-panel-divider left" role="separator" aria-orientation="vertical" onMouseDown={(event) => startPanelDrag('left', event)} />
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
-                <Canvas key={viewResetKey} dpr={[1, 2]} gl={{ antialias: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
+                <Canvas key={viewResetKey} dpr={[1, 2]} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
+                    <ViewportCapture captureRef={captureViewportRef} />
                     {bfres?.render && <ResourceScene bfres={bfres} render={bfres.render} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
                         setSelectedMesh(mesh.name);
                         setSelectedMaterial(null);
@@ -798,6 +923,27 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             </section>
             <div className="bfres-panel-divider right" role="separator" aria-orientation="vertical" onMouseDown={(event) => startPanelDrag('right', event)} />
             <aside className="bfres-inspector">
+                {bfres?.render && <section className="bfres-export-panel">
+                    <header><strong>Viewport</strong></header>
+                    <button type="button" onClick={renderViewport} disabled={renderingViewport || !bfres.render.meshes?.length}>
+                        {renderingViewport ? 'Rendering…' : 'Render'}
+                    </button>
+                </section>}
+                {isG1m && <section className="bfres-export-panel">
+                    {/* <header><strong>FBX Export</strong></header> */}
+                    <button type="button" onClick={exportFbx} disabled={exportingFbx || !bfres?.render?.meshes?.length}>
+                        {exportingFbx ? 'Exporting…' : 'Export FBX'}
+                    </button>
+                    
+                        <select value={fbxTextureFormat} onChange={(event) => setFbxTextureFormat(event.target.value)} disabled={exportingFbx}>
+                            <option value="none">None</option>
+                            <option value="png">PNG</option>
+                            <option value="dds">DDS</option>
+                        </select>
+<label>Textures
+                    </label>
+                    
+                </section>}
                 {panel === 'resources' && <NodeInspector detail={detail} />}
                 {panel === 'parameters' && bfres && !isG1m && <dl className="bfres-parameters">
                     <dt>Version</dt><dd>{bfres.header.version.join('.')}</dd>
