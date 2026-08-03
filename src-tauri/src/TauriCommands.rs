@@ -114,15 +114,16 @@ pub fn inspect_3d_model(
         )
         .map_err(|error| error.to_string())
     } else if crate::Settings::Magic::is_g1m(&data) {
-        let g1m = crate::parser::AOC::g1m::G1mFile::parse(
+        let (g1m, texture_resolution) = crate::parser::AOC::g1m::G1mFile::parse_with_textures(
             &data,
             Path::new(&path)
                 .file_stem()
                 .and_then(|value| value.to_str())
                 .unwrap_or("G1M"),
+            Path::new(&path),
+            Path::new(&aoc_path),
         )
         .map_err(|error| error.to_string())?;
-        let texture_resolution = g1m.resolve_textures(Path::new(&path), Path::new(&aoc_path));
         let mut value = serde_json::to_value(g1m).map_err(|error| error.to_string())?;
         if let Some(object) = value.as_object_mut() {
             object.insert(
@@ -1054,7 +1055,8 @@ pub fn get_recent_files() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-pub fn get_aoc_model_catalog() -> Result<Option<HashMap<String, String>>, String> {
+pub fn get_aoc_model_catalog(
+) -> Result<Option<HashMap<String, crate::parser::AOC::g1m::AocModelEntry>>, String> {
     let config =
         crate::TotkConfig::TotkConfig::safe_new(false).map_err(|error| error.to_string())?;
     let dump_path = Path::new(&config.aoc_path);
@@ -1069,7 +1071,7 @@ pub fn get_aoc_model_catalog() -> Result<Option<HashMap<String, String>>, String
     }
 
     let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("bin")
+        .join("misc")
         .join("AOC_names.json");
     let contents = fs::read_to_string(manifest_path).or_else(|_| {
         let executable = env::current_exe()?;
@@ -1079,18 +1081,21 @@ pub fn get_aoc_model_catalog() -> Result<Option<HashMap<String, String>>, String
                 "executable directory is missing",
             )
         })?;
-        fs::read_to_string(parent.join("bin").join("AOC_names.json"))
+        fs::read_to_string(parent.join("misc").join("AOC_names.json"))
     });
 
     let mut catalog = contents
         .ok()
-        .and_then(|value| serde_json::from_str::<HashMap<String, String>>(&value).ok())
+        .and_then(|value| {
+            serde_json::from_str::<HashMap<String, crate::parser::AOC::g1m::AocModelEntry>>(&value)
+                .ok()
+        })
         .unwrap_or_default();
     if catalog.is_empty() {
         return Ok(None);
     }
     let pairs_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("bin")
+        .join("misc")
         .join("G1M_to_G1T_pairs.json");
     let pairs = fs::read_to_string(pairs_path).or_else(|_| {
         let executable = env::current_exe()?;
@@ -1100,7 +1105,7 @@ pub fn get_aoc_model_catalog() -> Result<Option<HashMap<String, String>>, String
                 "executable directory is missing",
             )
         })?;
-        fs::read_to_string(parent.join("bin").join("G1M_to_G1T_pairs.json"))
+        fs::read_to_string(parent.join("misc").join("G1M_to_G1T_pairs.json"))
     });
     if let Some(pair_keys) = pairs
         .ok()

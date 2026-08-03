@@ -9,8 +9,10 @@ use std::{
 
 fn load_zlib_json<T: DeserializeOwned + Default>(name: &str) -> T {
     let paths = [
-        crate::Settings::exe_relative_path(format!("bin/{name}")),
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("bin").join(name),
+        crate::Settings::exe_relative_path(format!("misc/{name}")),
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("misc")
+            .join(name),
     ];
     let mut last_error = None;
     for path in paths {

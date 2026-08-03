@@ -592,7 +592,7 @@ impl<'a> TotkZstd<'_> {
         zstd: Arc<TotkZstd>,
     ) -> io::Result<String> {
         //parse json
-        // let json_zlibdata = fs::read("bin/totk_internal_filepaths.bin")?;
+        // let json_zlibdata = fs::read("misc/totk_internal_filepaths.bin")?;
         // let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
         // let mut json_str = String::new();
         // decoder.read_to_string(&mut json_str)?;

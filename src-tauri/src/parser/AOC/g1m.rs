@@ -1,6 +1,6 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     io,
     path::{Path, PathBuf},
     sync::{Arc, LazyLock, Mutex},
@@ -13,6 +13,12 @@ use crate::{
         AOC::{g1t::G1tFile, kidsobj::KidsObjFile, ktid::KtidFile},
     },
 };
+
+#[path = "g1m_import_task.rs"]
+mod g1m_import_task;
+use g1m_import_task::G1mImportTask;
+
+const PARALLEL_IMPORT_MIN_BYTES: usize = 1024 * 1024;
 
 fn read_support_file(paths: &[&str], fallback: &str) -> String {
     for relative in paths {
@@ -32,13 +38,13 @@ fn read_support_file(paths: &[&str], fallback: &str) -> String {
 }
 
 static PAIRS: LazyLock<HashMap<String, serde_json::Value>> = LazyLock::new(|| {
-    serde_json::from_str(&read_support_file(&["bin/G1M_to_G1T_pairs.json"], "{}"))
+    serde_json::from_str(&read_support_file(&["misc/G1M_to_G1T_pairs.json"], "{}"))
         .unwrap_or_default()
 });
 
 static BOTW_BONE_NAMES: LazyLock<HashMap<usize, String>> = LazyLock::new(|| {
     serde_json::from_str::<HashMap<String, String>>(&read_support_file(
-        &["bin/bones_botw.json"],
+        &["misc/bones_botw.json"],
         "{}",
     ))
     .unwrap_or_default()
@@ -51,12 +57,14 @@ static BOTW_BONE_NAMES: LazyLock<HashMap<usize, String>> = LazyLock::new(|| {
     .collect()
 });
 
-static AOC_NAMES: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
-    serde_json::from_str(&read_support_file(
-        &["bin/AOC_names.json", "misc/AOC_names.json"],
-        "{}",
-    ))
-    .unwrap_or_default()
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct AocModelEntry {
+    pub name: String,
+    pub size: u64,
+}
+
+static AOC_NAMES: LazyLock<HashMap<String, AocModelEntry>> = LazyLock::new(|| {
+    serde_json::from_str(&read_support_file(&["misc/AOC_names.json"], "{}")).unwrap_or_default()
 });
 
 static KIDSOBJ_CACHE: LazyLock<Mutex<HashMap<PathBuf, Arc<KidsObjFile>>>> =
@@ -110,6 +118,7 @@ pub struct G1mFile {
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedG1tTexture {
     pub name: String,
+    pub aliases: Vec<String>,
     pub path: String,
     pub source: String,
     pub data_url: String,
@@ -192,14 +201,36 @@ impl G1mFile {
     }
 
     pub fn parse(data: &[u8], name: &str) -> io::Result<Self> {
-        Self::parse_internal(data, name, false)
+        Self::parse_internal(data, name, false, None).map(|(model, _)| model)
     }
 
     pub fn parse_for_export(data: &[u8], name: &str) -> io::Result<Self> {
-        Self::parse_internal(data, name, true)
+        Self::parse_internal(data, name, true, None).map(|(model, _)| model)
     }
 
-    fn parse_internal(data: &[u8], name: &str, include_hidden_meshes: bool) -> io::Result<Self> {
+    pub fn parse_with_textures(
+        data: &[u8],
+        name: &str,
+        source: &Path,
+        aoc_path: &Path,
+    ) -> io::Result<(Self, G1mTextureResolution)> {
+        let (model, textures) = Self::parse_internal(data, name, false, Some((source, aoc_path)))?;
+        Ok((
+            model,
+            textures.unwrap_or(G1mTextureResolution {
+                textures: Vec::new(),
+                total: 0,
+                skipped: 0,
+            }),
+        ))
+    }
+
+    fn parse_internal<'a>(
+        data: &'a [u8],
+        name: &str,
+        include_hidden_meshes: bool,
+        texture_paths: Option<(&'a Path, &'a Path)>,
+    ) -> io::Result<(Self, Option<G1mTextureResolution>)> {
         let endian = match data.get(..4) {
             Some(b"_M1G") => Endian::Little,
             Some(b"G1M_") => Endian::Big,
@@ -246,40 +277,60 @@ impl G1mFile {
             reader.seek(start + size)?;
         }
         let geometry = geometry.ok_or_else(|| invalid("G1M has no G1MG geometry chunk"))?;
-        let meshes = build_meshes(
-            data,
-            &geometry,
-            endian,
-            &bones,
-            &bone_ids,
-            &nuno_entries,
-            include_hidden_meshes,
+        let all_slots: BTreeSet<_> = geometry
+            .materials
+            .iter()
+            .flat_map(|material| material.texture_slots.iter())
+            .map(|slot| slot.name.clone())
+            .collect();
+        let task = G1mImportTask::new(data.len(), geometry.submeshes.len());
+        let texture_task = texture_paths
+            .map(|(source, aoc_path)| move || resolve_texture_slots(source, aoc_path, &all_slots));
+        let (meshes, texture_resolution) = task.run(
+            |worker, workers| {
+                build_meshes(
+                    data,
+                    &geometry,
+                    endian,
+                    &bones,
+                    &bone_ids,
+                    &nuno_entries,
+                    include_hidden_meshes,
+                    worker,
+                    workers,
+                )
+            },
+            texture_task,
         )?;
         let display_name = AOC_NAMES
             .get(&name.to_ascii_lowercase())
+            .map(|entry| &entry.name)
             .filter(|value| !value.is_empty())
             .map(|value| value.replace(' ', "_"))
             .unwrap_or_else(|| name.to_owned());
-        Ok(Self {
-            header: G1mHeader {
-                version,
-                endian: format!("{endian:?}"),
-                target_address_size: 4,
-                alignment_exponent: 0,
-                file_size: file_size as u64,
-                string_pool_offset: 0,
-                string_pool_size: 0,
+        Ok((
+            Self {
+                header: G1mHeader {
+                    version,
+                    endian: format!("{endian:?}"),
+                    target_address_size: 4,
+                    alignment_exponent: 0,
+                    file_size: file_size as u64,
+                    string_pool_offset: 0,
+                    string_pool_size: 0,
+                },
+                name: Some(display_name),
+                sections,
+                materials: geometry.materials,
+                render: BfresRenderGraph {
+                    bones,
+                    matrix_to_bone: Vec::new(),
+                    meshes,
+                },
+                format: "G1M".into(),
             },
-            name: Some(display_name),
-            sections,
-            materials: geometry.materials,
-            render: BfresRenderGraph {
-                bones,
-                matrix_to_bone: Vec::new(),
-                meshes,
-            },
-            format: "G1M".into(),
-        })
+            texture_resolution,
+        ))
     }
 
     pub fn open(
@@ -301,6 +352,7 @@ impl G1mFile {
             .file_stem()
             .and_then(|stem| stem.to_str())
             .and_then(|stem| AOC_NAMES.get(&stem.to_ascii_lowercase()))
+            .map(|entry| &entry.name)
             .filter(|name| !name.trim().is_empty())
             .map(|name| format!("[{}] {} [G1M]", name.trim(), send.path.name))
             .unwrap_or_else(|| format!("{} [G1M]", send.path.name));
@@ -318,33 +370,41 @@ impl G1mFile {
             .flat_map(|material| material.texture_slots.iter())
             .map(|slot| slot.name.clone())
             .collect();
-        let total = all_slots.len();
-        let Some(pair) = paired_texture_info(source) else {
-            return G1mTextureResolution {
-                textures: Vec::new(),
-                total,
-                skipped: 0,
-            };
-        };
-        let resolved = resolve_kidsobj_textures(source, aoc_path, &pair, &all_slots);
-        if !resolved.is_empty() {
-            return G1mTextureResolution {
-                textures: resolved,
-                total,
-                skipped: 0,
-            };
-        }
-        // Standalone dumps sometimes place the paired value directly beside
-        // the model as a G1T without KTID/KidsObj metadata.
-        pair.ktid_hash
-            .as_deref()
-            .and_then(|hash| resolve_direct_g1t(source, aoc_path, hash, &all_slots))
-            .unwrap_or(G1mTextureResolution {
-                textures: Vec::new(),
-                total,
-                skipped: 0,
-            })
+        resolve_texture_slots(source, aoc_path, &all_slots)
     }
+}
+
+fn resolve_texture_slots(
+    source: &Path,
+    aoc_path: &Path,
+    all_slots: &BTreeSet<String>,
+) -> G1mTextureResolution {
+    let total = all_slots.len();
+    let Some(pair) = paired_texture_info(source) else {
+        return G1mTextureResolution {
+            textures: Vec::new(),
+            total,
+            skipped: 0,
+        };
+    };
+    let resolved = resolve_kidsobj_textures(source, aoc_path, &pair, &all_slots);
+    if !resolved.is_empty() {
+        return G1mTextureResolution {
+            textures: resolved,
+            total,
+            skipped: 0,
+        };
+    }
+    // Standalone dumps sometimes place the paired value directly beside
+    // the model as a G1T without KTID/KidsObj metadata.
+    pair.ktid_hash
+        .as_deref()
+        .and_then(|hash| resolve_direct_g1t(source, aoc_path, hash, &all_slots))
+        .unwrap_or(G1mTextureResolution {
+            textures: Vec::new(),
+            total,
+            skipped: 0,
+        })
 }
 
 fn parse_skeleton(data: &[u8], endian: Endian) -> io::Result<(Vec<BfresBone>, Vec<u16>)> {
@@ -674,10 +734,18 @@ fn build_meshes(
     bone_ids: &[u16],
     nuno_entries: &[NunoEntry],
     include_hidden_meshes: bool,
+    worker: usize,
+    workers: usize,
 ) -> io::Result<Vec<BfresMesh>> {
     let source = BinaryReader::with_endian(data, endian);
     let mut meshes = Vec::with_capacity(geometry.submeshes.len());
+    let per_worker = geometry.submeshes.len().div_ceil(workers);
+    let worker_start = worker * per_worker;
+    let worker_end = (worker_start + per_worker).min(geometry.submeshes.len());
     for (mesh_index, submesh) in geometry.submeshes.iter().enumerate() {
+        if mesh_index < worker_start || mesh_index >= worker_end {
+            continue;
+        }
         if !include_hidden_meshes
             && geometry
                 .visible_submeshes
@@ -706,7 +774,7 @@ fn build_meshes(
                 _ => return Err(invalid("unsupported G1M index width")),
             });
         }
-        let indices = if submesh.primitive == 4 {
+        let mut indices = if submesh.primitive == 4 {
             strip_to_triangles(&raw_indices)
         } else {
             raw_indices
@@ -877,6 +945,33 @@ fn build_meshes(
                 }
             }
         }
+        // G1M files commonly carry placeholder TEXCOORD layers. A layer whose
+        // vertices all collapse onto one coordinate cannot map a 2D texture;
+        // discard it so the first exposed layer is the first useful UV set.
+        uv_maps.retain(|uv_map| useful_uv_map(uv_map));
+        if indices
+            .iter()
+            .all(|index| (*index as usize) < positions.len())
+        {
+            let mut remap = HashMap::<u32, u32>::new();
+            let mut used = Vec::new();
+            for index in &mut indices {
+                let next = remap.len() as u32;
+                let mapped = *remap.entry(*index).or_insert_with(|| {
+                    used.push(*index as usize);
+                    next
+                });
+                *index = mapped;
+            }
+            retain_vertices(&mut positions, &used);
+            retain_vertices(&mut normals, &used);
+            retain_vertices(&mut colors, &used);
+            retain_vertices(&mut bone_indices, &used);
+            retain_vertices(&mut bone_weights, &used);
+            for uv_map in &mut uv_maps {
+                retain_vertices(uv_map, &used);
+            }
+        }
         let skin_bones = bone_indices
             .iter()
             .flatten()
@@ -884,10 +979,6 @@ fn build_meshes(
             .collect::<std::collections::BTreeSet<_>>()
             .into_iter()
             .collect();
-        // G1M files commonly carry placeholder TEXCOORD layers. A layer whose
-        // vertices all collapse onto one coordinate cannot map a 2D texture;
-        // discard it so the first exposed layer is the first useful UV set.
-        uv_maps.retain(|uv_map| useful_uv_map(uv_map));
         let uv0 = uv_maps.first().cloned().unwrap_or_default();
         meshes.push(BfresMesh {
             name: format!("Mesh {mesh_index}"),
@@ -919,6 +1010,13 @@ fn build_meshes(
         });
     }
     Ok(meshes)
+}
+
+fn retain_vertices<T: Copy>(values: &mut Vec<T>, used: &[usize]) {
+    *values = used
+        .iter()
+        .filter_map(|index| values.get(*index).copied())
+        .collect();
 }
 
 fn collapse_skin_influences(
@@ -1362,7 +1460,7 @@ fn resolve_kidsobj_textures(
         .filter_map(|index| ktid.get(index))
         .collect();
     let kids = resolve_kidsobj_hashes(source, aoc, pair.kidsobjdb.as_deref(), &required_hashes);
-    let mut textures = Vec::new();
+    let mut archives = BTreeMap::<PathBuf, Vec<String>>::new();
     for slot_id in slot_ids {
         let Ok(index) = slot_id.parse::<u32>() else {
             continue;
@@ -1376,16 +1474,34 @@ fn resolve_kidsobj_textures(
         let Some(path) = find_g1t(source, aoc, &format!("{g1t_hash:08x}")) else {
             continue;
         };
-        let Ok(g1t) = G1tFile::parse(&std::fs::read(&path).unwrap_or_default()) else {
+        archives.entry(path).or_default().push(slot_id.clone());
+    }
+    let mut textures = Vec::new();
+    for (path, slot_ids) in archives {
+        let Ok(g1t) = G1tFile::parse_preview(&std::fs::read(&path).unwrap_or_default()) else {
             continue;
         };
         for texture in g1t.textures {
-            let name = if texture.index == 0 {
-                slot_id.clone()
-            } else {
-                format!("{slot_id}:{}", texture.index)
+            let names: Vec<_> = slot_ids
+                .iter()
+                .map(|slot_id| {
+                    if texture.index == 0 {
+                        slot_id.clone()
+                    } else {
+                        format!("{slot_id}:{}", texture.index)
+                    }
+                })
+                .collect();
+            let Some((name, aliases)) = names.split_first() else {
+                continue;
             };
-            textures.push(resolved_texture(name, path.clone(), texture, source));
+            textures.push(resolved_texture(
+                name.clone(),
+                aliases.to_vec(),
+                path.clone(),
+                texture,
+                source,
+            ));
         }
     }
     textures
@@ -1400,7 +1516,7 @@ fn resolve_direct_g1t(
     let Some(path) = find_g1t(source, aoc, hash) else {
         return None;
     };
-    let Ok(g1t) = G1tFile::parse(&std::fs::read(&path).unwrap_or_default()) else {
+    let Ok(g1t) = G1tFile::parse_preview(&std::fs::read(&path).unwrap_or_default()) else {
         return None;
     };
     let total = g1t.textures.len();
@@ -1408,7 +1524,15 @@ fn resolve_direct_g1t(
         .textures
         .into_iter()
         .filter(|texture| slot_ids.contains(&texture.index.to_string()))
-        .map(|texture| resolved_texture(texture.index.to_string(), path.clone(), texture, source))
+        .map(|texture| {
+            resolved_texture(
+                texture.index.to_string(),
+                Vec::new(),
+                path.clone(),
+                texture,
+                source,
+            )
+        })
         .collect();
     Some(G1mTextureResolution {
         skipped: total.saturating_sub(textures.len()),
@@ -1419,12 +1543,14 @@ fn resolve_direct_g1t(
 
 fn resolved_texture(
     name: String,
+    aliases: Vec<String>,
     path: PathBuf,
     texture: crate::parser::AOC::g1t::G1tTexture,
     source: &Path,
 ) -> ResolvedG1tTexture {
     ResolvedG1tTexture {
         name,
+        aliases,
         path: format!("{}#{}", path.display(), texture.index),
         source: if path.parent() == source.parent() {
             "adjacent-g1t"
@@ -1681,6 +1807,88 @@ mod tests {
     }
 
     #[test]
+    fn large_8d40c774_preview_payload_stays_bounded() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_aocss/g1m/8d40c774.g1m");
+        if !path.is_file() {
+            return;
+        }
+        let data = std::fs::read(&path).unwrap();
+        let Ok(config) = crate::TotkConfig::TotkConfig::safe_new(false) else {
+            G1mFile::parse(&data, "8d40c774").unwrap();
+            return;
+        };
+        let (model, resolution) =
+            G1mFile::parse_with_textures(&data, "8d40c774", &path, Path::new(&config.aoc_path))
+                .unwrap();
+        assert!(resolution
+            .textures
+            .iter()
+            .all(|texture| texture.data_urls.len() <= 2));
+        let model_size = serde_json::to_vec(&model).unwrap().len();
+        let texture_size = serde_json::to_vec(&resolution.textures).unwrap().len();
+        let payload_size = model_size + texture_size;
+        assert!(
+            payload_size < 64 * 1024 * 1024,
+            "{payload_size} byte payload ({model_size} model, {texture_size} textures)"
+        );
+    }
+
+    #[test]
+    #[ignore = "manual release-mode G1M parser benchmark"]
+    fn benchmark_largest_g1m_single_vs_four_workers() {
+        use std::time::Instant;
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_aocss/g1m");
+        let mut fixtures: Vec<_> = std::fs::read_dir(root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("g1m"))
+            })
+            .collect();
+        fixtures.sort_by_key(|path| std::cmp::Reverse(path.metadata().unwrap().len()));
+        fixtures.truncate(5);
+
+        println!("BENCH,file,bytes,one_thread_ms,four_worker_ms,speedup");
+        for path in fixtures {
+            let data = std::fs::read(&path).unwrap();
+            let name = path.file_stem().unwrap().to_string_lossy();
+            g1m_import_task::set_test_worker_limit(4);
+            G1mFile::parse(&data, &name).unwrap();
+
+            let mut single = Vec::new();
+            let mut parallel = Vec::new();
+            for round in 0..6 {
+                let limits = if round % 2 == 0 { [1, 4] } else { [4, 1] };
+                for limit in limits {
+                    g1m_import_task::set_test_worker_limit(limit);
+                    let started = Instant::now();
+                    G1mFile::parse(&data, &name).unwrap();
+                    let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+                    if limit == 1 {
+                        single.push(elapsed);
+                    } else {
+                        parallel.push(elapsed);
+                    }
+                }
+            }
+            single.sort_by(f64::total_cmp);
+            parallel.sort_by(f64::total_cmp);
+            let one = (single[2] + single[3]) / 2.0;
+            let four = (parallel[2] + parallel[3]) / 2.0;
+            println!(
+                "BENCH,{},{},{one:.3},{four:.3},{:.3}",
+                path.file_name().unwrap().to_string_lossy(),
+                data.len(),
+                one / four
+            );
+        }
+        g1m_import_task::set_test_worker_limit(0);
+    }
+
+    #[test]
     fn pairing_table_contains_sample_model() {
         assert_eq!(
             paired_texture_info(Path::new("00320929.g1m"))
@@ -1855,7 +2063,9 @@ mod tests {
     #[test]
     fn aoc_model_names_are_resolved_from_hashes() {
         assert_eq!(
-            AOC_NAMES.get("038bb045").map(|name| name.replace(' ', "_")),
+            AOC_NAMES
+                .get("038bb045")
+                .map(|entry| entry.name.replace(' ', "_")),
             Some("Amber_Earrings".to_owned())
         );
         assert!(!AOC_NAMES.contains_key("ffffffff"));

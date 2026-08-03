@@ -9,7 +9,10 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "bin"
+      "bin/cpp",
+      "misc/*.bin",
+      "misc/*.json",
+      "misc/*.txt"
     ],
     "icon": [
       "icons/32x32.png",

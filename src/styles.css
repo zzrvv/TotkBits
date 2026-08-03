@@ -589,17 +589,25 @@ button {
 }
 
 .aoc-model-results {
-  width: min(900px, 100%);
+  width: min(1020px, 100%);
   border: 1px solid #444;
 }
 
 .aoc-model-result {
   display: grid;
-  grid-template-columns: 22px 200px 110px minmax(0, 1fr) auto auto;
+  grid-template-columns: 22px 200px 110px minmax(0, 1fr) 72px auto auto;
   align-items: center;
   gap: 16px;
   padding: 7px 10px;
   border-bottom: 1px solid #36393e;
+  min-width: 0;
+}
+
+.aoc-model-result > span:not(.aoc-model-size) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .aoc-model-result.selected {
@@ -675,6 +683,13 @@ button {
 
 .aoc-model-result code {
   color: #8fc7ff;
+}
+
+.aoc-model-size {
+  color: #aeb8c2;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
 }
 
 

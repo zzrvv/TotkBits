@@ -69,6 +69,16 @@ impl TextureFormat {
 
 impl G1tFile {
     pub fn parse(data: &[u8]) -> io::Result<Self> {
+        Self::parse_internal(data, false)
+    }
+
+    /// Parses only the layers used by the 3D preview (first and last), while
+    /// preserving the archive's real array count in the returned metadata.
+    pub fn parse_preview(data: &[u8]) -> io::Result<Self> {
+        Self::parse_internal(data, true)
+    }
+
+    fn parse_internal(data: &[u8], preview_layers_only: bool) -> io::Result<Self> {
         let endian = match data.get(..4) {
             Some(b"GT1G") => Endian::Little,
             Some(b"G1TG") => Endian::Big,
@@ -113,7 +123,7 @@ impl G1tFile {
                 .unwrap_or(data.len())
                 .min(data.len());
             let entry = table.slice(start, end)?;
-            if let Ok(texture) = parse_texture(index, entry, endian) {
+            if let Ok(texture) = parse_texture(index, entry, endian, preview_layers_only) {
                 textures.push(texture);
             }
         }
@@ -125,7 +135,12 @@ impl G1tFile {
     }
 }
 
-fn parse_texture(index: usize, entry: &[u8], endian: Endian) -> io::Result<G1tTexture> {
+fn parse_texture(
+    index: usize,
+    entry: &[u8],
+    endian: Endian,
+    preview_layers_only: bool,
+) -> io::Result<G1tTexture> {
     let mut reader = BinaryReader::with_endian(entry, endian);
     let mip_byte = reader.read_u8()?;
     let texture_type = reader.read_u8()?;
@@ -181,9 +196,14 @@ fn parse_texture(index: usize, entry: &[u8], endian: Endian) -> io::Result<G1tTe
     // The viewer only needs the highest-resolution image. Do not pass the
     // remaining mip chain through DDS decoding or retain it in the PNG data.
     let base_mip_size = mip_chain_size(format, width, height, 1);
-    let mut data_urls = Vec::with_capacity(array_count);
+    let layers: Vec<_> = if preview_layers_only && array_count > 2 {
+        vec![0, array_count - 1]
+    } else {
+        (0..array_count).collect()
+    };
+    let mut data_urls = Vec::with_capacity(layers.len());
     let mut renderable = false;
-    for layer in 0..array_count {
+    for layer in layers {
         let start = layer * expected;
         let dds = make_dds(
             format,
@@ -193,7 +213,18 @@ fn parse_texture(index: usize, entry: &[u8], endian: Endian) -> io::Result<G1tTe
             false,
             &payload[start..start + base_mip_size],
         );
-        let image = crate::file_format::Image::dds::decode(&dds)?;
+        let mut image = crate::file_format::Image::dds::decode(&dds)?;
+        if preview_layers_only && image.width().max(image.height()) > 384 {
+            let scale = 384.0 / f64::from(image.width().max(image.height()));
+            let width = (f64::from(image.width()) * scale).round().max(1.0) as u32;
+            let height = (f64::from(image.height()) * scale).round().max(1.0) as u32;
+            image = image::imageops::resize(
+                &image,
+                width,
+                height,
+                image::imageops::FilterType::Triangle,
+            );
+        }
         if layer == 0 {
             renderable = is_renderable_texture(&image);
         }

@@ -22,6 +22,11 @@ celGradient.needsUpdate = true;
 // of the application so switching between document tabs never invokes Rust or
 // transfers the full mesh payload again.
 const modelInspectionCache = new Map();
+
+const importDuration = (milliseconds) => {
+    const seconds = Math.floor(milliseconds / 1000);
+    return `${String(Math.floor(seconds / 60)).padStart(2, '0')}m ${String(seconds % 60).padStart(2, '0')}s`;
+};
 const cacheModelInspection = (path, value) => {
     modelInspectionCache.set(path, value);
 };
@@ -65,6 +70,7 @@ const mergeG1mModels = (models) => {
         merged.resolvedTextures.push(...(value.resolvedTextures || []).map((texture) => ({
             ...texture,
             name: `${modelId}:${texture.name}`,
+            aliases: (texture.aliases || []).map((alias) => `${modelId}:${alias}`),
         })));
         merged.render.bones.push(...(value.render?.bones || []).map((bone) => ({
             ...bone,
@@ -155,6 +161,10 @@ function useResolvedTextures(entries, cacheTextures = true) {
             };
             loaded[entry.name] = loadLayer(urls[0]);
             if (urls.length > 1) loaded[`${entry.name}::last`] = loadLayer(urls.at(-1), ' [last layer]');
+            for (const alias of entry.aliases || []) {
+                loaded[alias] = loaded[entry.name];
+                if (urls.length > 1) loaded[`${alias}::last`] = loaded[`${entry.name}::last`];
+            }
         }
         setTextures(loaded);
         return () => {
@@ -646,7 +656,8 @@ function MaterialInspector({ material, textures }) {
     const [selectedSlot, setSelectedSlot] = useState(null);
     useEffect(() => setSelectedSlot(null), [material]);
     const preview = selectedSlot
-        ? (textures || []).find((texture) => texture.name === selectedSlot.name)
+        ? (textures || []).find((texture) => texture.name === selectedSlot.name
+            || texture.aliases?.includes(selectedSlot.name))
         : null;
     return <section className="bfres-selected-detail bfres-special-inspector"><header><strong>{material.name}</strong><small>MATERIAL</small></header>
         <div className="bfres-form-grid"><label>Name<input value={material.name} readOnly /></label><label className="bfres-check"><input type="checkbox" defaultChecked />Visible</label><label>Shader Archive<input value="material" readOnly /></label><label>Shader Model<input value="material" readOnly /></label><label>Sampler Inputs<input value={material.texture_slots.length} readOnly /></label><label>Attribute Inputs<input value="—" readOnly /></label></div>
@@ -713,7 +724,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const hasGlow = useMemo(() => {
         const renderableTextures = new Set((bfres?.resolvedTextures || [])
             .filter((texture) => texture.renderable !== false)
-            .map((texture) => texture.name));
+            .flatMap((texture) => [texture.name, ...(texture.aliases || [])]));
         return (bfres?.materials || []).some((material) =>
             (material.texture_slots || []).some((slot) =>
                 slot.texture_type === 'Emission' && renderableTextures.has(slot.name)));
@@ -924,6 +935,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             detail: { id: operationId, label: `Loading ${document.title || '3D model'}…` },
         }));
         const load = async () => {
+            const importStarted = performance.now();
             // Give React and the browser a frame to display the overlay before parsing starts.
             await new Promise((resolve) => requestAnimationFrame(resolve));
             try {
@@ -954,7 +966,9 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 setYaml(initial ? sectionYaml(initial) : '');
                 // Keep the overlay over the potentially expensive Three.js scene commit.
                 await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-                if (value.format === 'G1M') setStatusText('Done');
+                if (value.format === 'G1M') {
+                    setStatusText(`Imported G1M in ${importDuration(performance.now() - importStarted)}`);
+                }
             } catch (reason) {
                 if (!cancelled) setError(String(reason));
             } finally {
