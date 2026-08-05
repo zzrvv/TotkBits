@@ -59,6 +59,12 @@ struct TextureLink {
     name: String,
     relative_path: String,
     uv_set: String,
+    has_transparency: bool,
+}
+
+struct ExportedTexture {
+    relative_path: String,
+    has_transparency: bool,
 }
 
 struct MeshLink {
@@ -269,7 +275,7 @@ fn export_textures(
     models: &[ModelInput<'_>],
     output: &Path,
     format: TextureExportFormat,
-) -> io::Result<BTreeMap<String, String>> {
+) -> io::Result<BTreeMap<String, ExportedTexture>> {
     let mut paths = BTreeMap::new();
     if format == TextureExportFormat::None {
         return Ok(paths);
@@ -304,16 +310,29 @@ fn export_textures(
                 suffix += 1;
             }
             let png = decode_data_url(&texture.data_url)?;
+            let has_transparency = has_fully_transparent_pixel(&png)?;
             let bytes = if format == TextureExportFormat::Png {
                 png
             } else {
                 png_to_dds(&png)?
             };
             fs::write(folder.join(&filename), bytes)?;
-            paths.insert(key, format!("{filename}"));
+            paths.insert(
+                key,
+                ExportedTexture {
+                    relative_path: filename,
+                    has_transparency,
+                },
+            );
         }
     }
     Ok(paths)
+}
+
+fn has_fully_transparent_pixel(data: &[u8]) -> io::Result<bool> {
+    let image = image::load_from_memory(data)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+    Ok(image.to_rgba8().pixels().any(|pixel| pixel[3] == 0))
 }
 
 fn decode_data_url(value: &str) -> io::Result<Vec<u8>> {
@@ -345,7 +364,7 @@ fn png_to_dds(png: &[u8]) -> io::Result<Vec<u8>> {
 
 fn build_ascii(
     models: &[ModelInput<'_>],
-    texture_paths: &BTreeMap<String, String>,
+    texture_paths: &BTreeMap<String, ExportedTexture>,
     armature_name: &str,
 ) -> String {
     let mut ids = Ids::new();
@@ -419,7 +438,7 @@ fn build_ascii(
                 &format!("{}{}", input.prefix, material.name),
             );
             for (property, slot) in material_texture_slots(material) {
-                let Some(relative_path) =
+                let Some(exported_texture) =
                     texture_paths.get(&texture_key(&input.prefix, &slot.name))
                 else {
                     continue;
@@ -430,8 +449,10 @@ fn build_ascii(
                     material_id: material_ids[model_index][index],
                     property,
                     name: format!("{}{}", input.prefix, slot.name),
-                    relative_path: relative_path.clone(),
+                    relative_path: exported_texture.relative_path.clone(),
                     uv_set: format!("UVChannel_{}", slot.uv_layer as usize + 1),
+                    has_transparency: property == "DiffuseColor"
+                        && exported_texture.has_transparency,
                 });
             }
         }
@@ -530,7 +551,7 @@ fn build_ascii(
             texture.material_id,
             texture.property,
         );
-        if texture.property == "DiffuseColor" {
+        if texture.property == "DiffuseColor" && texture.has_transparency {
             property_connection(
                 &mut connections,
                 texture.id,
@@ -1132,6 +1153,26 @@ fn escaped(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transparency_requires_a_fully_transparent_pixel() {
+        let png = |alpha| {
+            let image = image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+                1,
+                1,
+                image::Rgba([255, 255, 255, alpha]),
+            ));
+            let mut output = Cursor::new(Vec::new());
+            image
+                .write_to(&mut output, image::ImageFormat::Png)
+                .unwrap();
+            output.into_inner()
+        };
+        assert!(!has_fully_transparent_pixel(&png(255)).unwrap());
+        assert!(!has_fully_transparent_pixel(&png(127)).unwrap());
+        assert!(!has_fully_transparent_pixel(&png(1)).unwrap());
+        assert!(has_fully_transparent_pixel(&png(0)).unwrap());
+    }
 
     #[test]
     fn exports_g1m_geometry_skeleton_and_skinning() {
