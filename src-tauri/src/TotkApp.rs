@@ -1148,7 +1148,7 @@ impl<'a> TotkBitsApp<'a> {
                 dialog.filters_from_path(&internal_file.path.full_path);
             }
         }
-        if save_data.tab == "RSTB" && self.opened_file.restbl.is_some() {
+        if matches!(save_data.tab.as_str(), "RSTB" | "YAML") && self.opened_file.restbl.is_some() {
             if let Some(rstb) = &self.opened_file.restbl {
                 dialog.name = Some(rstb.path.name.clone());
                 dialog.filters_from_path(&rstb.path.full_path);
@@ -1161,10 +1161,30 @@ impl<'a> TotkBitsApp<'a> {
             return None;
         }
         let dest_file = dialog.show();
+        let dialog_is_text = dialog.isText;
+        drop(dialog);
         if !dest_file.is_empty() && !check_if_save_in_romfs(&dest_file, self.zstd.clone()) {
             match save_data.tab.as_str() {
                 "YAML" => {
-                    if dialog.isText {
+                    if let Some(rstb) = &mut self.opened_file.restbl {
+                        if let Err(error) = rstb.apply_json(&save_data.text) {
+                            data.tab = "ERROR".into();
+                            data.status_text = format!("Invalid RSTB JSON: {error}");
+                            return Some(data);
+                        }
+                        if let Err(error) = rstb.save(&dest_file) {
+                            data.tab = "ERROR".into();
+                            data.status_text = format!("Failed to save RSTB: {error}");
+                            return Some(data);
+                        }
+                        rstb.path = Pathlib::new(&dest_file);
+                        self.opened_file.path = Pathlib::new(&dest_file);
+                        data.tab = "YAML".into();
+                        data.status_text = format!("Saved {dest_file}");
+                        data.path = self.opened_file.path.clone();
+                        return Some(data);
+                    }
+                    if dialog_is_text {
                         write_string_to_file(&dest_file, &save_data.text).ok()?;
                         data.tab = "YAML".to_string();
                         data.status_text = format!("Saved {}", &dest_file);
@@ -1317,6 +1337,22 @@ impl<'a> TotkBitsApp<'a> {
         let mut data = SendData::default();
         let mut is_reload = false;
         let text = &save_data.text;
+        if let Some(rstb) = &mut self.opened_file.restbl {
+            if let Err(error) = rstb.apply_json(text) {
+                data.tab = "ERROR".into();
+                data.status_text = format!("Invalid RSTB JSON: {error}");
+                return Some(data);
+            }
+            if let Err(error) = rstb.save_default() {
+                data.tab = "ERROR".into();
+                data.status_text = format!("Failed to save RSTB: {error}");
+                return Some(data);
+            }
+            data.tab = "YAML".into();
+            data.status_text = format!("Saved {}", rstb.path.full_path);
+            data.path = rstb.path.clone();
+            return Some(data);
+        }
         if let Some((outer_path, inner_path)) = self.nested_edit.clone() {
             let internal_file = self.internal_file.as_ref()?;
             let rawdata = get_binary_by_filetype(

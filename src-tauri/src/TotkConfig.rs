@@ -35,6 +35,7 @@ pub struct TotkConfig {
     pub monaco_minimap: bool,
     pub rotation_deg: bool,
     pub ask_for_compression: bool,
+    pub rstb_view: String,
     #[serde(skip)]
     pub game_version: String,
     #[serde(skip)]
@@ -65,6 +66,7 @@ impl Default for TotkConfig {
             monaco_minimap: false,
             rotation_deg: false,
             ask_for_compression: false,
+            rstb_view: "editor".into(),
             game_version: String::new(),
             game_versions: (100..130).rev().map(|e| e.to_string()).collect(),
             available_themes: vec![
@@ -191,6 +193,12 @@ impl TotkConfig {
         self.rotation_deg = get_bool(&json_data, "Rotation in degrees", self.rotation_deg);
         self.ask_for_compression =
             get_bool(&json_data, "ask for compression", self.ask_for_compression);
+        let rstb_view = get_string(&json_data, "rstb").to_ascii_lowercase();
+        if rstb_view == "yaml" {
+            self.rstb_view = "json".into();
+        } else if matches!(rstb_view.as_str(), "editor" | "json") {
+            self.rstb_view = rstb_view;
+        }
         self.romfs = get_string(&json_data, "romfs");
         self.botw_romfs_path = get_string(&json_data, "BOTW WIIU path (optional)");
         self.aoc_path = get_string(&json_data, "AOC path (optional)");
@@ -242,6 +250,7 @@ impl TotkConfig {
             "Prompt on close all": self.close_all_prompt,
             "Rotation in degrees": self.rotation_deg,
             "ask for compression": self.ask_for_compression,
+            "rstb": self.rstb_view,
             "BOTW WIIU path (optional)": self.botw_romfs_path,
             "AOC path (optional)": self.aoc_path,
             "3D viewport brightness": self.viewport_brightness,

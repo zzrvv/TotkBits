@@ -1,5 +1,6 @@
 #![allow(non_snake_case, non_camel_case_types)]
 // use std::any;
+use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -15,6 +16,123 @@ use crate::Zstd::{TotkFileType, TotkZstd, ZstdDictionary};
 
 use super::Pack::PackFile;
 
+fn should_scan_local_rstb_paths(path: &Path) -> bool {
+    path.parent()
+        .and_then(Path::file_name)
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("Resource"))
+}
+
+fn comparable_windows_path(path: &Path) -> Option<String> {
+    if path.as_os_str().is_empty() {
+        return None;
+    }
+    let resolved = fs::canonicalize(path).unwrap_or_else(|_| {
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            std::env::current_dir()
+                .map(|current| current.join(path))
+                .unwrap_or_else(|_| path.to_path_buf())
+        }
+    });
+    let mut normalized = resolved.to_string_lossy().replace('\\', "/");
+    if normalized
+        .get(..8)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("//?/UNC/"))
+    {
+        normalized.replace_range(..8, "//");
+    } else if normalized.starts_with("//?/") {
+        normalized.replace_range(..4, "");
+    }
+    while normalized.len() > 1 && normalized.ends_with('/') {
+        normalized.pop();
+    }
+    Some(normalized.to_lowercase())
+}
+
+fn same_windows_path(left: &Path, right: &Path) -> bool {
+    match (
+        comparable_windows_path(left),
+        comparable_windows_path(right),
+    ) {
+        (Some(left), Some(right)) => left == right,
+        _ => false,
+    }
+}
+
+fn table_to_json(table: &ResourceSizeTable, known_paths: &[String]) -> io::Result<String> {
+    let mut paths_by_hash = BTreeMap::<u32, &str>::new();
+    for path in known_paths {
+        let hash = crate::parser::rstb::crc32(path);
+        if table.hash_table.contains_key(&hash) {
+            paths_by_hash.entry(hash).or_insert(path);
+        }
+    }
+
+    let mut named = BTreeMap::<String, u32>::new();
+    let mut numeric = BTreeMap::<u32, u32>::new();
+    for (&hash, &value) in &table.hash_table {
+        if let Some(path) = paths_by_hash.get(&hash) {
+            named.insert((*path).to_owned(), value);
+        } else {
+            numeric.insert(hash, value);
+        }
+    }
+    named.extend(
+        table
+            .overflow_table
+            .iter()
+            .map(|(path, value)| (path.clone(), *value)),
+    );
+    let entries: Vec<_> = named
+        .into_iter()
+        .chain(
+            numeric
+                .into_iter()
+                .map(|(hash, value)| (hash.to_string(), value)),
+        )
+        .collect();
+    let mut json = String::from("{\n");
+    for (index, (key, value)) in entries.iter().enumerate() {
+        let key = serde_json::to_string(key).map_err(io::Error::other)?;
+        let comma = if index + 1 == entries.len() { "" } else { "," };
+        json.push_str(&format!("  {key}: {value}{comma}\n"));
+    }
+    json.push_str("}\n");
+    Ok(json)
+}
+
+fn json_to_entries(
+    json: &str,
+    existing_overflow: &BTreeMap<String, u32>,
+) -> io::Result<(BTreeMap<u32, u32>, BTreeMap<String, u32>)> {
+    let mapping = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(json)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    let mut hashes = BTreeMap::<u32, u32>::new();
+    let mut overflow = BTreeMap::<String, u32>::new();
+    for (key, value) in mapping {
+        let value = value.as_u64().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "RSTB values must be integers")
+        })?;
+        let value = u32::try_from(value)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "RSTB value exceeds u32"))?;
+        if let Some(hash) = key
+            .strip_prefix("0x")
+            .or_else(|| key.strip_prefix("0X"))
+            .and_then(|hash| u32::from_str_radix(hash, 16).ok())
+            .or_else(|| key.parse::<u32>().ok())
+        {
+            hashes.insert(hash, value);
+        } else if existing_overflow.contains_key(&key) {
+            overflow.insert(key, value);
+        } else {
+            hashes.insert(crate::parser::rstb::crc32(key), value);
+        }
+    }
+    Ok((hashes, overflow))
+}
+
 // use super::RstbData::get_rstb_data;
 
 #[allow(dead_code)]
@@ -28,6 +146,16 @@ pub struct Restbl<'a> {
 }
 
 impl<'a> Restbl<'_> {
+    fn to_json(&self) -> io::Result<String> {
+        table_to_json(&self.table, &self.hash_table)
+    }
+
+    pub fn apply_json(&mut self, json: &str) -> io::Result<()> {
+        let (hashes, overflow) = json_to_entries(json, &self.table.overflow_table)?;
+        self.table.replace_entries(hashes, overflow);
+        Ok(())
+    }
+
     pub fn cached_path(&self, path: &str) -> Option<&str> {
         self.hash_table
             .iter()
@@ -58,7 +186,7 @@ impl<'a> Restbl<'_> {
         if recognized_name {
             println!("[RSTB] route: dispatching to Restbl::from_path");
             opened_file.restbl = Restbl::from_path(path_ref, zstd.clone());
-            if let Some(_restbl) = &mut opened_file.restbl {
+            if let Some(restbl) = &mut opened_file.restbl {
                 println!("[RSTB] route: RSTB opened successfully");
                 data.tab = "RSTB".to_string();
                 opened_file.path = pathlib_var.clone();
@@ -68,6 +196,20 @@ impl<'a> Restbl<'_> {
                 data.path = pathlib_var;
                 // data.text = restbl.to_text();
                 data.get_file_label(TotkFileType::Restbl, Some(roead::Endian::Little));
+                if zstd.totk_config.rstb_view == "json" {
+                    match restbl.to_json() {
+                        Ok(json) => {
+                            data.tab = "YAML".to_string();
+                            data.lang = "json".to_string();
+                            data.text = json;
+                            data.read_only = false;
+                        }
+                        Err(error) => {
+                            data.tab = "ERROR".to_string();
+                            data.status_text = format!("Unable to display RSTB as JSON: {error}");
+                        }
+                    }
+                }
                 return Some((opened_file, data));
             }
             println!("[RSTB] route: Restbl::from_path rejected the file");
@@ -78,17 +220,20 @@ impl<'a> Restbl<'_> {
 
     pub fn get_restb_entries<P: AsRef<Path>>(&mut self, path: P) -> io::Result<Arc<Vec<String>>> {
         let mut res = crate::LookupData::rstb_paths();
+        if !should_scan_local_rstb_paths(path.as_ref()) {
+            return Ok(res);
+        }
         let mut p = PathBuf::from(path.as_ref());
         for _ in 0..3 {
             if !p.pop() {
                 return Ok(res); //unable to go to mod romfs path
             }
         }
-        let mod_romfs_path = p.to_string_lossy().to_string().replace("\\", "/");
         //No point in updating from romfs dump
-        if mod_romfs_path == self.zstd.totk_config.romfs {
+        if same_windows_path(&p, Path::new(&self.zstd.totk_config.romfs)) {
             return Ok(res);
         }
+        let mod_romfs_path = p.to_string_lossy().to_string().replace("\\", "/");
         let mod_romfs_path_len = mod_romfs_path.len();
         //limit to map files and actors
         let valid_paths = vec!["Pack/Actor", "AI", "AS"];
@@ -190,5 +335,65 @@ impl<'a> Restbl<'_> {
         let mut f = File::create(&path)?;
         f.write_all(&buffer)?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::parser::binary::BinaryWriter;
+
+    #[test]
+    fn json_resolves_known_paths_and_preserves_unknown_hashes() {
+        let known = "System/Known.product.byml".to_string();
+        let known_hash = crate::parser::rstb::crc32(&known);
+        let unknown_hash = 0x1234_5678;
+        let mut writer = BinaryWriter::new();
+        writer.write_bytes(b"RSTB");
+        writer.write_u32(2);
+        writer.write_u32(0);
+        writer.write_u32(known_hash);
+        writer.write_u32(100);
+        writer.write_u32(unknown_hash);
+        writer.write_u32(200);
+        let table = ResourceSizeTable::from_bytes(&writer.into_inner()).unwrap();
+        let json = table_to_json(&table, &[known]).unwrap();
+        assert_eq!(
+            json,
+            "{\n  \"System/Known.product.byml\": 100,\n  \"305419896\": 200\n}\n"
+        );
+        let (hashes, overflow) = json_to_entries(&json, &BTreeMap::new()).unwrap();
+        assert_eq!(hashes[&known_hash], 100);
+        assert_eq!(hashes[&unknown_hash], 200);
+        assert!(overflow.is_empty());
+    }
+
+    #[test]
+    fn local_path_expansion_requires_resource_parent() {
+        assert!(should_scan_local_rstb_paths(Path::new(
+            "Mod/System/Resource/ResourceSizeTable.Product.121.rsizetable"
+        )));
+        assert!(should_scan_local_rstb_paths(Path::new(
+            "Mod/System/resource/ResourceSizeTable.Product.121.rsizetable"
+        )));
+        assert!(!should_scan_local_rstb_paths(Path::new(
+            "Mod/System/Other/ResourceSizeTable.Product.121.rsizetable"
+        )));
+        assert!(!should_scan_local_rstb_paths(Path::new(
+            "ResourceSizeTable.Product.121.rsizetable"
+        )));
+    }
+
+    #[test]
+    fn romfs_comparison_normalizes_windows_paths() {
+        assert!(same_windows_path(
+            Path::new("W:\\Games\\TotK\\romfs\\"),
+            Path::new("w:/games/totk/ROMFS")
+        ));
+        assert!(!same_windows_path(Path::new(""), Path::new("")));
+        assert!(!same_windows_path(
+            Path::new("W:/Games/TotK/romfs"),
+            Path::new("W:/Games/TotK/mod")
+        ));
     }
 }

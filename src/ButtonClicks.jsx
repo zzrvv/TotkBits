@@ -264,7 +264,7 @@ export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLa
         setpaths(content.sarc_paths);
       } else if (content.tab === 'YAML') {
         setActiveTab(content.tab);
-        updateEditorContent(content.text, content.lang);
+        updateEditorContent(content.text, content.lang, content.read_only ?? false);
         setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
       } else if (content.tab === 'RSTB') {
         setActiveTab(content.tab);
@@ -302,7 +302,7 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
       updateEditorContent("", content.lang);
     } else if (content.tab === 'YAML') {
       setActiveTab(content.tab);
-      updateEditorContent(content.text, content.lang);
+      updateEditorContent(content.text, content.lang, content.read_only ?? false);
       console.log(content.lang);
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
     } else if (content.tab === 'RSTB') {

@@ -61,7 +61,8 @@ export const EditorProvider = ({ children }) => {
   const [configLoading, setConfigLoading] = useState(false);
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
 
-  const updateEditorContent = (content, lang) => {
+  const updateEditorContent = (content, lang, nextReadOnly = false) => {
+    setReadOnly(Boolean(nextReadOnly));
     //setText(content);
     if (editorRef.current) {
       editorRef.current.setValue(content);

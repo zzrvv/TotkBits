@@ -336,7 +336,9 @@ function App() {
       
 
       {activeTab === 'YAML' && readOnly && <div className="physics-yaml-preview-banner" role="status">
-        <strong>{labelTextDisplay.yaml?.includes('[HKCL]') ? 'HKCL YAML preview' : 'Physics YAML preview'}</strong>
+        <strong>{labelTextDisplay.yaml?.includes('[Restbl]') || labelTextDisplay.yaml?.includes('[RSTB]')
+          ? 'RSTB JSON preview'
+          : labelTextDisplay.yaml?.includes('[HKCL]') ? 'HKCL YAML preview' : 'Physics YAML preview'}</strong>
         <span>Read-only parsed data</span>
       </div>}
       <div ref={editorContainerRef} className={`code_editor ${activeTab === 'YAML' && readOnly ? 'physics-yaml-preview-editor' : ''}`} style={{ display: activeTab === 'YAML' ? "block" : "none" }}></div>

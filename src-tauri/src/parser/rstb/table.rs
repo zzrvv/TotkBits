@@ -172,6 +172,16 @@ impl ResourceSizeTable {
             self.overflow_order.retain(|v| v != &key);
         }
     }
+    pub fn replace_entries(
+        &mut self,
+        hash_table: BTreeMap<u32, u32>,
+        overflow_table: BTreeMap<String, u32>,
+    ) {
+        self.hash_order = hash_table.keys().copied().collect();
+        self.overflow_order = overflow_table.keys().cloned().collect();
+        self.hash_table = hash_table;
+        self.overflow_table = overflow_table;
+    }
     pub fn iter(&self) -> impl Iterator<Item = (&u32, &u32)> {
         self.hash_table.iter()
     }
