@@ -10,26 +10,34 @@ export default function AocModelView({ activeTab }) {
         setpaths, updateEditorContent,
     } = useEditorContext();
     const minCharCount = 3;
+    const maxDisplayedRecords = 1024;
     const [filter, setFilter] = useState('');
     const [hideMissingPreviews, setHideMissingPreviews] = useState(false);
     const [hideFarLod, setHideFarLod] = useState(true);
+    const [minSizeMb, setMinSizeMb] = useState('');
     const [missingPreviewHashes, setMissingPreviewHashes] = useState(() => new Set());
     const [selectedHashes, setSelectedHashes] = useState(() => new Set());
     const query = filter.trim().toLowerCase();
+    const minimumBytes = Math.max(0, Number(minSizeMb) || 0) * 1024 * 1024;
     const allMatches = useMemo(() => {
         if (!aocModelCatalog || query.length < minCharCount) return [];
         return Object.entries(aocModelCatalog)
             .filter(([hash, entry]) => String(hash).toLowerCase().includes(query)
                 || String(entry?.name).toLowerCase().includes(query))
+            .filter(([, entry]) => Number(entry?.size || 0) >= minimumBytes)
             .filter(([, entry]) => !hideFarLod || !String(entry?.name).toLowerCase().includes('far'))
             .sort((left, right) => String(left[1]?.name).localeCompare(String(right[1]?.name), undefined, {
                 numeric: true,
                 sensitivity: 'base',
             }));
-    }, [aocModelCatalog, query, hideFarLod]);
+    }, [aocModelCatalog, query, hideFarLod, minimumBytes]);
     const matches = useMemo(() => hideMissingPreviews
         ? allMatches.filter(([hash]) => !missingPreviewHashes.has(hash))
         : allMatches, [allMatches, hideMissingPreviews, missingPreviewHashes]);
+    const displayedMatches = useMemo(
+        () => matches.slice(0, maxDisplayedRecords),
+        [matches],
+    );
     const markMissingPreview = (hash, image) => {
         setMissingPreviewHashes((current) => {
             if (current.has(hash)) return current;
@@ -90,7 +98,6 @@ export default function AocModelView({ activeTab }) {
             setStatusText(`Unable to copy AOC model hash ${hash}: ${error}`);
         }
     };
-    const showSearch200Limit = false;
     const displayName = (name) => {
         const value = name || '—';
         return value.length > 40 ? `${value.slice(0, 37)}...` : value;
@@ -128,6 +135,19 @@ export default function AocModelView({ activeTab }) {
                     />
                     <span>Hide far/LOD</span>
                 </div>
+                <label className="aoc-model-preview-filter">
+                    <span>Min size (MB)</span>
+                    <input
+                        className="aoc-model-min-size"
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={minSizeMb}
+                        onChange={(event) => setMinSizeMb(event.target.value)}
+                        placeholder="0"
+                        aria-label="Minimum model size in MB"
+                    />
+                </label>
             </div>
             {selectedHashes.size > 0 && <div className="aoc-model-selection-actions">
                 {selectedHashes.size > 1 && <button
@@ -145,11 +165,11 @@ export default function AocModelView({ activeTab }) {
                 </span>
             </div>}
         </header>
-        {showSearch200Limit && query && allMatches.length > 200 && <p className="aoc-model-result-limit" role="status">
-            Showing the first 200 of {allMatches.length} matches. Refine the name or hash to narrow the results.
+        {false && query && matches.length > maxDisplayedRecords && <p className="aoc-model-result-limit" role="status">
+            Showing the first {maxDisplayedRecords} of {matches.length} matches. Refine the name or hash to narrow the results.
         </p>}
-        {filter.length >= minCharCount && matches.length > 0 &&  <div className="aoc-model-results">
-            {matches.map(([hash, entry]) => {
+        {filter.length >= minCharCount && displayedMatches.length > 0 &&  <div className="aoc-model-results">
+            {displayedMatches.map(([hash, entry]) => {
                 const name = entry?.name || '';
                 const checked = selectedHashes.has(hash);
                 const selectionFull = selectedHashes.size >= 5 && !checked;

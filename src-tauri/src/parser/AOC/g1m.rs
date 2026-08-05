@@ -100,6 +100,8 @@ pub struct G1mMaterial {
 #[derive(Debug, Clone, Serialize)]
 pub struct G1mFile {
     pub header: G1mHeader,
+    pub model_hash: String,
+    pub global_to_local_bones: Vec<u16>,
     pub name: Option<String>,
     pub sections: Vec<G1mSection>,
     pub materials: Vec<G1mMaterial>,
@@ -312,6 +314,8 @@ impl G1mFile {
                     string_pool_offset: 0,
                     string_pool_size: 0,
                 },
+                model_hash: name.to_ascii_lowercase(),
+                global_to_local_bones: bone_ids,
                 name: Some(display_name),
                 sections,
                 materials: geometry.materials,

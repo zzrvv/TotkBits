@@ -118,6 +118,7 @@ mod tests {
     fn every_misc_json_and_bin_support_file_loads() {
         for name in [
             "AOC_names.json",
+            "Animations_paths_and_characters.json",
             "bars_bwav_sha256.json",
             "bones_botw.json",
             "bphcl_nodes.json",

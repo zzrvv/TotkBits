@@ -588,6 +588,16 @@ button {
   cursor: pointer;
 }
 
+.aoc-model-view .aoc-model-preview-filter .aoc-model-min-size {
+  width: 88px;
+  padding: 4px 6px;
+  border: 1px solid #666;
+  border-radius: 3px;
+  color: #eee;
+  background: #25282d;
+  cursor: text;
+}
+
 .aoc-model-results {
   width: min(1020px, 100%);
   border: 1px solid #444;

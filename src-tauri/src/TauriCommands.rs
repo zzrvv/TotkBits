@@ -65,6 +65,30 @@ pub fn inspect_bfres(
 }
 
 #[tauri::command]
+pub fn list_g1a_animations(
+    modelHash: String,
+) -> Result<Vec<crate::file_format::Animation::g1a::AvailableG1aAnimation>, String> {
+    require_experimental_visuals()?;
+    let config =
+        crate::TotkConfig::TotkConfig::safe_new(false).map_err(|error| error.to_string())?;
+    if config.aoc_path.is_empty() {
+        return Ok(Vec::new());
+    }
+    Ok(crate::file_format::Animation::g1a::available_animations(
+        &modelHash,
+        Path::new(&config.aoc_path),
+    ))
+}
+
+#[tauri::command]
+pub fn inspect_g1a_animation(
+    path: String,
+) -> Result<crate::file_format::Animation::g1a::G1aFile, String> {
+    require_experimental_visuals()?;
+    crate::file_format::Animation::g1a::G1aFile::from_path(path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 pub fn inspect_3d_model(
     app_handle: tauri::AppHandle,
     documentId: String,
@@ -210,6 +234,52 @@ pub fn export_g1m_fbx(
         armature_name,
     )
     .map_err(|error| error.to_string())?;
+    Ok(output)
+}
+
+#[tauri::command]
+pub fn export_g1m_glb(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    source_paths: Vec<String>,
+    output: String,
+) -> Result<String, String> {
+    require_experimental_visuals()?;
+    if source_paths.is_empty() {
+        return Err("no G1M source paths were supplied".into());
+    }
+    let documents = app_handle.state::<DocumentState>();
+    let aoc_path = documents.with(&documentId, |app| app.zstd.totk_config.aoc_path.clone());
+    let mut parsed = Vec::with_capacity(source_paths.len());
+    for source in &source_paths {
+        let path = Path::new(source);
+        let bytes = fs::read(path).map_err(|error| format!("{}: {error}", path.display()))?;
+        let model = crate::parser::AOC::g1m::G1mFile::parse_for_export(
+            &bytes,
+            path.file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("G1M"),
+        )
+        .map_err(|error| format!("{}: {error}", path.display()))?;
+        let textures = model.resolve_textures(path, Path::new(&aoc_path)).textures;
+        let prefix = if source_paths.len() > 1 {
+            format!(
+                "{}: ",
+                path.file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("model")
+            )
+        } else {
+            String::new()
+        };
+        parsed.push((model, textures, prefix));
+    }
+    let borrowed: Vec<_> = parsed
+        .iter()
+        .map(|(model, textures, prefix)| (model, textures.as_slice(), prefix.clone()))
+        .collect();
+    crate::parser::glb::export_g1m(&borrowed, Path::new(&output))
+        .map_err(|error| error.to_string())?;
     Ok(output)
 }
 

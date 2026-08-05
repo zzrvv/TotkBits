@@ -13,6 +13,7 @@ pub mod msbt;
 // pub mod RstbData;
 // pub mod SarcEntriesData;
 pub mod Ainb;
+pub mod Animation;
 pub mod Archive;
 pub mod Audio;
 pub mod BfevFile;

@@ -22,11 +22,14 @@ celGradient.needsUpdate = true;
 // of the application so switching between document tabs never invokes Rust or
 // transfers the full mesh payload again.
 const modelInspectionCache = new Map();
+const g1aInspectionCache = new Map();
+const g1aInspectionFailures = new Map();
 
 const importDuration = (milliseconds) => {
     const seconds = Math.floor(milliseconds / 1000);
     return `${String(Math.floor(seconds / 60)).padStart(2, '0')}m ${String(seconds % 60).padStart(2, '0')}s`;
 };
+const playbackTime = (seconds) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
 const cacheModelInspection = (path, value) => {
     modelInspectionCache.set(path, value);
 };
@@ -37,6 +40,8 @@ const cacheModelInspection = (path, value) => {
 const resolvedTextureCache = new Map();
 const clearModelCaches = () => {
     modelInspectionCache.clear();
+    g1aInspectionCache.clear();
+    g1aInspectionFailures.clear();
     resolvedTextureCache.forEach((texture) => texture.dispose());
     resolvedTextureCache.clear();
 };
@@ -109,6 +114,29 @@ const modelTextureStatus = (value) => {
     return `Loaded ${loaded} of ${requested} referenced textures`;
 };
 
+const bindG1aToModel = (animation, model) => {
+    const mapping = model?.global_to_local_bones || [];
+    const bones = model?.render?.bones || [];
+    const tracks = [];
+    const unmappedBoneIds = [];
+    (animation?.bones || []).forEach((track) => {
+        const boneIndex = mapping[track.boneId];
+        if (!Number.isInteger(boneIndex) || boneIndex === 0xffff || !bones[boneIndex]) {
+            unmappedBoneIds.push(track.boneId);
+            return;
+        }
+        tracks.push({
+            globalBoneId: track.boneId,
+            boneIndex,
+            boneName: bones[boneIndex].name,
+            scale: track.scale,
+            rotation: track.rotation,
+            translation: track.translation,
+        });
+    });
+    return { duration: animation?.header?.duration || 0, tracks, unmappedBoneIds };
+};
+
 function boneWorldMatrices(bones, scaleMode = 'none') {
     const matrices = bones.map(() => new THREE.Matrix4());
     bones.forEach((bone, index) => {
@@ -136,6 +164,91 @@ function boneWorldMatrices(bones, scaleMode = 'none') {
         } else matrices[index] = local;
     });
     return matrices;
+}
+
+const makeThreeAnimationClip = (animation, armatureBones, name = 'G1A') => {
+    if (!animation) return null;
+    const keyframeTracks = [];
+    const addTrack = (track, property, values, TrackType) => {
+        if (!values?.length) return;
+        keyframeTracks.push(new TrackType(
+            `${armatureBones[track.boneIndex].name}.${property}`,
+            values.map((key) => key.time),
+            values.flatMap((key) => key.value),
+        ));
+    };
+    animation.tracks.forEach((track) => {
+        if (!armatureBones[track.boneIndex]) return;
+        addTrack(track, 'scale', track.scale, THREE.VectorKeyframeTrack);
+        // The Rust parser preserves Project-G1M's transposed quaternion output.
+        // Three's armature uses the raw G1M bind convention, so conjugate the
+        // animation back while constructing its native track.
+        addTrack(track, 'quaternion', track.rotation?.map((key) => ({
+            ...key,
+            value: [-key.value[0], -key.value[1], -key.value[2], key.value[3]],
+        })), THREE.QuaternionKeyframeTrack);
+        addTrack(track, 'position', track.translation, THREE.VectorKeyframeTrack);
+    });
+    return new THREE.AnimationClip(name, animation.duration, keyframeTracks);
+};
+
+function useAnimationPose(bones, scaleMode, animation, playing, seek, onTimeUpdate) {
+    const restWorlds = useMemo(() => boneWorldMatrices(bones, scaleMode), [bones, scaleMode]);
+    const worldsRef = useRef(restWorlds.map((matrix) => matrix.clone()));
+    const armature = useMemo(() => {
+        const root = new THREE.Group();
+        const nodes = bones.map((bone, index) => {
+            const node = new THREE.Bone();
+            // Keep the bones_botw.json name visible while the index suffix makes
+            // Three.js PropertyBinding unambiguous if a catalog has duplicates.
+            node.name = `${THREE.PropertyBinding.sanitizeNodeName(bone.name || `bone_${index}`)}__${index}`;
+            node.position.fromArray(bone.translation);
+            node.quaternion.fromArray(bone.rotation).normalize();
+            node.scale.fromArray(bone.scale);
+            return node;
+        });
+        bones.forEach((bone, index) => {
+            if (bone.parent_index >= 0 && nodes[bone.parent_index]) nodes[bone.parent_index].add(nodes[index]);
+            else root.add(nodes[index]);
+        });
+        root.updateMatrixWorld(true);
+        return { root, nodes };
+    }, [bones]);
+    const clip = useMemo(() => makeThreeAnimationClip(animation, armature.nodes), [animation, armature]);
+    const mixer = useMemo(() => new THREE.AnimationMixer(armature.root), [armature]);
+    const reportedAt = useRef(0);
+    useEffect(() => {
+        worldsRef.current = restWorlds.map((matrix) => matrix.clone());
+        mixer.stopAllAction();
+        bones.forEach((bone, index) => {
+            armature.nodes[index].position.fromArray(bone.translation);
+            armature.nodes[index].quaternion.fromArray(bone.rotation).normalize();
+            armature.nodes[index].scale.fromArray(bone.scale);
+        });
+        if (clip) mixer.clipAction(clip).reset().setLoop(THREE.LoopRepeat, Infinity).play();
+        return () => {
+            mixer.stopAllAction();
+            if (clip) mixer.uncacheClip(clip);
+        };
+    }, [animation, armature, bones, clip, mixer, restWorlds]);
+    useEffect(() => {
+        if (!clip || seek?.revision === undefined) return;
+        mixer.setTime(Math.max(0, Math.min(seek.time, animation.duration)));
+        armature.root.updateMatrixWorld(true);
+        armature.nodes.forEach((bone, index) => worldsRef.current[index].copy(bone.matrixWorld));
+        onTimeUpdate?.(mixer.time);
+    }, [seek?.revision]);
+    useFrame((_, delta) => {
+        if (!clip || !playing) return;
+        mixer.update(delta);
+        armature.root.updateMatrixWorld(true);
+        armature.nodes.forEach((bone, index) => worldsRef.current[index].copy(bone.matrixWorld));
+        if (mixer.time - reportedAt.current >= 0.05 || mixer.time < reportedAt.current) {
+            reportedAt.current = mixer.time;
+            onTimeUpdate?.(mixer.time % animation.duration);
+        }
+    });
+    return { restWorlds, worldsRef };
 }
 
 function useResolvedTextures(entries, cacheTextures = true) {
@@ -248,7 +361,7 @@ function buildWeightPreview(render) {
     });
 }
 
-function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, culling, viewMode, uvIndex, celShading, glow, weightBone, weightPreviewColors, showNormals, onSelect, textures }) {
+function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, animation, restWorlds, animationWorlds, culling, viewMode, uvIndex, celShading, glow, weightBone, weightPreviewColors, showNormals, onSelect, textures }) {
     const materialSide = culling ? THREE.FrontSide : THREE.DoubleSide;
     const usesMaterialUvs = viewMode === 'default';
     ['base', 'normal', 'roughness', 'metalness', 'emission', 'mask', 'specular', 'ambientOcclusion'].forEach((kind) => {
@@ -339,6 +452,37 @@ function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, culling, view
         result.computeBoundingSphere();
         return result;
     }, [mesh, bones, scaleMode, applyRigidTransform, viewMode, uvIndex, weightBone, weightPreviewColors]);
+    const restInverse = useMemo(() => restWorlds.map((matrix) => matrix.clone().invert()), [restWorlds]);
+    const skinMatrices = useMemo(() => bones.map(() => new THREE.Matrix4()), [bones]);
+    const skinPosition = useMemo(() => new THREE.Vector3(), []);
+    useFrame(() => {
+        if (!animation || applyRigidTransform) return;
+        const position = geometry.getAttribute('position');
+        const posedWorlds = animationWorlds.current;
+        if (!position || !posedWorlds?.length) return;
+        for (let bone = 0; bone < skinMatrices.length; bone += 1) {
+            skinMatrices[bone].multiplyMatrices(posedWorlds[bone], restInverse[bone]);
+        }
+        for (let vertex = 0; vertex < mesh.positions.length; vertex += 1) {
+            const indices = mesh.bone_indices[vertex] || [];
+            const weights = mesh.bone_weights[vertex] || [];
+            let x = 0; let y = 0; let z = 0; let total = 0;
+            for (let influence = 0; influence < indices.length; influence += 1) {
+                const matrix = skinMatrices[indices[influence]];
+                if (!matrix) continue;
+                const weight = weights[influence] ?? (influence === 0 ? 1 : 0);
+                if (weight <= 0) continue;
+                skinPosition.fromArray(mesh.positions[vertex]).applyMatrix4(matrix);
+                x += skinPosition.x * weight; y += skinPosition.y * weight; z += skinPosition.z * weight;
+                total += weight;
+            }
+            if (total > 0) position.setXYZ(vertex, x / total, y / total, z / total);
+            else position.setXYZ(vertex, ...mesh.positions[vertex]);
+        }
+        position.needsUpdate = true;
+        geometry.computeBoundingSphere();
+        geometry.computeVertexNormals();
+    });
     useEffect(() => () => geometry.dispose(), [geometry]);
     const normalLines = useMemo(() => {
         const lineGeometry = new THREE.BufferGeometry();
@@ -394,7 +538,7 @@ function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, culling, view
     </group>;
 }
 
-function Skeleton({ bones, scaleMode }) {
+function Skeleton({ bones, scaleMode, animation, animationWorlds }) {
     const points = useMemo(() => {
         const worlds = boneWorldMatrices(bones, scaleMode);
         const values = [];
@@ -405,7 +549,21 @@ function Skeleton({ bones, scaleMode }) {
         });
         return new Float32Array(values);
     }, [bones, scaleMode]);
-    return <lineSegments><bufferGeometry><bufferAttribute attach="attributes-position" args={[points, 3]} /></bufferGeometry><lineBasicMaterial color="#ffd166" depthTest={false} /></lineSegments>;
+    const attributeRef = useRef();
+    useFrame(() => {
+        if (!animation || !attributeRef.current) return;
+        const worlds = animationWorlds.current;
+        let cursor = 0;
+        bones.forEach((bone, index) => {
+            if (bone.parent_index < 0 || !worlds[bone.parent_index]) return;
+            new THREE.Vector3().setFromMatrixPosition(worlds[bone.parent_index]).toArray(points, cursor);
+            cursor += 3;
+            new THREE.Vector3().setFromMatrixPosition(worlds[index]).toArray(points, cursor);
+            cursor += 3;
+        });
+        attributeRef.current.needsUpdate = true;
+    });
+    return <lineSegments><bufferGeometry><bufferAttribute ref={attributeRef} attach="attributes-position" args={[points, 3]} /></bufferGeometry><lineBasicMaterial color="#ffd166" depthTest={false} /></lineSegments>;
 }
 
 function SceneExposure({ brightness }) {
@@ -515,9 +673,10 @@ function FrontCamera({ render, applyRigidTransform, onReady }) {
     return null;
 }
 
-function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShading, glow, culling, showSkeleton, showNormals, weightBone, weightPreviewColors, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes, cacheTextures = true, onCameraReady }) {
+function ResourceScene({ bfres, render, animation, animationPlaying = true, animationSeek, onAnimationTime, viewMode, uvIndex, brightness, celShading, glow, culling, showSkeleton, showNormals, weightBone, weightPreviewColors, selectedMesh, selectedMaterial, onSelectMesh, modelVisible, hiddenMeshes, cacheTextures = true, onCameraReady }) {
     const textures = useResolvedTextures(bfres?.resolvedTextures, cacheTextures);
     const applyRigidTransform = bfres?.format !== 'G1M';
+    const { restWorlds, worldsRef: animationWorlds } = useAnimationPose(render.bones, render.scale_mode, animation, animationPlaying, animationSeek, onAnimationTime);
     return <>
         <SceneExposure brightness={brightness} />
         <color attach="background" args={['#11151b']} />
@@ -528,8 +687,8 @@ function ResourceScene({ bfres, render, viewMode, uvIndex, brightness, celShadin
         <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
         <FrontCamera render={render} applyRigidTransform={applyRigidTransform} onReady={onCameraReady} />
         <Grid infiniteGrid fadeDistance={45} fadeStrength={4} cellColor="#33404d" sectionColor="#53687a" />
-        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} applyRigidTransform={applyRigidTransform} culling={culling} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
-        {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} />}
+        <group visible={modelVisible}>{render.meshes.map((mesh, index) => <RenderMesh key={`${mesh.name}-${index}`} mesh={{ ...mesh, selected: mesh.name === selectedMesh || (selectedMaterial !== null && mesh.material_index === selectedMaterial), hidden: hiddenMeshes.includes(mesh.name) }} bones={render.bones} scaleMode={render.scale_mode} applyRigidTransform={applyRigidTransform} animation={animation} restWorlds={restWorlds} animationWorlds={animationWorlds} culling={culling} viewMode={viewMode} uvIndex={uvIndex} celShading={celShading} glow={glow} weightBone={weightBone} weightPreviewColors={weightPreviewColors?.[index]} showNormals={showNormals} onSelect={onSelectMesh} textures={materialTextures(bfres?.materials?.[mesh.material_index], textures)} />)}</group>
+        {showSkeleton && <Skeleton bones={render.bones} scaleMode={render.scale_mode} animation={animation} animationWorlds={animationWorlds} />}
     </>;
 }
 
@@ -580,7 +739,7 @@ function ResourceTree({ bfres, title, onSection, onMesh, onBone, onModel, onCont
                 <Folder label={modelName} checked={modelVisible} onToggle={onToggleModel} onSelect={() => onModel(modelName)} onContextMenu={(event) => onContext(event, 'model', modelName)}>
                     <Folder label="Objects" detail={meshes.length}>{meshes.map((mesh, index) => node(mesh.name, ``, () => onMesh(mesh), `mesh-${index}`, 'object'))}</Folder>
                     {/* <Folder label="Objects" open detail={meshes.length}>{meshes.map((mesh, index) => node(mesh.name, `${mesh.positions.length} vertices`, () => onMesh(mesh), `mesh-${index}`, 'object'))}</Folder> */}
-                    <Folder label="Materials" detail={materials.length}>{materials.map((material) => node(material.name, ``, () => onSection(material, 'material'), `material-${material.offset}`, 'material'))}</Folder>
+                    <Folder label="Materials" detail={materials.length}>{materials.map((material, index) => node(material.name, ``, () => onSection(material, 'material'), `material-${material.offset}-${index}`, 'material'))}</Folder>
                     {/* <Folder label="Materials" open detail={materials.length}>{materials.map((material) => node(material.name, `${material.texture_slots.length} textures`, () => onSection(material, 'material'), `material-${material.offset}`, 'material'))}</Folder> */}
                     <Folder label="Skeleton" detail={bones.length}>{boneNodes(-1)}</Folder>
                 </Folder>
@@ -707,7 +866,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [hiddenMeshes, setHiddenMeshes] = useState([]);
     const [viewResetKey, setViewResetKey] = useState(0);
     const [fbxTextureFormat, setFbxTextureFormat] = useState('png');
-    const [exportingFbx, setExportingFbx] = useState(false);
+    const [exportingModel, setExportingModel] = useState(false);
     const [renderingViewport, setRenderingViewport] = useState(false);
     const captureViewportRef = useRef(null);
     const batchCaptureRef = useRef(null);
@@ -715,6 +874,16 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const batchRunningRef = useRef(false);
     const [batchActive, setBatchActive] = useState(false);
     const [batchModel, setBatchModel] = useState(null);
+    const [g1aAnimations, setG1aAnimations] = useState([]);
+    const [selectedG1aPath, setSelectedG1aPath] = useState('');
+    const [parsedG1aAnimations, setParsedG1aAnimations] = useState([]);
+    const [g1aFailures, setG1aFailures] = useState({});
+    const [loadedG1a, setLoadedG1a] = useState(null);
+    const [g1aPlaying, setG1aPlaying] = useState(true);
+    const [g1aPosition, setG1aPosition] = useState(0);
+    const [g1aSeekRevision, setG1aSeekRevision] = useState(0);
+    const [importingAllG1a, setImportingAllG1a] = useState(false);
+    const [loadingG1aPath, setLoadingG1aPath] = useState('');
     const signalBatchCameraReady = useCallback(() => {
         const resolve = batchCameraReadyRef.current;
         batchCameraReadyRef.current = null;
@@ -982,8 +1151,99 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         };
     }, [activeTab, document?.id, document?.fullPath, modelPathsKey]);
 
-    const animations = useMemo(() => (bfres?.sections || []).filter((section) =>
+    const embeddedAnimations = useMemo(() => (bfres?.sections || []).filter((section) =>
         ['FSKA', 'FSHU', 'FSHA', 'FTXP', 'FVIS', 'FMAA'].includes(String.fromCharCode(...section.signature))), [bfres]);
+
+    useEffect(() => {
+        setG1aAnimations([]);
+        setSelectedG1aPath('');
+        setParsedG1aAnimations([]);
+        setG1aFailures({});
+        setLoadedG1a(null);
+        if (!isG1m || !bfres?.model_hash) return undefined;
+        let cancelled = false;
+        invoke('list_g1a_animations', { modelHash: bfres.model_hash })
+            .then((values) => {
+                if (cancelled) return;
+                const available = values || [];
+                setG1aAnimations(available);
+                setG1aFailures(Object.fromEntries(available.flatMap((animation) => {
+                    const error = g1aInspectionFailures.get(animation.path);
+                    return error ? [[animation.path, error]] : [];
+                })));
+                setParsedG1aAnimations(available.flatMap((animation) => {
+                    const value = g1aInspectionCache.get(animation.path);
+                    return value ? [{ ...animation, value, bound: bindG1aToModel(value, bfres) }] : [];
+                }));
+            })
+            .catch((reason) => { if (!cancelled) setStatusText(`Unable to find G1A animations: ${reason}`); });
+        return () => { cancelled = true; };
+    }, [isG1m, bfres?.model_hash, setStatusText]);
+
+    const loadG1a = async (animation, activate = true) => {
+        setLoadingG1aPath(animation.path);
+        setStatusText(`Loading G1A ${animation.name}…`);
+        try {
+            let value = g1aInspectionCache.get(animation.path);
+            if (!value) {
+                value = await invoke('inspect_g1a_animation', { path: animation.path });
+                g1aInspectionCache.set(animation.path, value);
+            }
+            g1aInspectionFailures.delete(animation.path);
+            setG1aFailures((current) => {
+                const next = { ...current };
+                delete next[animation.path];
+                return next;
+            });
+            const bound = bindG1aToModel(value, bfres);
+            const parsed = { ...animation, value, bound };
+            setParsedG1aAnimations((current) => [
+                ...current.filter((entry) => entry.path !== animation.path),
+                parsed,
+            ]);
+            if (activate) {
+                setLoadedG1a(parsed);
+                setG1aPlaying(true);
+                setG1aPosition(0);
+                setDetail({ type: 'G1A', value: { header: value.header, ...bound } });
+                setYaml(JSON.stringify({ header: value.header, ...bound }, null, 2));
+                setStatusText(`Playing ${animation.name}: ${bound.tracks.length} mapped bones${bound.unmappedBoneIds.length ? `, ${bound.unmappedBoneIds.length} unmapped` : ''}`);
+            }
+            return true;
+        } catch (reason) {
+            const message = String(reason);
+            g1aInspectionFailures.set(animation.path, message);
+            setG1aFailures((current) => ({ ...current, [animation.path]: message }));
+            setStatusText(`Unable to load G1A ${animation.name}: ${message}`);
+            return false;
+        } finally {
+            setLoadingG1aPath('');
+        }
+    };
+
+    const importAllG1a = async () => {
+        setImportingAllG1a(true);
+        let loaded = 0;
+        for (const animation of g1aAnimations) {
+            if (await loadG1a(animation, false)) loaded += 1;
+        }
+        setImportingAllG1a(false);
+        setStatusText(`Imported ${loaded} of ${g1aAnimations.length} G1A animations`);
+    };
+
+    const importSelectedG1a = () => {
+        const animation = g1aAnimations.find((entry) => entry.path === selectedG1aPath);
+        if (animation) loadG1a(animation);
+    };
+
+    const selectParsedG1a = (animation) => {
+        setLoadedG1a(animation);
+        setG1aPlaying(true);
+        setG1aPosition(0);
+        setDetail({ type: 'G1A', value: { header: animation.value.header, ...animation.bound } });
+        setYaml(JSON.stringify({ header: animation.value.header, ...animation.bound }, null, 2));
+        setStatusText(`Playing ${animation.name}`);
+    };
 
     const choose = (section) => {
         setSelectedMesh('');
@@ -1010,34 +1270,41 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     };
     const showYamlButtonFlag = false;
     const showNormalsButtonFlag = false;
-    const exportFbx = async () => {
-        if (!isG1m || !document?.fullPath || exportingFbx) return;
+    const exportModel = async () => {
+        if (!isG1m || !document?.fullPath || exportingModel) return;
         const sourcePaths = document.modelPaths?.length ? document.modelPaths : [document.fullPath];
         const stem = sourcePaths.length > 1
             ? 'selected_aoc_models'
             : (document.title || 'model').replace(/\.g1m$/i, '');
         const output = await save({
             defaultPath: `${stem}.fbx`,
-            filters: [{ name: 'FBX model', extensions: ['fbx'] }],
+            filters: [
+                { name: 'FBX model', extensions: ['fbx'] },
+                { name: 'Binary glTF model', extensions: ['glb'] },
+            ],
         });
         if (!output) return;
-        const operationId = `fbx-export:${document.id}:${crypto.randomUUID()}`;
+        const extension = output.split('.').pop()?.toLowerCase();
+        if (!['fbx', 'glb'].includes(extension)) {
+            setStatusText('Model export requires an .fbx or .glb filename');
+            return;
+        }
+        const label = extension.toUpperCase();
+        const operationId = `model-export:${document.id}:${crypto.randomUUID()}`;
         window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
-            detail: { id: operationId, label: 'Exporting FBX model…' },
+            detail: { id: operationId, label: `Exporting ${label} model…` },
         }));
-        setExportingFbx(true);
-        setStatusText(`Exporting ${sourcePaths.length === 1 ? document.title || 'G1M' : `${sourcePaths.length} G1M models`} as FBX…`);
+        setExportingModel(true);
+        setStatusText(`Exporting ${sourcePaths.length === 1 ? document.title || 'G1M' : `${sourcePaths.length} G1M models`} as ${label}…`);
         try {
-            const written = await invoke('export_g1m_fbx', {
-                sourcePaths,
-                output,
-                textureFormat: fbxTextureFormat,
-            });
-            setStatusText(`Exported FBX ${written}`);
+            const written = extension === 'fbx'
+                ? await invoke('export_g1m_fbx', { documentId: document.id, sourcePaths, output, textureFormat: fbxTextureFormat })
+                : await invoke('export_g1m_glb', { documentId: document.id, sourcePaths, output });
+            setStatusText(`Exported ${label} ${written}`);
         } catch (reason) {
-            setStatusText(`FBX export failed: ${reason}`);
+            setStatusText(`${label} export failed: ${reason}`);
         } finally {
-            setExportingFbx(false);
+            setExportingModel(false);
             window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
                 detail: { id: operationId, done: true },
             }));
@@ -1076,7 +1343,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <div className="bfres-toolbar-row bfres-toolbar-tabs">
                 <button type="button" onClick={() => setPanel('resources')} className={panel === 'resources' ? 'active' : ''}>Resources</button>
                 <button type="button" onClick={() => { if (!isG1m) setPanel('parameters'); }} className={panel === 'parameters' ? 'active' : ''}>Parameters</button>
-                <button type="button" onClick={() => setPanel('animations')} className={panel === 'animations' ? 'active' : ''}>Animations <small>{animations.length}</small></button>
+                <button type="button" onClick={() => setPanel('animations')} className={panel === 'animations' ? 'active' : ''}>Animations <small>{embeddedAnimations.length + parsedG1aAnimations.length}</small></button>
                 {hasGlow && <button type="button" onClick={() => setGlow((value) => !value)} className={glow ? 'active' : ''} aria-pressed={glow}>Glow</button>}
                 <button type="button" onClick={() => setViewResetKey((value) => value + 1)}>Reset View</button>
                 <button type="button" onClick={() => setCelShading((value) => !value)} className={celShading ? 'active' : ''}>Cel Shading</button>
@@ -1173,7 +1440,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
                 <Canvas key={viewResetKey} dpr={[1, 2]} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
                     <ViewportCapture captureRef={captureViewportRef} />
-                    {bfres?.render && <ResourceScene bfres={bfres} render={bfres.render} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} weightPreviewColors={weightPreviewColors} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
+                    {bfres?.render && <ResourceScene bfres={bfres} render={bfres.render} animation={loadedG1a?.bound} animationPlaying={g1aPlaying} animationSeek={{ time: g1aPosition, revision: g1aSeekRevision }} onAnimationTime={setG1aPosition} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} weightPreviewColors={weightPreviewColors} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
                         setSelectedMesh(mesh.name);
                         setSelectedMaterial(null);
                         setWeightBone(-2);
@@ -1195,11 +1462,11 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 </section>}
                 {isG1m && <section className="bfres-export-panel">
                     {/* <header><strong>FBX Export</strong></header> */}
-                    <button type="button" onClick={exportFbx} disabled={exportingFbx || !bfres?.render?.meshes?.length}>
-                        {exportingFbx ? 'Exporting…' : 'Export FBX'}
+                    <button type="button" onClick={exportModel} disabled={exportingModel || !bfres?.render?.meshes?.length}>
+                        {exportingModel ? 'Exporting…' : 'Export'}
                     </button>
                     
-                        <select value={fbxTextureFormat} onChange={(event) => setFbxTextureFormat(event.target.value)} disabled={exportingFbx}>
+                        <select value={fbxTextureFormat} onChange={(event) => setFbxTextureFormat(event.target.value)} disabled={exportingModel}>
                             <option value="none">None</option>
                             <option value="png">PNG</option>
                             <option value="dds">DDS</option>
@@ -1220,16 +1487,38 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     <dt>Sections</dt><dd>{bfres.sections.length}</dd>
                 </dl>}
                 {panel === 'animations' && <div className="bfres-animation-list">
-                    {animations.length === 0 && <p>No animation sections in this BFRES.</p>}
-                    {animations.map((animation) => <button type="button" key={animation.offset} onClick={() => choose(animation)}>
+                    {isG1m && g1aAnimations.length > 0 && <section className="bfres-export-panel">
+                        <header><strong>Import G1A Animation</strong></header>
+                        <select value={selectedG1aPath} onChange={(event) => setSelectedG1aPath(event.target.value)} disabled={Boolean(loadingG1aPath)} aria-label="G1A animation">
+                            <option value="">Select animation…</option>
+                            {g1aAnimations.map((animation) => <option key={animation.path} value={animation.path} style={{ color: g1aInspectionCache.has(animation.path) ? '#39d98a' : g1aFailures[animation.path] ? '#ff5c5c' : undefined }}>{animation.name}</option>)}
+                        </select>
+                        <button type="button" onClick={importSelectedG1a} disabled={!selectedG1aPath || Boolean(loadingG1aPath)}>{loadingG1aPath ? 'Importing…' : 'Import'}</button>
+                        <button type="button" onClick={importAllG1a} disabled={importingAllG1a || Boolean(loadingG1aPath)}>{importingAllG1a ? 'Importing All…' : 'Import All'}</button>
+                        {loadedG1a && <button type="button" onClick={() => setG1aPlaying((playing) => !playing)} className={g1aPlaying ? 'active' : ''}>{g1aPlaying ? 'Pause' : 'Play'}</button>}
+                        {selectedG1aPath && g1aFailures[selectedG1aPath] && <p role="alert" style={{ color: '#ff5c5c' }}>{g1aFailures[selectedG1aPath]}</p>}
+                    </section>}
+                    {embeddedAnimations.length === 0 && parsedG1aAnimations.length === 0 && <p>No animations have been imported.</p>}
+                    {parsedG1aAnimations.map((animation) => <button type="button" key={animation.path} onClick={() => selectParsedG1a(animation)} className={loadedG1a?.path === animation.path ? 'active' : ''}>
+                        <span>{loadedG1a?.path === animation.path && !g1aPlaying ? 'Ⅱ' : '▶'}</span><div><strong>{animation.name}</strong><small>G1A · cached{loadedG1a?.path === animation.path ? g1aPlaying ? ' and playing' : ' and paused' : ' and ready to play'}</small></div>
+                    </button>)}
+                    {embeddedAnimations.map((animation) => <button type="button" key={animation.offset} onClick={() => choose(animation)}>
                         <span>▶</span><div><strong>{animation.name || String.fromCharCode(...animation.signature)}</strong><small>{String.fromCharCode(...animation.signature)} · playback decoding pending</small></div>
                     </button>)}
+                    {loadedG1a && <p>{loadedG1a.bound.duration.toFixed(2)}s · {loadedG1a.bound.tracks.length} mapped bones{loadedG1a.bound.unmappedBoneIds.length ? ` · ${loadedG1a.bound.unmappedBoneIds.length} unmapped` : ''} · version {loadedG1a.value.header.version}</p>}
                 </div>}
                 {showEditor && <section className="bfres-yaml-panel">
                     <header><strong>{selected?.name || 'Node YAML'}</strong><button type="button" onClick={applyYaml} disabled={!selected}>Stage YAML</button></header>
                     <Editor height="100%" language="yaml" theme="vs-dark" value={yaml} onChange={(value) => setYaml(value || '')} options={{ minimap: { enabled: false }, fontSize: 12, automaticLayout: true, scrollBeyondLastLine: false }} />
                 </section>}
             </aside>
+            {loadedG1a && <footer className="bfres-animation-timeline">
+                <button type="button" onClick={() => setG1aPlaying((playing) => !playing)} aria-label={g1aPlaying ? 'Pause animation' : 'Play animation'}>{g1aPlaying ? 'Ⅱ' : '▶'}</button>
+                <span>{playbackTime(g1aPosition)}</span>
+                <input type="range" min="0" max={Math.max(loadedG1a.bound.duration, 0.001)} step="0.001" value={Math.min(g1aPosition, loadedG1a.bound.duration)} onChange={(event) => { setG1aPosition(Number(event.target.value)); setG1aSeekRevision((revision) => revision + 1); }} aria-label="Animation timeline" />
+                <span>{playbackTime(loadedG1a.bound.duration)}</span>
+                <strong>{loadedG1a.name}</strong>
+            </footer>}
             <ResourceContextMenu menu={contextMenu} close={() => setContextMenu(null)} action={(label, menu) => setStatusText(`${label}: ${menu.name}`)} />
         </>}
         </main>

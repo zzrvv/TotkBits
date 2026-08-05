@@ -10,6 +10,7 @@ pub mod bphhb;
 pub mod bphhb_mapping;
 pub mod evfl;
 pub mod fbx;
+pub mod glb;
 pub mod hkcl;
 pub mod hkcl_merge;
 pub mod hkcl_to_bphcl;
