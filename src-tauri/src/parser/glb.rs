@@ -212,7 +212,11 @@ fn accessor(view: usize, component_type: u32, count: usize, kind: &str) -> Value
     json!({ "bufferView": view, "componentType": component_type, "count": count, "type": kind })
 }
 
-fn texture_png(texture: &ResolvedG1tTexture) -> Option<Vec<u8>> {
+fn has_fully_transparent_pixel(image: &image::DynamicImage) -> bool {
+    image.to_rgba8().pixels().any(|pixel| pixel[3] == 0)
+}
+
+fn texture_png(texture: &ResolvedG1tTexture) -> Option<(Vec<u8>, bool)> {
     let data_url = (!texture.data_url.is_empty())
         .then_some(texture.data_url.as_str())
         .or_else(|| texture.data_urls.first().map(String::as_str))?;
@@ -221,9 +225,10 @@ fn texture_png(texture: &ResolvedG1tTexture) -> Option<Vec<u8>> {
         .decode(encoded)
         .ok()?;
     let image = image::load_from_memory(&source).ok()?;
+    let has_transparency = has_fully_transparent_pixel(&image);
     let mut png = Cursor::new(Vec::new());
     image.write_to(&mut png, image::ImageFormat::Png).ok()?;
-    Some(png.into_inner())
+    Some((png.into_inner(), has_transparency))
 }
 
 pub fn export_g1m(
@@ -239,6 +244,7 @@ pub fn export_g1m(
     let mut textures = Vec::new();
     let mut skins = Vec::new();
     let mut texture_indices = HashMap::<String, usize>::new();
+    let mut texture_has_transparency = HashMap::<String, bool>::new();
 
     for (_, resolved, prefix) in models {
         for texture in *resolved {
@@ -246,18 +252,21 @@ pub fn export_g1m(
             if texture_indices.contains_key(&key) {
                 continue;
             }
-            let Some(bytes) = texture_png(texture) else {
+            let Some((bytes, has_transparency)) = texture_png(texture) else {
                 continue;
             };
             let view = binary.push(&bytes, None);
             let index = images.len();
             images.push(json!({ "name": format!("{prefix}{}.png", texture.name), "bufferView": view, "mimeType": "image/png" }));
             textures.push(json!({ "source": index, "sampler": 0 }));
-            texture_indices.insert(key, index);
+            texture_indices.insert(key.clone(), index);
+            texture_has_transparency.insert(key, has_transparency);
             for alias in &texture.aliases {
-                texture_indices
-                    .entry(format!("{prefix}{alias}").to_ascii_lowercase())
-                    .or_insert(index);
+                let alias = format!("{prefix}{alias}").to_ascii_lowercase();
+                texture_indices.entry(alias.clone()).or_insert(index);
+                texture_has_transparency
+                    .entry(alias)
+                    .or_insert(has_transparency);
             }
         }
     }
@@ -270,6 +279,8 @@ pub fn export_g1m(
                 .iter()
                 .find(|slot| slot.texture_type.eq_ignore_ascii_case("Diffuse"));
             let mut pbr = json!({ "metallicFactor": 0.0, "roughnessFactor": 1.0 });
+            let diffuse_key =
+                diffuse.map(|slot| format!("{prefix}{}", slot.name).to_ascii_lowercase());
             if let Some(texture) = diffuse.and_then(|slot| {
                 texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
             }) {
@@ -278,7 +289,21 @@ pub fn export_g1m(
                     "texCoord": diffuse.map_or(0, |slot| slot.uv_layer)
                 });
             }
-            materials.push(json!({ "name": format!("{prefix}{}", material.name), "pbrMetallicRoughness": pbr, "doubleSided": true }));
+            let mut exported = json!({
+                "name": format!("{prefix}{}", material.name),
+                "pbrMetallicRoughness": pbr,
+                "doubleSided": true
+            });
+            if diffuse_key
+                .as_ref()
+                .and_then(|key| texture_has_transparency.get(key))
+                .copied()
+                .unwrap_or(false)
+            {
+                exported["alphaMode"] = json!("MASK");
+                exported["alphaCutoff"] = json!(0.5);
+            }
+            materials.push(exported);
         }
 
         let bone_node_base = nodes.len();
@@ -528,6 +553,21 @@ mod tests {
     fn uv_coordinates_match_blender_mirror_y() {
         assert_eq!(convert_uv_for_glb([0.25, 0.2]), [0.25, 0.2]);
         assert_eq!(convert_uv_for_glb([1.0, 1.0]), [1.0, 1.0]);
+    }
+
+    #[test]
+    fn transparency_requires_a_fully_transparent_pixel() {
+        let image = |alpha| {
+            image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+                1,
+                1,
+                image::Rgba([255, 255, 255, alpha]),
+            ))
+        };
+        assert!(!has_fully_transparent_pixel(&image(255)));
+        assert!(!has_fully_transparent_pixel(&image(1)));
+        assert!(!has_fully_transparent_pixel(&image(127)));
+        assert!(has_fully_transparent_pixel(&image(0)));
     }
 
     #[test]
