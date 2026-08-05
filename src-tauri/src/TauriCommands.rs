@@ -1070,50 +1070,12 @@ pub fn get_aoc_model_catalog(
         return Ok(None);
     }
 
-    let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("misc")
-        .join("AOC_names.json");
-    let contents = fs::read_to_string(manifest_path).or_else(|_| {
-        let executable = env::current_exe()?;
-        let parent = executable.parent().ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "executable directory is missing",
-            )
-        })?;
-        fs::read_to_string(parent.join("misc").join("AOC_names.json"))
-    });
-
-    let mut catalog = contents
-        .ok()
-        .and_then(|value| {
-            serde_json::from_str::<HashMap<String, crate::parser::AOC::g1m::AocModelEntry>>(&value)
-                .ok()
-        })
-        .unwrap_or_default();
+    let mut catalog = crate::parser::AOC::g1m::aoc_names().clone();
     if catalog.is_empty() {
         return Ok(None);
     }
-    let pairs_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("misc")
-        .join("G1M_to_G1T_pairs.json");
-    let pairs = fs::read_to_string(pairs_path).or_else(|_| {
-        let executable = env::current_exe()?;
-        let parent = executable.parent().ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                "executable directory is missing",
-            )
-        })?;
-        fs::read_to_string(parent.join("misc").join("G1M_to_G1T_pairs.json"))
-    });
-    if let Some(pair_keys) = pairs
-        .ok()
-        .and_then(|value| serde_json::from_str::<HashMap<String, serde_json::Value>>(&value).ok())
-    {
-        for hash in pair_keys.into_keys() {
-            catalog.entry(hash).or_default();
-        }
+    for hash in crate::parser::AOC::g1m::model_texture_pairs().keys() {
+        catalog.entry(hash.clone()).or_default();
     }
     Ok(Some(catalog))
 }

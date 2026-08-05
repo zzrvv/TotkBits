@@ -7,30 +7,60 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-fn load_zlib_json<T: DeserializeOwned + Default>(name: &str) -> T {
-    let paths = [
-        crate::Settings::exe_relative_path(format!("misc/{name}")),
+fn support_paths(name: &str) -> [PathBuf; 2] {
+    [
+        crate::Settings::exe_relative_path(Path::new("misc").join(name)),
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("misc")
             .join(name),
-    ];
+    ]
+}
+
+pub(crate) fn read_support_bytes(name: &str) -> std::io::Result<Vec<u8>> {
     let mut last_error = None;
-    for path in paths {
-        match decode_zlib_json(&path) {
-            Ok(value) => return value,
+    for path in support_paths(name) {
+        match std::fs::read(&path) {
+            Ok(value) => return Ok(value),
             Err(error) => last_error = Some((path, error)),
         }
     }
-    if let Some((path, error)) = last_error {
-        eprintln!("Failed to load lookup data {}: {error}", path.display());
-    }
-    T::default()
+    let (path, error) = last_error.expect("support path list is not empty");
+    Err(std::io::Error::new(
+        error.kind(),
+        format!(
+            "failed to load misc support file {}: {error}",
+            path.display()
+        ),
+    ))
 }
 
-fn decode_zlib_json<T: DeserializeOwned>(path: &PathBuf) -> std::io::Result<T> {
-    let compressed = std::fs::read(path)?;
+pub(crate) fn read_support_text(name: &str, fallback: &str) -> String {
+    match read_support_bytes(name).and_then(|bytes| {
+        String::from_utf8(bytes)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    }) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!("{error}");
+            fallback.to_owned()
+        }
+    }
+}
+
+pub(crate) fn read_support_json(name: &str) -> String {
+    read_support_text(name, "{}")
+}
+
+fn load_zlib_json<T: DeserializeOwned + Default>(name: &str) -> T {
+    read_support_bytes(name)
+        .and_then(|compressed| decode_zlib_json(&compressed))
+        .map_err(|error| eprintln!("Failed to load misc lookup data {name}: {error}"))
+        .unwrap_or_default()
+}
+
+fn decode_zlib_json<T: DeserializeOwned>(compressed: &[u8]) -> std::io::Result<T> {
     let mut json = String::new();
-    ZlibDecoder::new(compressed.as_slice()).read_to_string(&mut json)?;
+    ZlibDecoder::new(compressed).read_to_string(&mut json)?;
     serde_json::from_str(&json).map_err(std::io::Error::other)
 }
 
@@ -82,5 +112,39 @@ mod tests {
             filename_to_localpath(),
             filename_to_localpath()
         ));
+    }
+
+    #[test]
+    fn every_misc_json_and_bin_support_file_loads() {
+        for name in [
+            "AOC_names.json",
+            "bars_bwav_sha256.json",
+            "bones_botw.json",
+            "bphcl_nodes.json",
+            "G1M_to_G1T_pairs.json",
+        ] {
+            let value = read_support_json(name);
+            assert_ne!(value, "{}", "failed to load misc/{name}");
+            assert!(
+                serde_json::from_str::<serde_json::Value>(&value).is_ok(),
+                "misc/{name} is invalid JSON"
+            );
+        }
+        for name in [
+            "totk_filename_to_localpath.bin",
+            "totk_internal_filepaths.bin",
+            "totk_rstb_paths.bin",
+            "totk_sarc_sha256.bin",
+        ] {
+            assert!(
+                !read_support_bytes(name).unwrap().is_empty(),
+                "misc/{name} is empty"
+            );
+        }
+    }
+
+    #[test]
+    fn missing_json_support_file_falls_back_to_empty_object() {
+        assert_eq!(read_support_json("does-not-exist.json"), "{}");
     }
 }

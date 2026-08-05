@@ -20,32 +20,16 @@ use g1m_import_task::G1mImportTask;
 
 const PARALLEL_IMPORT_MIN_BYTES: usize = 1024 * 1024;
 
-fn read_support_file(paths: &[&str], fallback: &str) -> String {
-    for relative in paths {
-        let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
-        if let Ok(value) = std::fs::read_to_string(&manifest_path) {
-            return value;
-        }
-        if let Ok(executable) = std::env::current_exe() {
-            if let Some(parent) = executable.parent() {
-                if let Ok(value) = std::fs::read_to_string(parent.join(relative)) {
-                    return value;
-                }
-            }
-        }
-    }
-    fallback.to_owned()
-}
-
 static PAIRS: LazyLock<HashMap<String, serde_json::Value>> = LazyLock::new(|| {
-    serde_json::from_str(&read_support_file(&["misc/G1M_to_G1T_pairs.json"], "{}"))
-        .unwrap_or_default()
+    serde_json::from_str(&crate::LookupData::read_support_json(
+        "G1M_to_G1T_pairs.json",
+    ))
+    .unwrap_or_default()
 });
 
 static BOTW_BONE_NAMES: LazyLock<HashMap<usize, String>> = LazyLock::new(|| {
-    serde_json::from_str::<HashMap<String, String>>(&read_support_file(
-        &["misc/bones_botw.json"],
-        "{}",
+    serde_json::from_str::<HashMap<String, String>>(&crate::LookupData::read_support_json(
+        "bones_botw.json",
     ))
     .unwrap_or_default()
     .into_iter()
@@ -64,8 +48,17 @@ pub struct AocModelEntry {
 }
 
 static AOC_NAMES: LazyLock<HashMap<String, AocModelEntry>> = LazyLock::new(|| {
-    serde_json::from_str(&read_support_file(&["misc/AOC_names.json"], "{}")).unwrap_or_default()
+    serde_json::from_str(&crate::LookupData::read_support_json("AOC_names.json"))
+        .unwrap_or_default()
 });
+
+pub(crate) fn aoc_names() -> &'static HashMap<String, AocModelEntry> {
+    &AOC_NAMES
+}
+
+pub(crate) fn model_texture_pairs() -> &'static HashMap<String, serde_json::Value> {
+    &PAIRS
+}
 
 static KIDSOBJ_CACHE: LazyLock<Mutex<HashMap<PathBuf, Arc<KidsObjFile>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -2069,6 +2062,14 @@ mod tests {
             Some("Amber_Earrings".to_owned())
         );
         assert!(!AOC_NAMES.contains_key("ffffffff"));
+    }
+
+    #[test]
+    fn support_catalog_accessors_reuse_lazy_caches() {
+        assert!(std::ptr::eq(aoc_names(), aoc_names()));
+        assert!(std::ptr::eq(model_texture_pairs(), model_texture_pairs()));
+        assert!(std::ptr::eq(aoc_names(), &*AOC_NAMES));
+        assert!(std::ptr::eq(model_texture_pairs(), &*PAIRS));
     }
 
     #[test]

@@ -8,27 +8,9 @@ use serde_yaml::{
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, io, path::Path, sync::LazyLock};
 
-fn read_support_file(name: &str, fallback: &str) -> String {
-    for folder in ["bin", "misc"] {
-        let relative = Path::new(folder).join(name);
-        let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR")).join(&relative);
-        if let Ok(value) = std::fs::read_to_string(&manifest_path) {
-            return value;
-        }
-        if let Ok(executable) = std::env::current_exe() {
-            if let Some(parent) = executable.parent() {
-                if let Ok(value) = std::fs::read_to_string(parent.join(&relative)) {
-                    return value;
-                }
-            }
-        }
-    }
-    fallback.to_owned()
-}
-
 static AAMP_TOTK_NAMES: LazyLock<HashMap<u32, String>> = LazyLock::new(|| {
     let mut names = HashMap::new();
-    for name in read_support_file("botw_hashed_names.txt", "").lines() {
+    for name in crate::LookupData::read_support_text("botw_hashed_names.txt", "").lines() {
         names
             .entry(roead::aamp::hash_name(name))
             .or_insert_with(|| name.to_owned());
@@ -106,7 +88,8 @@ fn canonical_node_hash(value: &impl Serialize) -> io::Result<String> {
 }
 
 static BPHCL_VANILLA_NODES: LazyLock<HashMap<String, BphclVanillaNodes>> = LazyLock::new(|| {
-    serde_json::from_str(&read_support_file("bphcl_nodes.json", "{}")).unwrap_or_default()
+    serde_json::from_str(&crate::LookupData::read_support_json("bphcl_nodes.json"))
+        .unwrap_or_default()
 });
 
 #[derive(Clone, Debug, Serialize)]
@@ -502,18 +485,23 @@ mod tests {
 
     #[test]
     fn bundled_aamp_names_are_resolved() {
-        let source = super::read_support_file("botw_hashed_names.txt", "");
-        if let Some(name) = source.lines().find(|name| {
-            super::AAMP_TOTK_NAMES
-                .get(&roead::aamp::hash_name(name))
-                .is_some_and(|stored| stored == name)
-        }) {
+        for name in [
+            "cloth_mesh_list",
+            "cloth_mesh_0",
+            "Name",
+            "BaseBone",
+            "BoneCorrection",
+            "BoneCorrectionAxisOrder",
+            "Twist",
+            "TwistSwingAxis",
+            "TwistAngleCoef",
+            "TwistMaxAngle",
+        ] {
             assert_eq!(
                 yaml_name(roead::aamp::hash_name(name)),
-                Value::String(name.to_owned())
+                Value::String(name.to_owned()),
+                "missing bundled AAMP name {name}"
             );
-        } else {
-            assert!(super::AAMP_TOTK_NAMES.is_empty());
         }
     }
 
@@ -523,5 +511,44 @@ mod tests {
             .find(|hash| !super::AAMP_TOTK_NAMES.contains_key(hash))
             .expect("the AAMP name table cannot contain every u32 hash");
         assert_eq!(yaml_name(unknown), Value::Number(unknown.into()));
+    }
+
+    #[test]
+    fn donkey_bphcl_aamp_uses_plaintext_names() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tmp/_bphcl/Animal_Donkey.bphcl");
+        let bytes = std::fs::read(path).expect("Animal_Donkey.bphcl fixture is missing");
+        let document = crate::parser::bphcl::BphclDocument::parse(&bytes).unwrap();
+        let aamp = document.aamp.expect("Donkey BPHCL has no AAMP section");
+        let pio = roead::aamp::ParameterIO::from_binary(&aamp.raw).unwrap();
+        let yaml = super::safe_aamp_yaml(&pio).unwrap();
+        for name in [
+            "cloth_mesh_list:",
+            "cloth_mesh_0:",
+            "Name:",
+            "BaseBone:",
+            "BoneCorrection:",
+            "BoneCorrectionAxisOrder:",
+            "Twist:",
+            "TwistSwingAxis:",
+            "TwistAngleCoef:",
+            "TwistMaxAngle:",
+        ] {
+            assert!(yaml.contains(name), "AAMP YAML is missing {name}");
+        }
+        for hash in [
+            "1571872146:",
+            "3840643960:",
+            "4262580536:",
+            "1259279791:",
+            "3057977986:",
+            "851716768:",
+            "3911543180:",
+            "3958628279:",
+            "521060591:",
+            "1920464176:",
+        ] {
+            assert!(!yaml.contains(hash), "AAMP YAML still contains hash {hash}");
+        }
     }
 }

@@ -4,5 +4,11 @@
         ".\\src-tauri\\Cargo.toml",
         ".\\src-tauri\\Cargo.toml"
     ],
-    "cmake.configureOnOpen": false
+    "cmake.configureOnOpen": false,
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/public": true,
+        "**/__pycache__": true,
+        "**/target": true
+    }
 }
