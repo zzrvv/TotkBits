@@ -11,6 +11,7 @@ pub mod Bars;
 pub mod Folder;
 pub mod Rar;
 pub mod SevenZip;
+pub mod SevenZipCmd;
 pub mod Zip;
 
 pub type ArchiveResult<T> = Result<T, String>;
@@ -116,7 +117,7 @@ pub fn detect_archive_magic(data: &[u8]) -> Option<ArchiveMagic> {
 
 pub enum RootArchive {
     Zip(Zip::ZipFile),
-    SevenZip(SevenZip::SevenZipFile),
+    SevenZip(SevenZipCmd::SevenZipCmd),
     Rar(Rar::RarFile),
     Folder(Folder::FolderFile),
     Bars(Bars::BarsFile),
@@ -202,7 +203,7 @@ impl ArchiveDocument {
         let archive = match detect_archive_magic(&bytes) {
             Some(ArchiveMagic::Zip) => RootArchive::Zip(Zip::ZipFile::from_bytes(&bytes)?),
             Some(ArchiveMagic::SevenZip) => {
-                RootArchive::SevenZip(SevenZip::SevenZipFile::from_bytes(&bytes)?)
+                RootArchive::SevenZip(SevenZipCmd::SevenZipCmd::from_bytes(&bytes)?)
             }
             Some(ArchiveMagic::Rar) => RootArchive::Rar(Rar::RarFile::from_bytes(&bytes)?),
             Some(ArchiveMagic::Bars) => RootArchive::Bars(Bars::BarsFile::from_bytes(&bytes)?),
@@ -247,7 +248,7 @@ impl ArchiveDocument {
         let archive = match detect_archive_magic(&bytes) {
             Some(ArchiveMagic::Zip) => RootArchive::Zip(Zip::ZipFile::from_bytes(&bytes)?),
             Some(ArchiveMagic::SevenZip) => {
-                RootArchive::SevenZip(SevenZip::SevenZipFile::from_bytes(&bytes)?)
+                RootArchive::SevenZip(SevenZipCmd::SevenZipCmd::from_bytes(&bytes)?)
             }
             Some(ArchiveMagic::Rar) => RootArchive::Rar(Rar::RarFile::from_bytes(&bytes)?),
             Some(ArchiveMagic::Bars) => RootArchive::Bars(Bars::BarsFile::from_bytes(&bytes)?),
@@ -693,7 +694,7 @@ mod tests {
     fn seven_zip_document_open_edit_save() {
         document_roundtrip(
             "7z",
-            RootArchive::SevenZip(SevenZip::SevenZipFile::default()),
+            RootArchive::SevenZip(SevenZipCmd::SevenZipCmd::default()),
         );
     }
 

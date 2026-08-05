@@ -5,7 +5,7 @@ use roead::sarc::{Sarc, SarcWriter};
 use crate::{
     file_format::Archive::{
         detect_archive_magic, ArchiveCodec, ArchiveMagic, Rar::RarFile, RootArchive,
-        SevenZip::SevenZipFile, Zip::ZipFile,
+        SevenZipCmd::SevenZipCmd, Zip::ZipFile,
     },
     Settings::Magic,
     Zstd::TotkZstd,
@@ -36,7 +36,7 @@ impl NestedArchive {
         let generic = match detect_archive_magic(data) {
             Some(ArchiveMagic::Zip) => Some(ZipFile::from_bytes(data).map(RootArchive::Zip)),
             Some(ArchiveMagic::SevenZip) => {
-                Some(SevenZipFile::from_bytes(data).map(RootArchive::SevenZip))
+                Some(SevenZipCmd::from_bytes(data).map(RootArchive::SevenZip))
             }
             Some(ArchiveMagic::Rar) => Some(RarFile::from_bytes(data).map(RootArchive::Rar)),
             Some(ArchiveMagic::Bars) => Some(

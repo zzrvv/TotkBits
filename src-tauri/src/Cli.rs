@@ -1,7 +1,7 @@
 use crate::{
     file_format::{
         Ainb::AinbFile,
-        Archive::{ArchiveCodec, Rar::RarFile, SevenZip::SevenZipFile, Zip::ZipFile},
+        Archive::{ArchiveCodec, Rar::RarFile, SevenZipCmd::SevenZipCmd, Zip::ZipFile},
         BinTextFile::OpenedFile,
     },
     Open_and_Save::{get_binary_by_filetype, get_string_from_data},
@@ -470,7 +470,7 @@ fn archive_entries(kind: &str, bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>, S
             .iter()
             .map(|(n, d)| (n.clone(), d.clone()))
             .collect()),
-        "7z" => Ok(SevenZipFile::from_bytes(bytes)?
+        "7z" => Ok(SevenZipCmd::from_bytes(bytes)?
             .entries()
             .iter()
             .map(|(n, d)| (n.clone(), d.clone()))
@@ -506,7 +506,7 @@ fn build_archive(kind: &str, entries: Vec<(String, Vec<u8>)>) -> Result<Vec<u8>,
     }
     match kind {
         "zip" => codec!(ZipFile),
-        "7z" => codec!(SevenZipFile),
+        "7z" => codec!(SevenZipCmd),
         "rar" => codec!(RarFile),
         "sarc" => {
             let mut writer = SarcWriter::new(Endian::Little);
