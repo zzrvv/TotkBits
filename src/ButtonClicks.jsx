@@ -498,7 +498,7 @@ const activeFileName = () => {
 };
 
 export async function saveFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots) {
-  if (editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) { setStatusText('Read-only physics previews cannot be saved'); return; }
+  if (activeTab !== '3D' && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) { setStatusText('Read-only physics previews cannot be saved'); return; }
   setSavingFile?.(activeFileName());
   try {
     await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -540,7 +540,7 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
 }
 
 export async function saveAsFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots) {
-  if (editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) { setStatusText('Read-only physics previews cannot be saved'); return; }
+  if (activeTab !== '3D' && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) { setStatusText('Read-only physics previews cannot be saved'); return; }
   setSavingFile?.(activeFileName());
   try {
     await new Promise((resolve) => requestAnimationFrame(resolve));

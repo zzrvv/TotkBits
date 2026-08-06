@@ -52,6 +52,8 @@ impl CliCommand {
                 | "compress"
                 | "replace_bars_from_folder"
                 | "batch_g1m_worker"
+                | "replace_g1m"
+                | "g1m_to_fbx"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
         let valid_arguments = if operation == "decompress_dir" {
@@ -60,7 +62,7 @@ impl CliCommand {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -136,6 +138,8 @@ impl CliCommand {
             "compress" => self.compress(),
             "replace_bars_from_folder" => self.replace_bars_from_folder(),
             "batch_g1m_worker" => self.batch_g1m_worker(),
+            "replace_g1m" => self.replace_g1m(),
+            "g1m_to_fbx" => self.g1m_to_fbx(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
     }
@@ -430,6 +434,45 @@ impl CliCommand {
             &self.output,
             &serde_json::to_vec(&value).map_err(|error| error.to_string())?,
         )
+    }
+
+    fn replace_g1m(&self) -> Result<(), String> {
+        let source_path = Path::new(&self.file_type);
+        let source = fs::read(source_path)
+            .map_err(|error| format!("failed to read {}: {error}", source_path.display()))?;
+        let fbx = fs::read(&self.input)
+            .map_err(|error| format!("failed to read {}: {error}", self.input.display()))?;
+        let name = source_path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("G1M");
+        let rebuilt = crate::parser::AOC::g1m_replace::replace_meshes_from_fbx(&source, &fbx, name)
+            .map_err(|error| error.to_string())?;
+        write_output(&self.output, &rebuilt)
+    }
+
+    fn g1m_to_fbx(&self) -> Result<(), String> {
+        let texture_format = crate::parser::fbx::TextureExportFormat::parse(&self.file_type)
+            .map_err(|error| error.to_string())?;
+        let source = fs::read(&self.input)
+            .map_err(|error| format!("failed to read {}: {error}", self.input.display()))?;
+        let name = self
+            .input
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("G1M");
+        let model = crate::parser::AOC::g1m::G1mFile::parse_for_export(&source, name)
+            .map_err(|error| error.to_string())?;
+        let textures = model
+            .resolve_textures(&self.input, self.input.parent().unwrap_or(Path::new("")))
+            .textures;
+        crate::parser::fbx::export_g1m(
+            &[(&model, textures.as_slice(), String::new())],
+            &self.output,
+            texture_format,
+            name,
+        )
+        .map_err(|error| error.to_string())
     }
 }
 

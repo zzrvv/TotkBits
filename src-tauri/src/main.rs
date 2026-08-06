@@ -43,8 +43,8 @@ use crate::TauriCommands::{
     open_file_struct, open_folder_struct, preview_aoc_model, remove_bphcl_node,
     remove_internal_sarc_file, rename_bntx_texture, rename_internal_sarc_file, render_image,
     replace_bars_audio_from_folder, replace_bfwav_node, replace_bntx_image, replace_dds_image,
-    restart_app, rstb_edit_entry, rstb_get_entries, rstb_remove_entry, save_as_click,
-    save_file_struct, search_in_sarc, set_viewport_brightness, update_toml_config,
+    replace_g1m_meshes, restart_app, rstb_edit_entry, rstb_get_entries, rstb_remove_entry,
+    save_as_click, save_file_struct, search_in_sarc, set_viewport_brightness, update_toml_config,
     validate_bphcl_merge_documents, validate_physics_merge_request,
 };
 
@@ -82,6 +82,7 @@ fn main() -> io::Result<()> {
             inspect_g1a_animation,
             inspect_batch_g1m,
             export_g1m_fbx,
+            replace_g1m_meshes,
             export_g1m_glb,
             export_viewport_png,
             list_batch_render_files,

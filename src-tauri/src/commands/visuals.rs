@@ -199,6 +199,60 @@ pub fn export_g1m_fbx(
 }
 
 #[tauri::command]
+pub fn replace_g1m_meshes(
+    app_handle: tauri::AppHandle,
+    documentId: String,
+    fbx: String,
+) -> Result<serde_json::Value, String> {
+    require_experimental_visuals()?;
+    let documents = app_handle.state::<DocumentState>();
+    let (source, aoc_path) = documents.with(&documentId, |app| {
+        (
+            app.opened_file.path.full_path.clone(),
+            app.zstd.totk_config.aoc_path.clone(),
+        )
+    });
+    let source_path = Path::new(&source);
+    let fbx_path = Path::new(&fbx);
+    let source_data =
+        fs::read(source_path).map_err(|error| format!("{}: {error}", source_path.display()))?;
+    let fbx_data =
+        fs::read(fbx_path).map_err(|error| format!("{}: {error}", fbx_path.display()))?;
+    let name = source_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("G1M");
+    let rebuilt =
+        crate::parser::AOC::g1m_replace::replace_meshes_from_fbx(&source_data, &fbx_data, name)
+            .map_err(|error| error.to_string())?;
+    let (model, texture_resolution) = crate::parser::AOC::g1m::G1mFile::parse_with_textures(
+        &rebuilt,
+        name,
+        source_path,
+        Path::new(&aoc_path),
+    )
+    .map_err(|error| error.to_string())?;
+    let mut value = serde_json::to_value(model).map_err(|error| error.to_string())?;
+    if let Some(object) = value.as_object_mut() {
+        object.insert(
+            "resolvedTextures".into(),
+            serde_json::to_value(texture_resolution.textures).map_err(|error| error.to_string())?,
+        );
+        object.insert(
+            "textureStats".into(),
+            serde_json::json!({
+                "total": texture_resolution.total,
+                "skipped": texture_resolution.skipped,
+            }),
+        );
+    }
+    documents.with_mut(&documentId, |app| {
+        app.opened_file.custom_g1m = Some(rebuilt)
+    });
+    Ok(value)
+}
+
+#[tauri::command]
 pub fn export_g1m_glb(
     app_handle: tauri::AppHandle,
     documentId: String,

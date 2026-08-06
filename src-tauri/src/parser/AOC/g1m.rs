@@ -60,6 +60,20 @@ pub(crate) fn model_texture_pairs() -> &'static HashMap<String, serde_json::Valu
     &PAIRS
 }
 
+pub(crate) fn bone_name(index: usize) -> String {
+    BOTW_BONE_NAMES
+        .get(&index)
+        .cloned()
+        .unwrap_or_else(|| format!("bone_{index}"))
+}
+
+pub(crate) fn bone_index(name: &str) -> Option<usize> {
+    BOTW_BONE_NAMES
+        .iter()
+        .find_map(|(index, candidate)| (candidate == name).then_some(*index))
+        .or_else(|| name.strip_prefix("bone_")?.parse().ok())
+}
+
 static KIDSOBJ_CACHE: LazyLock<Mutex<HashMap<PathBuf, Arc<KidsObjFile>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
@@ -353,10 +367,10 @@ impl G1mFile {
             .filter(|name| !name.trim().is_empty())
             .map(|name| format!("[{}] {} [G1M]", name.trim(), send.path.name))
             .unwrap_or_else(|| format!("{} [G1M]", send.path.name));
-        send.file_metadata = "[G1M] [ReadOnly]".into();
+        send.file_metadata = "[G1M]".into();
         send.status_text = format!("Opened G1M {}", path.display());
         send.tab = "3D".into();
-        send.read_only = true;
+        send.read_only = false;
         Some((opened, send))
     }
 
@@ -428,11 +442,12 @@ fn parse_skeleton(data: &[u8], endian: Endian) -> io::Result<(Vec<BfresBone>, Ve
         ];
         let translation = [reader.read_f32()?, reader.read_f32()?, reader.read_f32()?];
         reader.skip(4)?;
+        let global_index = bone_ids
+            .iter()
+            .position(|local| usize::from(*local) == index)
+            .unwrap_or(index);
         bones.push(BfresBone {
-            name: BOTW_BONE_NAMES
-                .get(&index)
-                .cloned()
-                .unwrap_or_else(|| format!("bone_{index}")),
+            name: bone_name(global_index),
             parent_index: i16::try_from(parent).unwrap_or(-1),
             smooth_matrix_index: -1,
             rigid_matrix_index: -1,
@@ -2192,7 +2207,8 @@ mod tests {
         }
         let (_, data) = G1mFile::open(&path).expect("G1M opener rejected fixture");
         assert_eq!(data.file_label, "[Champion Revali] 0cb432cf.g1m [G1M]");
-        assert_eq!(data.file_metadata, "[G1M] [ReadOnly]");
+        assert_eq!(data.file_metadata, "[G1M]");
+        assert!(!data.read_only);
     }
 
     #[test]

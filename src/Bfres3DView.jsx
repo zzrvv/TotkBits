@@ -1,7 +1,7 @@
 import Editor from '@monaco-editor/react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Grid, OrbitControls, PerspectiveCamera } from '@react-three/drei';
-import { save } from '@tauri-apps/plugin-dialog';
+import { open, save } from '@tauri-apps/plugin-dialog';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
 import { getDocumentsSnapshot, invoke, subscribeDocuments } from './DocumentState';
@@ -18,9 +18,8 @@ celGradient.magFilter = THREE.NearestFilter;
 celGradient.generateMipmaps = false;
 celGradient.needsUpdate = true;
 
-// Models are read-only in this viewer. Keep every inspected model for the life
-// of the application so switching between document tabs never invokes Rust or
-// transfers the full mesh payload again.
+// Keep inspected models while their document is open so switching tabs does
+// not invoke Rust or transfer the full mesh payload again.
 const modelInspectionCache = new Map();
 const g1aInspectionCache = new Map();
 const g1aInspectionFailures = new Map();
@@ -867,6 +866,18 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [viewResetKey, setViewResetKey] = useState(0);
     const [fbxTextureFormat, setFbxTextureFormat] = useState('png');
     const [exportingModel, setExportingModel] = useState(false);
+    const [replacingModel, setReplacingModel] = useState(false);
+
+    useEffect(() => {
+        const purge = (event) => {
+            const paths = (event.detail?.paths || []).filter(Boolean);
+            const keys = paths.map((path) => path.replace(/\\/g, '/').toLowerCase());
+            keys.forEach((key) => modelInspectionCache.delete(key));
+            if (keys.length > 1) modelInspectionCache.delete(keys.join('|'));
+        };
+        window.addEventListener('totkbits:model-cache-purge', purge);
+        return () => window.removeEventListener('totkbits:model-cache-purge', purge);
+    }, []);
     const [renderingViewport, setRenderingViewport] = useState(false);
     const captureViewportRef = useRef(null);
     const batchCaptureRef = useRef(null);
@@ -904,6 +915,9 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     useEffect(() => {
         setWeightPreviewColors(null);
     }, [bfres]);
+
+    useEffect(() => {
+    }, [document?.fullPath]);
 
     useEffect(() => {
         if (viewMode !== 'weightsPrev' || !bfres?.render || !hasSkeleton || !hasMeshes || weightPreviewColors) return undefined;
@@ -1310,6 +1324,38 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             }));
         }
     };
+    const replaceModelMeshes = async () => {
+        if (!isG1m || !document?.fullPath || replacingModel) return;
+        const fbx = await open({ multiple: false, filters: [{ name: 'FBX model', extensions: ['fbx'] }] });
+        if (!fbx) return;
+        const operationId = `mesh-replacement:${document.id}:${crypto.randomUUID()}`;
+        window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+            detail: { id: operationId, label: `Replacing meshes in ${document.title || 'G1M'}…` },
+        }));
+        setReplacingModel(true);
+        setStatusText('Replacing G1M meshes…');
+        try {
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            const value = await invoke('replace_g1m_meshes', { documentId: document.id, fbx });
+            const modelPaths = document.modelPaths?.length ? document.modelPaths : [document.fullPath];
+            const cacheKeys = modelPaths.map((path) => path.replace(/\\/g, '/').toLowerCase());
+            if (cacheKeys.length === 1) cacheModelInspection(cacheKeys[0], value);
+            else cacheModelInspection(cacheKeys.join('|'), value);
+            setBfres(value);
+            setSelectedMesh('');
+            setSelectedMaterial(null);
+            setHiddenMeshes([]);
+            setViewResetKey((key) => key + 1);
+            setStatusText('Meshes replaced. Use Save or Save As to write the G1M.');
+        } catch (reason) {
+            setStatusText(`Mesh replacement failed: ${reason}`);
+        } finally {
+            setReplacingModel(false);
+            window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+                detail: { id: operationId, done: true },
+            }));
+        }
+    };
     const renderViewport = async () => {
         if (!captureViewportRef.current || renderingViewport) return;
         const stem = (document?.title || bfres?.name || 'model').replace(/\.[^.]+$/, '');
@@ -1464,6 +1510,9 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     {/* <header><strong>FBX Export</strong></header> */}
                     <button type="button" onClick={exportModel} disabled={exportingModel || !bfres?.render?.meshes?.length}>
                         {exportingModel ? 'Exporting…' : 'Export'}
+                    </button>
+                    <button type="button" onClick={replaceModelMeshes} disabled={replacingModel || exportingModel}>
+                        {replacingModel ? 'Replacing…' : 'Replace meshes'}
                     </button>
                     
                         <select value={fbxTextureFormat} onChange={(event) => setFbxTextureFormat(event.target.value)} disabled={exportingModel}>

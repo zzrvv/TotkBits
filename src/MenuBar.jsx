@@ -325,24 +325,15 @@ function MenuBarDisplay({ updateButton = null }) {
   };
   const iconSize = '20px';
   const blankIcon = 'menu/blank.png';
-  let isSaveEnabled = true;
-  if (activeTab === 'COMPARER' || activeTab === '3D' || activeTab === 'AOC_MODELS') {
-    isSaveEnabled = false;
-  } else if (activeTab === 'YAML' && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) {
-    isSaveEnabled = false;
-  }
-  
-  
-  // const isMonacoReadOnly = activeTab === 'YAML' && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly);
-  // const isMonacoWriteable = !isMonacoReadOnly;
-  // const isSaveEnabled = isMonacoWriteable || activeTab !== 'COMPARER';
-  // const isSaveEnabled = !(editorRef.current?.getOption(monaco.editor.EditorOption.readOnly)) && activeTab !== 'COMPARER';
+  const isSaveEnabled = !['COMPARER', 'AOC_MODELS'].includes(activeTab)
+    && !(activeTab === 'YAML'
+      && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly));
 
   const fileMenuItems = [
     { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.png', shortcut: 'Ctrl+O' },
     {
       label: 'Open recent',
-      icon: blankIcon,
+      icon: 'open_recent.png',
       shortcut: '',
       children: recentFiles.map((path) => ({
         label: path,

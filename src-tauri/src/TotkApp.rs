@@ -1138,6 +1138,10 @@ impl<'a> TotkBitsApp<'a> {
             format!("Save {} as", save_data.tab),
         );
         dialog.generate_filters_and_name();
+        if save_data.tab == "3D" {
+            dialog.name = Some(self.opened_file.path.name.clone());
+            dialog.filters_from_path(&self.opened_file.path.full_path);
+        }
         if let Some(archive) = &self.archive {
             dialog.name = Some(Pathlib::new(archive.path.clone()).name);
             dialog.filters_from_path(&archive.path);
@@ -1165,6 +1169,28 @@ impl<'a> TotkBitsApp<'a> {
         drop(dialog);
         if !dest_file.is_empty() && !check_if_save_in_romfs(&dest_file, self.zstd.clone()) {
             match save_data.tab.as_str() {
+                "3D" => {
+                    let bytes = match &self.opened_file.custom_g1m {
+                        Some(bytes) => bytes,
+                        None => {
+                            data.tab = "ERROR".into();
+                            data.status_text =
+                                "Error: no replacement G1M geometry is staged".into();
+                            return Some(data);
+                        }
+                    };
+                    if let Err(error) = fs::write(&dest_file, bytes) {
+                        data.tab = "ERROR".into();
+                        data.status_text = format!("Error: failed to save G1M: {error}");
+                        return Some(data);
+                    }
+                    self.opened_file.path = Pathlib::new(dest_file.clone());
+                    data.tab = "3D".into();
+                    data.status_text = format!("Saved G1M {dest_file}");
+                    data.path = self.opened_file.path.clone();
+                    data.read_only = false;
+                    return Some(data);
+                }
                 "YAML" => {
                     if let Some(rstb) = &mut self.opened_file.restbl {
                         if let Err(error) = rstb.apply_json(&save_data.text) {
@@ -1549,6 +1575,37 @@ impl<'a> TotkBitsApp<'a> {
         let _text = &save_data.text;
 
         match save_data.tab.as_str() {
+            "3D" => {
+                let destination = self.opened_file.path.full_path.clone();
+                if destination.is_empty() {
+                    data.tab = "ERROR".into();
+                    data.status_text = "Error: G1M has no save path".into();
+                    return Some(data);
+                }
+                if check_if_save_in_romfs(&destination, self.zstd.clone()) {
+                    data.tab = "ERROR".into();
+                    data.status_text = "Error: refusing to save inside romfs".into();
+                    return Some(data);
+                }
+                let bytes = match &self.opened_file.custom_g1m {
+                    Some(bytes) => bytes,
+                    None => {
+                        data.tab = "ERROR".into();
+                        data.status_text = "Error: no replacement G1M geometry is staged".into();
+                        return Some(data);
+                    }
+                };
+                if let Err(error) = fs::write(&destination, bytes) {
+                    data.tab = "ERROR".into();
+                    data.status_text = format!("Error: failed to save G1M: {error}");
+                    return Some(data);
+                }
+                data.tab = "3D".into();
+                data.status_text = format!("Saved G1M {destination}");
+                data.path = self.opened_file.path.clone();
+                data.read_only = false;
+                return Some(data);
+            }
             "YAML" => {
                 return self.save_tab_yaml(save_data);
             }

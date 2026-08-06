@@ -13,7 +13,7 @@ const documentCommands = new Set([
     'remove_bphcl_node',
     'mutate_nested_archive',
     'open_bfwav_node', 'replace_bfwav_node', 'replace_bars_audio_from_folder', 'export_bfwav_node', 'open_amta_node',
-    'inspect_3d_model', 'export_g1m_fbx', 'list_batch_render_files',
+    'inspect_3d_model', 'export_g1m_fbx', 'replace_g1m_meshes', 'list_batch_render_files',
     'render_image', 'export_image_png', 'rename_bntx_texture', 'replace_bntx_image',
 ]);
 
@@ -104,7 +104,17 @@ const updateFileMetadata = (id, fileMetadata) => {
 };
 
 export const closeDocument = async (id) => {
+    const closingDocument = documents.find((document) => document.id === id);
     await tauriInvoke('close_document', { documentId: id });
+    if (closingDocument) {
+        window.dispatchEvent(new CustomEvent('totkbits:model-cache-purge', {
+            detail: {
+                paths: closingDocument.modelPaths?.length
+                    ? closingDocument.modelPaths
+                    : [closingDocument.fullPath].filter(Boolean),
+            },
+        }));
+    }
     const wasActive = id === activeDocumentId;
     documents = documents.filter((document) => document.id !== id);
     comparisonSources.delete(id);
