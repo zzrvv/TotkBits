@@ -883,7 +883,7 @@ fn model_space_geometry(mesh: &BfresMesh, bones: &[BfresBone]) -> (Vec<[f32; 3]>
     (positions, normals)
 }
 
-fn bone_world_matrix(bones: &[BfresBone], index: usize) -> [f64; 16] {
+pub(crate) fn bone_world_matrix(bones: &[BfresBone], index: usize) -> [f64; 16] {
     let Some(bone) = bones.get(index) else {
         return identity_matrix();
     };
@@ -931,7 +931,7 @@ fn multiply_matrix(a: [f64; 16], b: [f64; 16]) -> [f64; 16] {
     result
 }
 
-fn inverse_affine_matrix(m: [f64; 16]) -> [f64; 16] {
+pub(crate) fn inverse_affine_matrix(m: [f64; 16]) -> [f64; 16] {
     let determinant = m[0] * (m[5] * m[10] - m[6] * m[9]) - m[1] * (m[4] * m[10] - m[6] * m[8])
         + m[2] * (m[4] * m[9] - m[5] * m[8]);
     if determinant.abs() <= f64::EPSILON {

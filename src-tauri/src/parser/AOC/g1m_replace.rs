@@ -47,6 +47,11 @@ struct Palette {
     raw: Vec<[u32; 3]>,
     joints: Vec<u32>,
 }
+#[derive(Clone, Copy)]
+struct SupplementalJoint {
+    raw: [u32; 3],
+    matrix: Option<[f32; 16]>,
+}
 #[derive(Clone)]
 struct Submesh {
     values: [u32; 14],
@@ -56,6 +61,7 @@ struct Geometry<'a> {
     version: u32,
     platform: [u8; 4],
     reserved: u32,
+    bounds: [f32; 6],
     sections: Vec<Section<'a>>,
     vertex_buffers: Vec<VertexBuffer>,
     attrs: Vec<AttrSet>,
@@ -72,6 +78,14 @@ struct Chunk<'a> {
 }
 
 pub fn replace_meshes_from_fbx(g1m: &[u8], fbx: &[u8], name: &str) -> io::Result<Vec<u8>> {
+    replace_imported_meshes(g1m, import_for_g1m(fbx)?, name)
+}
+
+fn replace_imported_meshes(
+    g1m: &[u8],
+    mut imported: ImportedFbx,
+    name: &str,
+) -> io::Result<Vec<u8>> {
     let endian = g1m_endian(g1m)?;
     let chunks = parse_chunks(g1m, endian)?;
     let geometry_chunk = chunks
@@ -79,10 +93,29 @@ pub fn replace_meshes_from_fbx(g1m: &[u8], fbx: &[u8], name: &str) -> io::Result
         .find(|c| matches!(&c.signature, b"G1MG" | b"GM1G"))
         .ok_or_else(|| invalid("G1M has no G1MG chunk"))?;
     let geometry = parse_geometry(geometry_chunk.bytes, endian)?;
+    let matrix_chunk = chunks
+        .iter()
+        .find(|chunk| matches!(&chunk.signature, b"G1MM" | b"MM1G"))
+        .ok_or_else(|| invalid("G1M has no G1MM chunk"))?;
+    let matrix_count = matrix_chunk_count(matrix_chunk.bytes, endian)?;
     let original = G1mFile::parse_for_export(g1m, name)?;
-    let mut imported = import_for_g1m(fbx)?;
-    validate_and_order(&original, &geometry, &mut imported, name)?;
-    let new_geometry = build_geometry(&geometry, &imported, endian)?;
+    let (replacements, supplemental_joints) =
+        validate_and_order(&original, &geometry, &mut imported, name, matrix_count)?;
+    let new_geometry = build_geometry(&geometry, &replacements, &supplemental_joints, endian)?;
+    let mut supplemental_matrices = vec![
+        [0.0; 16];
+        supplemental_joints
+            .values()
+            .filter(|joint| joint.matrix.is_some())
+            .count()
+    ];
+    for joint in supplemental_joints.values() {
+        if let Some(matrix) = joint.matrix {
+            supplemental_matrices[joint.raw[0] as usize - matrix_count] = matrix;
+        }
+    }
+    let new_matrix_count = matrix_count + supplemental_matrices.len();
+    let new_matrices = rebuild_matrix_chunk(matrix_chunk.bytes, &supplemental_matrices, endian)?;
     let new_g1mf = rebuild_g1mf(
         chunks
             .iter()
@@ -90,12 +123,15 @@ pub fn replace_meshes_from_fbx(g1m: &[u8], fbx: &[u8], name: &str) -> io::Result
             .map(|c| c.bytes),
         &geometry,
         &new_geometry,
+        new_matrix_count,
         endian,
     )?;
     let mut body = Vec::new();
     for chunk in &chunks {
         if matches!(&chunk.signature, b"G1MG" | b"GM1G") {
             body.extend_from_slice(&new_geometry);
+        } else if matches!(&chunk.signature, b"G1MM" | b"MM1G") {
+            body.extend_from_slice(&new_matrices);
         } else if matches!(&chunk.signature, b"G1MF" | b"FM1G") {
             body.extend_from_slice(&new_g1mf);
         } else {
@@ -118,26 +154,13 @@ fn validate_and_order(
     geometry: &Geometry<'_>,
     imported: &mut ImportedFbx,
     name: &str,
-) -> io::Result<()> {
+    matrix_count: usize,
+) -> io::Result<(Vec<Option<ImportedMesh>>, HashMap<u32, SupplementalJoint>)> {
     if geometry.submeshes.len() != original.render.meshes.len() {
         return Err(invalid("G1M mesh metadata is inconsistent"));
     }
-    let primary_group = geometry
-        .submeshes
-        .first()
-        .ok_or_else(|| invalid("G1M contains no meshes"))?
-        .values[4];
-    let replace_count = geometry
-        .submeshes
-        .iter()
-        .take_while(|submesh| submesh.values[4] == primary_group)
-        .count();
-    if imported.meshes.len() != replace_count {
-        return Err(invalid(format!(
-            "mesh count differs: G1M has {}, FBX has {} armature-bound meshes",
-            replace_count,
-            imported.meshes.len()
-        )));
+    if geometry.submeshes.is_empty() {
+        return Err(invalid("G1M contains no meshes"));
     }
     for (bone, parent) in &imported.bones {
         let generated_end = parent
@@ -210,7 +233,8 @@ fn validate_and_order(
             return Err(invalid("armature exceeds G1M bone index range"));
         }
     }
-    let mut ordered: Vec<Option<ImportedMesh>> = vec![None; replace_count];
+    let mut ordered: Vec<Option<ImportedMesh>> =
+        (0..geometry.submeshes.len()).map(|_| None).collect();
     for mesh in std::mem::take(&mut imported.meshes) {
         let index = mesh_index(&mesh.name).ok_or_else(|| {
             invalid(format!(
@@ -218,11 +242,15 @@ fn validate_and_order(
                 mesh.name
             ))
         })?;
-        if index >= replace_count || ordered[index].is_some() {
+        if index >= geometry.submeshes.len() {
             return Err(invalid(format!(
-                "mesh name {} is out of range or duplicated",
-                mesh.name
+                "mesh name {} exceeds G1M mesh count {}",
+                mesh.name,
+                geometry.submeshes.len()
             )));
+        }
+        if ordered[index].is_some() {
+            return Err(invalid(format!("mesh name {} is duplicated", mesh.name)));
         }
         let material_index = geometry.submeshes[index].values[6] as usize;
         let accepted = [
@@ -240,12 +268,11 @@ fn validate_and_order(
         }
         ordered[index] = Some(mesh);
     }
-    imported.meshes = ordered
-        .into_iter()
+    for (index, mesh) in ordered
+        .iter()
         .enumerate()
-        .map(|(i, v)| v.ok_or_else(|| invalid(format!("FBX is missing mesh {i}"))))
-        .collect::<io::Result<_>>()?;
-    for (index, mesh) in imported.meshes.iter().enumerate() {
+        .filter_map(|(index, mesh)| mesh.as_ref().map(|mesh| (index, mesh)))
+    {
         let (attributes, _) = source_layout(geometry, index)?;
         if attributes.iter().any(|attribute| attribute.semantic == 3)
             && mesh.normals.len() != mesh.positions.len()
@@ -255,18 +282,7 @@ fn validate_and_order(
                 mesh.name
             )));
         }
-        let required_uv_maps = attributes
-            .iter()
-            .filter(|attribute| attribute.semantic == 5)
-            .map(|attribute| {
-                if attribute.kind == 0x03 {
-                    2
-                } else {
-                    attribute.layer as usize + 1
-                }
-            })
-            .max()
-            .unwrap_or(0);
+        let required_uv_maps = original.render.meshes[index].uv_maps.len();
         if mesh.uv_maps.len() != required_uv_maps
             || mesh
                 .uv_maps
@@ -281,18 +297,22 @@ fn validate_and_order(
             )));
         }
     }
-    // Convert FBX names to the global joint IDs stored by G1M palettes.
+    // Convert FBX armature indices to the local joint IDs stored by G1M palettes.
     let remap: Vec<u16> = imported
         .bones
         .iter()
         .map(|(n, _)| {
-            bone_index(n)
-                .and_then(|global| original.global_to_local_bones.get(global).copied())
+            let global = bone_index(n).unwrap_or(0);
+            let local = original
+                .global_to_local_bones
+                .get(global)
+                .copied()
                 .filter(|local| *local != u16::MAX)
-                .unwrap_or(0)
+                .unwrap_or(0);
+            local
         })
         .collect();
-    for mesh in &mut imported.meshes {
+    for mesh in ordered.iter_mut().filter_map(Option::as_mut) {
         for joints in &mut mesh.bone_indices {
             for joint in joints {
                 *joint = remap[*joint as usize];
@@ -302,15 +322,50 @@ fn validate_and_order(
             *joint = remap[*joint as usize];
         }
     }
-    Ok(())
+    let existing_joints: HashSet<_> = geometry
+        .palettes
+        .iter()
+        .flat_map(|palette| palette.joints.iter().copied())
+        .collect();
+    let mut supplemental_joints = HashMap::new();
+    for joint in ordered
+        .iter()
+        .filter_map(Option::as_ref)
+        .flat_map(|mesh| mesh.palette_bones.iter().copied())
+        .map(u32::from)
+    {
+        if existing_joints.contains(&joint) || supplemental_joints.contains_key(&joint) {
+            continue;
+        }
+        let local = joint as usize;
+        original
+            .render
+            .bones
+            .get(local)
+            .ok_or_else(|| invalid(format!("bone {joint} is outside the G1M skeleton")))?;
+        let matrix_index = matrix_count + supplemental_joints.len();
+        let inverse = crate::parser::fbx::inverse_affine_matrix(
+            crate::parser::fbx::bone_world_matrix(&original.render.bones, local),
+        );
+        let mut matrix = [0.0; 16];
+        for row in 0..4 {
+            for column in 0..4 {
+                matrix[column * 4 + row] = inverse[row * 4 + column] as f32;
+            }
+        }
+        supplemental_joints.insert(
+            joint,
+            SupplementalJoint {
+                raw: [matrix_index as u32, 0, joint],
+                matrix: Some(matrix),
+            },
+        );
+    }
+    Ok((ordered, supplemental_joints))
 }
 
 fn mesh_index(name: &str) -> Option<usize> {
-    name.strip_suffix(".vb")
-        .or_else(|| name.strip_prefix("Mesh "))
-        .unwrap_or(name)
-        .parse()
-        .ok()
+    name.strip_prefix("Mesh ")?.parse().ok()
 }
 
 fn parse_chunks(data: &[u8], endian: Endian) -> io::Result<Vec<Chunk<'_>>> {
@@ -359,7 +414,10 @@ fn parse_geometry(data: &[u8], endian: Endian) -> io::Result<Geometry<'_>> {
     let mut platform = [0; 4];
     platform.copy_from_slice(reader.read_bytes(4)?);
     let reserved = reader.read_u32()?;
-    reader.skip(24)?;
+    let mut bounds = [0.0; 6];
+    for value in &mut bounds {
+        *value = reader.read_f32()?;
+    }
     let count = reader.read_u32()? as usize;
     let mut sections = Vec::with_capacity(count);
     let mut vertex_buffers = Vec::new();
@@ -515,6 +573,7 @@ fn parse_geometry(data: &[u8], endian: Endian) -> io::Result<Geometry<'_>> {
         version,
         platform,
         reserved,
+        bounds,
         sections,
         vertex_buffers,
         attrs,
@@ -528,32 +587,35 @@ fn parse_geometry(data: &[u8], endian: Endian) -> io::Result<Geometry<'_>> {
 
 fn build_geometry(
     source: &Geometry<'_>,
-    imported: &ImportedFbx,
+    replacements: &[Option<ImportedMesh>],
+    supplemental_joints: &HashMap<u32, SupplementalJoint>,
     endian: Endian,
 ) -> io::Result<Vec<u8>> {
     let mut built_sections = Vec::with_capacity(source.sections.len());
     for section in &source.sections {
         let rebuilt = match section.kind {
-            0x0001_0004 => build_vertex_section(source, imported, endian)?,
+            0x0001_0004 => build_vertex_section(source, replacements, supplemental_joints, endian)?,
             0x0001_0005 => build_attribute_section(source, endian)?,
-            0x0001_0006 => build_palette_section(source, imported, endian)?,
-            0x0001_0007 => build_index_section(source, imported, source.version, endian)?,
-            0x0001_0008 => build_submesh_section(source, imported, endian)?,
+            0x0001_0006 => {
+                build_palette_section(source, replacements, supplemental_joints, endian)?
+            }
+            0x0001_0007 => build_index_section(source, replacements, source.version, endian)?,
+            0x0001_0008 => build_submesh_section(source, replacements, endian)?,
             _ => section.bytes.to_vec(),
         };
         built_sections.push(rebuilt);
     }
-    let positions = imported.meshes.iter().flat_map(|m| m.positions.iter());
-    let mut min = [f32::INFINITY; 3];
-    let mut max = [f32::NEG_INFINITY; 3];
+    let positions = replacements
+        .iter()
+        .filter_map(Option::as_ref)
+        .flat_map(|mesh| mesh.positions.iter());
+    let mut min = [source.bounds[0], source.bounds[1], source.bounds[2]];
+    let mut max = [source.bounds[3], source.bounds[4], source.bounds[5]];
     for point in positions {
         for axis in 0..3 {
             min[axis] = min[axis].min(point[axis]);
             max[axis] = max[axis].max(point[axis]);
         }
-    }
-    if !min[0].is_finite() {
-        return Err(invalid("FBX meshes contain no vertices"));
     }
     let mut output = Vec::new();
     output.extend_from_slice(&source.signature);
@@ -606,20 +668,23 @@ fn source_layout(source: &Geometry<'_>, mesh_index: usize) -> io::Result<(Vec<At
 
 fn build_vertex_section(
     source: &Geometry<'_>,
-    imported: &ImportedFbx,
+    replacements: &[Option<ImportedMesh>],
+    supplemental_joints: &HashMap<u32, SupplementalJoint>,
     endian: Endian,
 ) -> io::Result<Vec<u8>> {
     let mut body = Vec::new();
-    let palettes = replacement_palettes(source, imported)?;
+    let palettes = replacement_palettes(source, replacements, supplemental_joints)?;
     for buffer_index in 0..source.vertex_buffers.len() {
         let mesh_indices: Vec<_> = source
             .submeshes
             .iter()
             .enumerate()
-            .take(imported.meshes.len())
             .filter_map(|(index, sub)| (sub.values[1] as usize == buffer_index).then_some(index))
             .collect();
-        if mesh_indices.is_empty() {
+        if !mesh_indices
+            .iter()
+            .any(|index| replacements[*index].is_some())
+        {
             let old = &source.vertex_buffers[buffer_index];
             push_u32(&mut body, old.unknown1, endian);
             push_u32(&mut body, old.stride as u32, endian);
@@ -641,7 +706,13 @@ fn build_vertex_section(
             &mut body,
             mesh_indices
                 .iter()
-                .map(|index| imported.meshes[*index].positions.len() as u32)
+                .map(|index| {
+                    replacements[*index]
+                        .as_ref()
+                        .map_or(source.submeshes[*index].values[11], |mesh| {
+                            mesh.positions.len() as u32
+                        })
+                })
                 .sum(),
             endian,
         );
@@ -649,7 +720,20 @@ fn build_vertex_section(
             push_u32(&mut body, v, endian);
         }
         for index in mesh_indices {
-            let mesh = &imported.meshes[index];
+            let Some(mesh) = replacements[index].as_ref() else {
+                let submesh = &source.submeshes[index];
+                let start = submesh.values[10] as usize * old.stride;
+                let size = submesh.values[11] as usize * old.stride;
+                let end = start
+                    .checked_add(size)
+                    .ok_or_else(|| invalid("source vertex range overflow"))?;
+                body.extend_from_slice(
+                    old.data
+                        .get(start..end)
+                        .ok_or_else(|| invalid("source vertex range is out of bounds"))?,
+                );
+                continue;
+            };
             let palette_index = source.submeshes[index].values[2] as usize;
             let palette = palettes
                 .get(palette_index)
@@ -665,7 +749,9 @@ fn build_vertex_section(
                         .copy_from_slice(&old.data[source_start..source_start + stride]);
                 }
                 for attr in &attrs {
-                    if matches!(attr.semantic, 4 | 7 | 8 | 9 | 10 | 11 | 12 | 13) {
+                    if matches!(attr.semantic, 4 | 7 | 8 | 9 | 10 | 11 | 12 | 13)
+                        || (attr.semantic == 5 && attr.layer > 2)
+                    {
                         continue;
                     }
                     write_attribute(
@@ -728,13 +814,29 @@ fn write_attribute(
             value = [n[0], n[1], n[2], 0.0];
         }
         5 => {
-            let uv = mesh
-                .uv_maps
-                .get(attr.layer as usize)
-                .and_then(|v| v.get(vertex))
-                .copied()
-                .unwrap_or([0.0; 2]);
-            value = [uv[0], uv[1], 0.0, 0.0];
+            if matches!(attr.kind, 0x03 | 0x0b) {
+                let uv0 = mesh
+                    .uv_maps
+                    .first()
+                    .and_then(|uvs| uvs.get(vertex))
+                    .copied()
+                    .unwrap_or([0.0; 2]);
+                let uv1 = mesh
+                    .uv_maps
+                    .get(1)
+                    .and_then(|uvs| uvs.get(vertex))
+                    .copied()
+                    .unwrap_or([0.0; 2]);
+                value = [uv0[0], uv0[1], uv1[0], uv1[1]];
+            } else {
+                let uv = mesh
+                    .uv_maps
+                    .get(attr.layer as usize)
+                    .and_then(|uvs| uvs.get(vertex))
+                    .copied()
+                    .unwrap_or([0.0; 2]);
+                value = [uv[0], uv[1], 0.0, 0.0];
+            }
         }
         6 => value = mesh.tangents[vertex],
         10 => {
@@ -840,7 +942,11 @@ fn build_attribute_section(source: &Geometry<'_>, endian: Endian) -> io::Result<
     }
     section(0x0001_0005, source.vertex_buffers.len(), body, endian)
 }
-fn replacement_palettes(source: &Geometry<'_>, imported: &ImportedFbx) -> io::Result<Vec<Palette>> {
+fn replacement_palettes(
+    source: &Geometry<'_>,
+    replacements: &[Option<ImportedMesh>],
+    supplemental_joints: &HashMap<u32, SupplementalJoint>,
+) -> io::Result<Vec<Palette>> {
     let mut global_entries = HashMap::<u32, [u32; 3]>::new();
     for entry in source
         .palettes
@@ -854,7 +960,11 @@ fn replacement_palettes(source: &Geometry<'_>, imported: &ImportedFbx) -> io::Re
         }
     }
     let mut palettes = source.palettes.clone();
-    for (index, mesh) in imported.meshes.iter().enumerate() {
+    for (index, mesh) in replacements
+        .iter()
+        .enumerate()
+        .filter_map(|(index, mesh)| mesh.as_ref().map(|mesh| (index, mesh)))
+    {
         let palette_index = source.submeshes[index].values[2] as usize;
         let palette = palettes
             .get_mut(palette_index)
@@ -864,9 +974,11 @@ fn replacement_palettes(source: &Geometry<'_>, imported: &ImportedFbx) -> io::Re
             if palette.joints.contains(&joint) {
                 continue;
             }
-            let Some(entry) = global_entries.get(&joint).copied() else {
-                continue;
-            };
+            let entry = global_entries
+                .get(&joint)
+                .copied()
+                .or_else(|| supplemental_joints.get(&joint).map(|joint| joint.raw))
+                .ok_or_else(|| invalid(format!("bone {joint} has no G1M joint metadata")))?;
             palette.raw.push(entry);
             palette.joints.push(joint);
         }
@@ -875,11 +987,12 @@ fn replacement_palettes(source: &Geometry<'_>, imported: &ImportedFbx) -> io::Re
 }
 fn build_palette_section(
     source: &Geometry<'_>,
-    imported: &ImportedFbx,
+    replacements: &[Option<ImportedMesh>],
+    supplemental_joints: &HashMap<u32, SupplementalJoint>,
     endian: Endian,
 ) -> io::Result<Vec<u8>> {
     let mut body = Vec::new();
-    let palettes = replacement_palettes(source, imported)?;
+    let palettes = replacement_palettes(source, replacements, supplemental_joints)?;
     for palette in &palettes {
         push_u32(&mut body, palette.raw.len() as u32, endian);
         for entry in &palette.raw {
@@ -892,7 +1005,7 @@ fn build_palette_section(
 }
 fn build_index_section(
     source: &Geometry<'_>,
-    imported: &ImportedFbx,
+    replacements: &[Option<ImportedMesh>],
     version: u32,
     endian: Endian,
 ) -> io::Result<Vec<u8>> {
@@ -902,10 +1015,12 @@ fn build_index_section(
             .submeshes
             .iter()
             .enumerate()
-            .take(imported.meshes.len())
             .filter_map(|(index, sub)| (sub.values[7] as usize == buffer_index).then_some(index))
             .collect();
-        if mesh_indices.is_empty() {
+        if !mesh_indices
+            .iter()
+            .any(|index| replacements[*index].is_some())
+        {
             let old = &source.index_buffers[buffer_index];
             push_u32(&mut body, old.count as u32, endian);
             push_u32(&mut body, old.bits, endian);
@@ -920,22 +1035,52 @@ fn build_index_section(
         }
         let vertex_count: usize = mesh_indices
             .iter()
-            .map(|index| imported.meshes[*index].positions.len())
+            .map(|index| {
+                replacements[*index]
+                    .as_ref()
+                    .map_or(source.submeshes[*index].values[11] as usize, |mesh| {
+                        mesh.positions.len()
+                    })
+            })
             .sum();
         let index_count: usize = mesh_indices
             .iter()
-            .map(|index| imported.meshes[*index].indices.len())
+            .map(|index| {
+                replacements[*index]
+                    .as_ref()
+                    .map_or(source.submeshes[*index].values[13] as usize, |mesh| {
+                        mesh.indices.len()
+                    })
+            })
             .sum();
-        let use32 = vertex_count > u16::MAX as usize;
+        let old = &source.index_buffers[buffer_index];
+        let use32 = old.bits == 32 || vertex_count > u16::MAX as usize;
         push_u32(&mut body, index_count as u32, endian);
         push_u32(&mut body, if use32 { 32 } else { 16 }, endian);
         if version > 0x3030_3430 {
-            push_u32(&mut body, 0, endian);
+            push_u32(&mut body, old.unknown.unwrap_or(0), endian);
         }
         let mut vertex_offset = 0u32;
         for mesh_index in mesh_indices {
-            let mesh = &imported.meshes[mesh_index];
-            for &index in &mesh.indices {
+            let submesh = &source.submeshes[mesh_index];
+            let indices = if let Some(mesh) = replacements[mesh_index].as_ref() {
+                mesh.indices.clone()
+            } else {
+                let reader = BinaryReader::with_endian(&old.data, endian);
+                let stride = old.bits as usize / 8;
+                (submesh.values[12] as usize
+                    ..submesh.values[12].saturating_add(submesh.values[13]) as usize)
+                    .map(|index| match stride {
+                        2 => reader.read_u16_at(index * stride).map(u32::from),
+                        4 => reader.read_u32_at(index * stride),
+                        _ => Err(invalid("unsupported source index width")),
+                    })
+                    .collect::<io::Result<Vec<_>>>()?
+                    .into_iter()
+                    .map(|index| index.saturating_sub(submesh.values[10]))
+                    .collect()
+            };
+            for index in indices {
                 let index = index + vertex_offset;
                 if use32 {
                     push_u32(&mut body, index, endian)
@@ -943,7 +1088,9 @@ fn build_index_section(
                     push_u16(&mut body, index as u16, endian)
                 }
             }
-            vertex_offset += mesh.positions.len() as u32;
+            vertex_offset += replacements[mesh_index]
+                .as_ref()
+                .map_or(submesh.values[11], |mesh| mesh.positions.len() as u32);
         }
         while body.len() % 4 != 0 {
             body.push(0);
@@ -953,26 +1100,34 @@ fn build_index_section(
 }
 fn build_submesh_section(
     source: &Geometry<'_>,
-    imported: &ImportedFbx,
+    replacements: &[Option<ImportedMesh>],
     endian: Endian,
 ) -> io::Result<Vec<u8>> {
     let mut body = Vec::new();
-    for i in 0..imported.meshes.len() {
+    for i in 0..source.submeshes.len() {
         let mut v = source.submeshes[i].values;
-        if let Some(mesh) = imported.meshes.get(i) {
+        if let Some(mesh) = replacements.get(i).and_then(Option::as_ref) {
             v[9] = 3;
             v[10] = source.submeshes[..i]
                 .iter()
                 .enumerate()
                 .filter(|(_, sub)| sub.values[1] == v[1])
-                .map(|(prior, _)| imported.meshes[prior].positions.len() as u32)
+                .map(|(prior, submesh)| {
+                    replacements[prior]
+                        .as_ref()
+                        .map_or(submesh.values[11], |mesh| mesh.positions.len() as u32)
+                })
                 .sum();
             v[11] = mesh.positions.len() as u32;
             v[12] = source.submeshes[..i]
                 .iter()
                 .enumerate()
                 .filter(|(_, sub)| sub.values[7] == v[7])
-                .map(|(prior, _)| imported.meshes[prior].indices.len() as u32)
+                .map(|(prior, submesh)| {
+                    replacements[prior]
+                        .as_ref()
+                        .map_or(submesh.values[13], |mesh| mesh.indices.len() as u32)
+                })
                 .sum();
             v[13] = mesh.indices.len() as u32;
         }
@@ -980,7 +1135,7 @@ fn build_submesh_section(
             push_u32(&mut body, x, endian);
         }
     }
-    section(0x0001_0008, imported.meshes.len(), body, endian)
+    section(0x0001_0008, source.submeshes.len(), body, endian)
 }
 fn section(kind: u32, count: usize, body: Vec<u8>, endian: Endian) -> io::Result<Vec<u8>> {
     let mut out = Vec::new();
@@ -995,6 +1150,7 @@ fn rebuild_g1mf(
     old: Option<&[u8]>,
     old_geometry: &Geometry<'_>,
     new_geometry: &[u8],
+    new_matrix_count: usize,
     endian: Endian,
 ) -> io::Result<Vec<u8>> {
     let Some(old) = old else {
@@ -1005,6 +1161,7 @@ fn rebuild_g1mf(
     }
     let new = parse_geometry(new_geometry, endian)?;
     let mut out = old.to_vec();
+    put_u32(&mut out, 24, new_matrix_count as u32, endian)?;
     let counts = |g: &Geometry<'_>, kind| {
         g.sections
             .iter()
@@ -1039,6 +1196,38 @@ fn rebuild_g1mf(
     let out_len = out.len() as u32;
     put_u32(&mut out, 8, out_len, endian)?;
     let _ = old_geometry;
+    Ok(out)
+}
+
+fn matrix_chunk_count(data: &[u8], endian: Endian) -> io::Result<usize> {
+    if data.len() < 16 {
+        return Err(invalid("G1MM chunk is truncated"));
+    }
+    let count = read_u32(data, 12, endian)? as usize;
+    let expected = 16usize
+        .checked_add(
+            count
+                .checked_mul(64)
+                .ok_or_else(|| invalid("G1MM matrix count overflow"))?,
+        )
+        .ok_or_else(|| invalid("G1MM size overflow"))?;
+    if expected > data.len() {
+        return Err(invalid("G1MM matrices exceed chunk size"));
+    }
+    Ok(count)
+}
+
+fn rebuild_matrix_chunk(old: &[u8], matrices: &[[f32; 16]], endian: Endian) -> io::Result<Vec<u8>> {
+    let old_count = matrix_chunk_count(old, endian)?;
+    let mut out = old.to_vec();
+    for matrix in matrices {
+        for value in matrix {
+            push_f32(&mut out, *value, endian);
+        }
+    }
+    let size = out.len() as u32;
+    put_u32(&mut out, 8, size, endian)?;
+    put_u32(&mut out, 12, (old_count + matrices.len()) as u32, endian)?;
     Ok(out)
 }
 
@@ -1127,36 +1316,31 @@ mod tests {
         imported
             .meshes
             .sort_by_key(|mesh| mesh_index(&mesh.name).unwrap());
-        let result =
-            replace_meshes_from_fbx(&std::fs::read(g1m).unwrap(), &fbx_bytes, "f23c0538").unwrap();
+        let original_bytes = std::fs::read(g1m).unwrap();
+        let original = G1mFile::parse_for_export(&original_bytes, "f23c0538").unwrap();
+        let result = replace_meshes_from_fbx(&original_bytes, &fbx_bytes, "f23c0538").unwrap();
         let parsed = G1mFile::parse_for_export(&result, "f23c0538").unwrap();
         let expected = G1mFile::parse_for_export(
             &std::fs::read(root.join("1/f23c0538.g1m")).unwrap(),
             "f23c0538",
         )
         .unwrap();
-        assert_eq!(parsed.render.meshes.len(), 10);
-        assert_eq!(parsed.render.meshes.len(), expected.render.meshes.len());
+        assert_eq!(parsed.render.meshes.len(), original.render.meshes.len());
         assert_eq!(
             parsed
                 .render
                 .meshes
                 .iter()
+                .take(imported.meshes.len())
                 .map(|mesh| mesh.positions.len())
                 .collect::<Vec<_>>(),
             expected
                 .render
                 .meshes
                 .iter()
+                .take(imported.meshes.len())
                 .map(|mesh| mesh.positions.len())
                 .collect::<Vec<_>>()
-        );
-        assert!(
-            result.len().abs_diff(
-                std::fs::metadata(root.join("1/f23c0538.g1m"))
-                    .unwrap()
-                    .len() as usize
-            ) < 1024
         );
         assert_eq!(
             parsed
@@ -1245,6 +1429,53 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn replaces_only_named_fbx_meshes_and_preserves_the_rest() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
+        let g1m = root.join("2/f23c0538.g1m");
+        let fbx = root.join("1/[Impa cutscene] f23c0538.fbx");
+        if !g1m.is_file() || !fbx.is_file() {
+            return;
+        }
+        let original_bytes = std::fs::read(g1m).unwrap();
+        let original = G1mFile::parse_for_export(&original_bytes, "f23c0538").unwrap();
+        let mut imported = import_for_g1m(&std::fs::read(fbx).unwrap()).unwrap();
+        imported.meshes.retain(|mesh| mesh.name == "Mesh 3");
+        let replacement_vertex_count = imported.meshes[0].positions.len();
+        let rebuilt = replace_imported_meshes(&original_bytes, imported, "f23c0538").unwrap();
+        let parsed = G1mFile::parse_for_export(&rebuilt, "f23c0538").unwrap();
+
+        assert_eq!(parsed.render.meshes.len(), original.render.meshes.len());
+        assert_eq!(
+            parsed.render.meshes[3].positions.len(),
+            replacement_vertex_count
+        );
+        for index in 0..original.render.meshes.len() {
+            if index != 3 {
+                assert_eq!(
+                    parsed.render.meshes[index].positions, original.render.meshes[index].positions,
+                    "mesh {index} changed"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_out_of_range_mesh_name_without_panicking() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
+        let g1m = root.join("2/f23c0538.g1m");
+        let fbx = root.join("1/[Impa cutscene] f23c0538.fbx");
+        if !g1m.is_file() || !fbx.is_file() {
+            return;
+        }
+        let original_bytes = std::fs::read(g1m).unwrap();
+        let mut imported = import_for_g1m(&std::fs::read(fbx).unwrap()).unwrap();
+        imported.meshes.truncate(1);
+        imported.meshes[0].name = "Mesh 9999".into();
+        let error = replace_imported_meshes(&original_bytes, imported, "f23c0538").unwrap_err();
+        assert!(error.to_string().contains("exceeds G1M mesh count"));
     }
 
     #[test]
