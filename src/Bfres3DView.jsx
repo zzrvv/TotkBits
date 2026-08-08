@@ -113,6 +113,14 @@ const modelTextureStatus = (value) => {
     return `Loaded ${loaded} of ${requested} referenced textures`;
 };
 
+const hasCompleteTextureResolution = (value) => {
+    const loaded = value?.resolvedTextures?.length || 0;
+    if (value?.format === 'G1M') return loaded > 0;
+    const requested = new Set((value?.materials || [])
+        .flatMap((material) => (material.texture_slots || []).map((slot) => slot.name))).size;
+    return requested === 0 || loaded >= requested;
+};
+
 const bindG1aToModel = (animation, model) => {
     const mapping = model?.global_to_local_bones || [];
     const bones = model?.render?.bones || [];
@@ -255,34 +263,50 @@ function useResolvedTextures(entries, cacheTextures = true) {
     useEffect(() => {
         const loader = new THREE.TextureLoader();
         const loaded = {};
+        const owned = [];
+        let cancelled = false;
+        const publish = () => {
+            if (!cancelled) setTextures({ ...loaded });
+        };
         for (const entry of entries || []) {
             const urls = entry.dataUrls?.length ? entry.dataUrls : [entry.dataUrl];
             const loadLayer = (url, suffix = '') => {
                 const cacheKey = `${entry.path || entry.name}:${suffix}:${url}`;
                 const cached = cacheTextures ? resolvedTextureCache.get(cacheKey) : null;
-                if (cached) return cached;
-                const texture = loader.load(url);
-                texture.name = `${entry.name}${suffix}`;
-                texture.flipY = false;
-                texture.colorSpace = THREE.NoColorSpace;
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.userData.renderable = entry.renderable !== false;
-                if (cacheTextures) resolvedTextureCache.set(cacheKey, texture);
-                return texture;
+                const textureName = suffix ? `${entry.name}::last` : entry.name;
+                const aliases = (entry.aliases || []).map((alias) => suffix ? `${alias}::last` : alias);
+                const assign = (texture) => {
+                    loaded[textureName] = texture;
+                    aliases.forEach((alias) => { loaded[alias] = texture; });
+                };
+                if (cached) {
+                    assign(cached);
+                    return;
+                }
+                loader.load(url, (texture) => {
+                    if (cancelled) {
+                        texture.dispose();
+                        return;
+                    }
+                    texture.name = `${entry.name}${suffix}`;
+                    texture.flipY = false;
+                    texture.colorSpace = THREE.NoColorSpace;
+                    texture.wrapS = THREE.RepeatWrapping;
+                    texture.wrapT = THREE.RepeatWrapping;
+                    texture.userData.renderable = entry.renderable !== false;
+                    assign(texture);
+                    if (cacheTextures) resolvedTextureCache.set(cacheKey, texture);
+                    else owned.push(texture);
+                    publish();
+                }, undefined, () => {});
             };
-            loaded[entry.name] = loadLayer(urls[0]);
-            if (urls.length > 1) loaded[`${entry.name}::last`] = loadLayer(urls.at(-1), ' [last layer]');
-            for (const alias of entry.aliases || []) {
-                loaded[alias] = loaded[entry.name];
-                if (urls.length > 1) loaded[`${alias}::last`] = loaded[`${entry.name}::last`];
-            }
+            loadLayer(urls[0]);
+            if (urls.length > 1) loadLayer(urls.at(-1), ' [last layer]');
         }
-        setTextures(loaded);
+        publish();
         return () => {
-            if (!cacheTextures) {
-                Object.values(loaded).forEach((texture) => texture.dispose());
-            }
+            cancelled = true;
+            owned.forEach((texture) => texture.dispose());
         };
     }, [entries, cacheTextures]);
     return textures;
@@ -1125,18 +1149,18 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                 const inspected = await Promise.all(modelPaths.map(async (path) => {
                     const pathKey = path.replace(/\\/g, '/').toLowerCase();
                     const pathCached = modelInspectionCache.get(pathKey);
-                    if (pathCached && (pathCached.format !== 'G1M' || pathCached.resolvedTextures?.length > 0)) {
+                    if (pathCached && hasCompleteTextureResolution(pathCached)) {
                         return { path, value: pathCached };
                     }
                     const value = await invoke('inspect_3d_model', { path });
-                    if (value.format !== 'G1M' || value.resolvedTextures?.length > 0) {
+                    if (hasCompleteTextureResolution(value)) {
                         cacheModelInspection(pathKey, value);
                     }
                     return { path, value };
                 }));
                 const value = inspected.length > 1 ? mergeG1mModels(inspected) : inspected[0].value;
                 if (cancelled) return;
-                if (value.format !== 'G1M' || value.resolvedTextures?.length > 0) {
+                if (hasCompleteTextureResolution(value)) {
                     cacheModelInspection(cacheKey, value);
                 }
                 setBfres(value);

@@ -126,10 +126,9 @@ impl Magic {
 
                     // Append the valid UTF-8 prefix.
                     if valid_len > 0 {
-                        // SAFETY: `valid_up_to()` guarantees this prefix is valid UTF-8.
-                        result.push_str(unsafe {
-                            std::str::from_utf8_unchecked(&remaining[..valid_len])
-                        });
+                        if let Ok(prefix) = std::str::from_utf8(&remaining[..valid_len]) {
+                            result.push_str(prefix);
+                        }
                     }
 
                     // Format each invalid byte as 0xAA.
@@ -159,7 +158,8 @@ impl Magic {
     }
 
     pub fn is_valid_utf8(data: &[u8]) -> bool {
-        std::str::from_utf8(data).is_ok()
+        const MAX_UTF8_CHECK_BYTES: usize = 1024 * 1024;
+        std::str::from_utf8(&data[..data.len().min(MAX_UTF8_CHECK_BYTES)]).is_ok()
     }
 
     #[inline]

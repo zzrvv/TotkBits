@@ -29,6 +29,16 @@ pub struct ImportedFbx {
 }
 
 pub fn import_for_g1m(data: &[u8]) -> io::Result<ImportedFbx> {
+    import_meshes(data, true)
+}
+
+/// Imports only polygon meshes and the skin data needed by BFRES. Materials,
+/// cameras, lights and every other FBX object type are intentionally ignored.
+pub fn import_for_bfres(data: &[u8]) -> io::Result<ImportedFbx> {
+    import_meshes(data, false)
+}
+
+fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
     let document = AnyDocument::from_seekable_reader(std::io::Cursor::new(data))
         .map_err(|error| invalid(error.to_string()))?;
     let AnyDocument::V7400(_, document) = document else {
@@ -46,7 +56,7 @@ pub fn import_for_g1m(data: &[u8]) -> io::Result<ImportedFbx> {
             bone_names.push((model.object_id(), name));
         }
     }
-    if bone_names.is_empty() {
+    if strict_g1m && bone_names.is_empty() {
         return Err(invalid("FBX contains no armature bones"));
     }
     let bones = bone_names
@@ -82,16 +92,16 @@ pub fn import_for_g1m(data: &[u8]) -> io::Result<ImportedFbx> {
             )));
         }
         let skins: Vec<_> = geometry.skins().collect();
-        if skins.is_empty() {
+        if strict_g1m && skins.is_empty() {
             continue;
         }
-        if skins.len() != 1 {
+        if skins.len() > 1 || (strict_g1m && skins.len() != 1) {
             return Err(invalid(
                 "each model mesh must have exactly one skin deformer",
             ));
         }
         let materials: Vec<_> = model.materials().collect();
-        if materials.len() != 1 {
+        if strict_g1m && materials.len() != 1 {
             return Err(invalid(format!(
                 "mesh {} must have exactly one material (found {})",
                 model.name().unwrap_or("<unnamed>"),
@@ -99,8 +109,12 @@ pub fn import_for_g1m(data: &[u8]) -> io::Result<ImportedFbx> {
             )));
         }
         let name = model.name().unwrap_or("").to_string();
-        let material = materials[0].name().unwrap_or("").to_string();
-        if name.is_empty() || material.is_empty() {
+        let material = materials
+            .first()
+            .and_then(|material| material.name())
+            .unwrap_or("")
+            .to_string();
+        if name.is_empty() || (strict_g1m && material.is_empty()) {
             return Err(invalid("FBX mesh and material names must not be empty"));
         }
         let polygons = geometry
@@ -123,7 +137,7 @@ pub fn import_for_g1m(data: &[u8]) -> io::Result<ImportedFbx> {
             .map_err(|error| invalid(error.to_string()))?;
         let mut control_weights = vec![Vec::<(u16, f32)>::new(); control.len()];
         let mut palette_bones = Vec::new();
-        for cluster in skins[0].clusters() {
+        for cluster in skins.first().into_iter().flat_map(|skin| skin.clusters()) {
             let bone = cluster
                 .source_objects()
                 .filter_map(|v| v.object_handle())
@@ -222,7 +236,7 @@ pub fn import_for_g1m(data: &[u8]) -> io::Result<ImportedFbx> {
             influences.sort_by(|a, b| b.1.total_cmp(&a.1));
             influences.truncate(8);
             let sum: f32 = influences.iter().map(|v| v.1).sum();
-            if sum <= f32::EPSILON {
+            if strict_g1m && sum <= f32::EPSILON {
                 return Err(invalid(format!(
                     "mesh {name} contains an unweighted vertex"
                 )));
@@ -231,7 +245,11 @@ pub fn import_for_g1m(data: &[u8]) -> io::Result<ImportedFbx> {
             let mut weights = [0.0; 8];
             for (slot, &(joint, weight)) in influences.iter().enumerate() {
                 joints[slot] = joint;
-                weights[slot] = weight / sum;
+                weights[slot] = if sum > f32::EPSILON {
+                    weight / sum
+                } else {
+                    0.0
+                };
             }
             bone_indices.push(joints);
             bone_weights.push(weights);
@@ -256,7 +274,11 @@ pub fn import_for_g1m(data: &[u8]) -> io::Result<ImportedFbx> {
         meshes.push(mesh);
     }
     if meshes.is_empty() {
-        return Err(invalid("FBX contains no armature-bound meshes"));
+        return Err(invalid(if strict_g1m {
+            "FBX contains no armature-bound meshes"
+        } else {
+            "FBX contains no polygon meshes"
+        }));
     }
     Ok(ImportedFbx { meshes, bones })
 }

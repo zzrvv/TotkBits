@@ -15,7 +15,7 @@ use serde_json;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 
-use std::io;
+use std::io::{self, Cursor};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -197,7 +197,10 @@ impl<'a> TagProduct<'a> {
         let json_data: TagJsonData = serde_json::from_str(text)?;
         let mut cached_tag_list = json_data.TagList;
         cached_tag_list.sort();
-        if cached_tag_list.windows(2).any(|pair| pair[0] == pair[1]) {
+        if cached_tag_list
+            .windows(2)
+            .any(|pair| matches!(pair, [left, right] if left == right))
+        {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "TagList contains duplicate tags",
@@ -271,8 +274,21 @@ impl<'a> TagProduct<'a> {
             // TotK Tag.Product files use BYML version 7. Roead's writer supports
             // the required node layout but currently restricts its public version
             // argument to 2-4, so write version 4 and update the header version.
-            let mut binary = res.to_binary_with_version(roead::Endian::Little, 4);
-            binary[2..4].copy_from_slice(&7u16.to_le_bytes());
+            let mut binary = Vec::new();
+            res.write(&mut Cursor::new(&mut binary), roead::Endian::Little, 4)
+                .map_err(|error| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("TagProduct serialization failed: {error}"),
+                    )
+                })?;
+            let header = binary.get_mut(2..4).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "serialized TagProduct header is truncated",
+                )
+            })?;
+            header.copy_from_slice(&7u16.to_le_bytes());
             return Ok(binary);
         }
 
@@ -304,8 +320,11 @@ impl<'a> TagProduct<'a> {
         let pio = self.byml.pio.as_map()?;
         //Get path list
         println!("Parsing PathList");
+        let path_list = pio
+            .get("PathList")
+            .ok_or_else(|| roead::Error::Any("TagProduct has no PathList".into()))?;
         self.path_list.extend(
-            pio["PathList"]
+            path_list
                 .as_array()?
                 .iter()
                 //.map(|t| t.as_string().unwrap().to_string())
@@ -320,28 +339,37 @@ impl<'a> TagProduct<'a> {
         }
         // Get Tag list
         println!("Parsing tag_list");
+        let tag_list = pio
+            .get("TagList")
+            .ok_or_else(|| roead::Error::Any("TagProduct has no TagList".into()))?;
         self.tag_list.extend(
-            pio["TagList"]
+            tag_list
                 .as_array()?
                 .iter()
                 .map(|t| t.as_string().map(ToString::to_string))
                 .collect::<Result<Vec<_>, _>>()?,
         );
 
-        let tag_list_count = pio["TagList"].as_array()?.len();
+        let tag_list_count = tag_list.as_array()?.len();
         let required_bits = (path_list_count / 3)
             .checked_mul(tag_list_count)
             .ok_or_else(|| roead::Error::Any("TagProduct dimensions overflow".into()))?;
 
         // Get Bit Table
         let mut bit_table_bytes: Vec<u8> = Vec::new();
-        for byte in pio["BitTable"].as_binary_data()? {
+        let bit_table = pio
+            .get("BitTable")
+            .ok_or_else(|| roead::Error::Any("TagProduct has no BitTable".into()))?;
+        for byte in bit_table.as_binary_data()? {
             bit_table_bytes.push(*byte);
         }
 
         // Get Rank Table
         println!("Parsing RankTable");
-        self.rank_table = pio["RankTable"].clone();
+        self.rank_table = pio
+            .get("RankTable")
+            .ok_or_else(|| roead::Error::Any("TagProduct has no RankTable".into()))?
+            .clone();
         let rank_table = self.rank_table.as_binary_data()?;
         let bit_table_bits = bit_table_bytes.view_bits::<Lsb0>().to_bitvec();
         //bit_table_bits.reverse();
@@ -358,16 +386,33 @@ impl<'a> TagProduct<'a> {
 
         // Get Actors and Tags
         for i in 0..(path_list_count / 3) {
-            let actor_path = format!(
-                "{}|{}|{}",
-                self.path_list[i * 3],
-                self.path_list[(i * 3) + 1],
-                self.path_list[(i * 3) + 2]
-            );
+            let start = i
+                .checked_mul(3)
+                .ok_or_else(|| roead::Error::Any("TagProduct path index overflow".into()))?;
+            let parts = self
+                .path_list
+                .get(start..start + 3)
+                .ok_or_else(|| roead::Error::Any("TagProduct path entry is truncated".into()))?;
+            let [prefix, actor, suffix] = parts else {
+                return Err(roead::Error::Any(
+                    "TagProduct path entry must contain three strings".into(),
+                ));
+            };
+            let actor_path = format!("{prefix}|{actor}|{suffix}");
             let mut actor_tag_list: Vec<String> = Vec::new();
             for k in 0..tag_list_count {
-                if bit_table_bits[i * tag_list_count + k] == true {
-                    actor_tag_list.push(self.tag_list[k].clone());
+                let bit_index = i
+                    .checked_mul(tag_list_count)
+                    .and_then(|value| value.checked_add(k))
+                    .ok_or_else(|| roead::Error::Any("TagProduct bit index overflow".into()))?;
+                let enabled = bit_table_bits
+                    .get(bit_index)
+                    .ok_or_else(|| roead::Error::Any("TagProduct BitTable is truncated".into()))?;
+                if *enabled {
+                    let tag = self.tag_list.get(k).ok_or_else(|| {
+                        roead::Error::Any("TagProduct TagList is truncated".into())
+                    })?;
+                    actor_tag_list.push(tag.clone());
                 }
             }
             actor_tag_data_map.insert(actor_path, actor_tag_list.clone());
@@ -376,7 +421,7 @@ impl<'a> TagProduct<'a> {
         //self.actor_tag_data = sort_hashmap(&self.actor_tag_data);
 
         self.cached_tag_list.extend(
-            pio["TagList"]
+            tag_list
                 .as_array()?
                 .iter()
                 .filter_map(|t| t.as_string().ok().map(|value| value.to_string())),
@@ -404,8 +449,6 @@ pub fn sort_hashmap(h: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<Str
     // Extract keys and sort them
     let mut keys: Vec<_> = h.keys().cloned().collect();
     keys.sort_by_key(|s| s.to_lowercase());
-
-    println!("{} {} {} {}", keys[0], keys[1], keys[15], keys[100]);
 
     // Sort each Vec<String> in the HashMap
     for key in keys.iter() {

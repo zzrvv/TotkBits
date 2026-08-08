@@ -11,11 +11,10 @@ use regex::Regex;
 use roead::byml::Byml;
 use std::any::type_name;
 use std::fs::OpenOptions;
-use std::io::{BufWriter, Read, Write};
-use std::panic::AssertUnwindSafe;
+use std::io::{BufWriter, Cursor, Read, Write};
 use std::path::Path;
 use std::sync::Arc;
-use std::{fs, io, panic};
+use std::{fs, io};
 
 // const FLOAT_PRECISION: i32 = 5;
 
@@ -94,16 +93,7 @@ impl<'a> BymlFile<'_> {
     }
 
     pub fn save(&self, path: String) -> io::Result<()> {
-        //let mut f_handle = OpenOptions::new().write(true).open(&path)?;
-        let result = panic::catch_unwind(AssertUnwindSafe(|| {
-            self.pio
-                .to_binary(self.endian.unwrap_or(roead::Endian::Little))
-        }));
-        let mut data: Vec<u8> = Vec::new();
-        match result {
-            Ok(rawdata) => data = rawdata,
-            Err(_) => return Err(io::Error::new(io::ErrorKind::InvalidData, "")),
-        }
+        let mut data = self.to_binary_preserving_header()?;
         if let Some(compression) = self.file_data.compression {
             data = if compression == ZstdDictionary::Yaz0 {
                 TotkZstd::compress_yaz0_with_alignment(&data, self.file_data.yaz0_alignment)?
@@ -114,6 +104,44 @@ impl<'a> BymlFile<'_> {
         //f_handle.write_all(&data);
         bytes_to_file(data, &path)?;
         Ok(())
+    }
+
+    /// Serializes the edited document using the endian and BYML version of the
+    /// source file. RSDB and other versioned tables must not silently fall back
+    /// to roead's default version.
+    pub fn to_binary_preserving_header(&self) -> io::Result<Vec<u8>> {
+        let endian = self.endian.unwrap_or(roead::Endian::Little);
+        let version = self
+            .file_data
+            .data
+            .get(2..4)
+            .and_then(|bytes| <&[u8; 2]>::try_from(bytes).ok())
+            .map(|bytes| match endian {
+                roead::Endian::Little => u16::from_le_bytes(*bytes),
+                roead::Endian::Big => u16::from_be_bytes(*bytes),
+            })
+            .unwrap_or(4);
+        let mut data = Vec::new();
+        self.pio
+            .write(&mut Cursor::new(&mut data), endian, version.min(4))
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("BYML serialization failed: {error}"),
+                )
+            })?;
+        let version_bytes = match endian {
+            roead::Endian::Little => version.to_le_bytes(),
+            roead::Endian::Big => version.to_be_bytes(),
+        };
+        let header = data.get_mut(2..4).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "serialized BYML header is truncated",
+            )
+        })?;
+        header.copy_from_slice(&version_bytes);
+        Ok(data)
     }
 
     pub fn from_text(content: &str, zstd: Arc<TotkZstd<'a>>) -> io::Result<BymlFile<'a>> {
@@ -404,7 +432,7 @@ fn lower_float_precision(input: &str) -> String {
     };
     let text = re
         .replace_all(input, |caps: &regex::Captures| {
-            let inner = &caps[1];
+            let inner = caps.get(1).map_or("", |capture| capture.as_str());
             // Process each float within the brackets
             format!(
                 "[{}]",
@@ -435,7 +463,7 @@ fn lower_float_precision(input: &str) -> String {
         return text;
     };
     re.replace_all(&text, |caps: &regex::Captures| {
-        let inner = &caps[1];
+        let inner = caps.get(1).map_or("", |capture| capture.as_str());
         // Process each key-value pair within the braces
         format!(
             "{{{}}}",
@@ -475,14 +503,15 @@ fn process_Rotate_in_banc(input: &str, deg_to_rad: bool) -> String {
         return input.to_string();
     };
     re.replace_all(input, |caps: &regex::Captures| {
+        let inner = caps.get(1).map_or("", |capture| capture.as_str());
         let array: Vec<f64> = if deg_to_rad {
-            caps[1]
+            inner
                 .split(',')
                 .filter_map(|s| s.trim().parse::<f64>().ok())
                 .map(rad_to_deg)
                 .collect()
         } else {
-            caps[1]
+            inner
                 .split(',')
                 .filter_map(|s| s.trim().parse::<f64>().ok())
                 .collect()
@@ -512,7 +541,8 @@ pub fn replace_rotate_deg_to_rad(input: &str) -> String {
         return input.to_string();
     };
     re.replace_all(input, |caps: &regex::Captures| {
-        let array: Vec<f64> = caps[1]
+        let inner = caps.get(1).map_or("", |capture| capture.as_str());
+        let array: Vec<f64> = inner
             .split(',')
             .filter_map(|s| s.trim().parse::<f64>().ok())
             .map(deg_to_rad)

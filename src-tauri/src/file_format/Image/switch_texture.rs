@@ -1,3 +1,4 @@
+use crate::parser::binary::{BinaryWriter, Endian as BinaryEndian};
 use image::{ImageBuffer, RgbaImage};
 use image_dds::{ImageFormat, Mipmaps, Quality, Surface, SurfaceRgba8};
 use std::io;
@@ -163,9 +164,15 @@ pub fn encode(
     let width = image.width();
     let height = image.height();
     let (block_width, block_height, bytes_per_block) = format_layout(format)?;
-    let encoded = SurfaceRgba8::from_image(image)
+    let mut encoded = SurfaceRgba8::from_image(image)
         .encode(format, Quality::Normal, Mipmaps::Disabled)
         .map_err(|error| io::Error::other(error.to_string()))?;
+    if matches!(
+        format,
+        ImageFormat::BC1RgbaUnorm | ImageFormat::BC1RgbaUnormSrgb
+    ) {
+        encode_bc1_alpha_blocks(image, &mut encoded.data)?;
+    }
     if linear {
         return Ok(encoded.data);
     }
@@ -188,6 +195,130 @@ pub fn encode(
         1,
     )
     .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))
+}
+
+fn encode_bc1_alpha_blocks(image: &RgbaImage, blocks: &mut Vec<u8>) -> io::Result<()> {
+    let blocks_wide = image.width().div_ceil(4) as usize;
+    let blocks_high = image.height().div_ceil(4) as usize;
+    if blocks.len() < blocks_wide.saturating_mul(blocks_high).saturating_mul(8) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "BC1 encoder returned a truncated surface",
+        ));
+    }
+    let mut writer = BinaryWriter::from_vec(std::mem::take(blocks), BinaryEndian::Little);
+    for block_y in 0..blocks_high {
+        for block_x in 0..blocks_wide {
+            let mut pixels = [[0u8; 4]; 16];
+            let mut has_transparency = false;
+            for y in 0..4 {
+                for x in 0..4 {
+                    let source_x = (block_x * 4 + x).min(image.width() as usize - 1) as u32;
+                    let source_y = (block_y * 4 + y).min(image.height() as usize - 1) as u32;
+                    pixels[y * 4 + x] = image.get_pixel(source_x, source_y).0;
+                    has_transparency |= pixels[y * 4 + x][3] < 128;
+                }
+            }
+            if !has_transparency {
+                continue;
+            }
+            let opaque: Vec<_> = pixels.iter().filter(|pixel| pixel[3] >= 128).collect();
+            let (endpoint0, endpoint1) = farthest_bc1_endpoints(&opaque);
+            let mut color0 = rgb_to_565(endpoint0);
+            let mut color1 = rgb_to_565(endpoint1);
+            if color0 > color1 {
+                std::mem::swap(&mut color0, &mut color1);
+            }
+            let palette0 = rgb_from_565(color0);
+            let palette1 = rgb_from_565(color1);
+            let palette2 = [
+                ((u16::from(palette0[0]) + u16::from(palette1[0])) / 2) as u8,
+                ((u16::from(palette0[1]) + u16::from(palette1[1])) / 2) as u8,
+                ((u16::from(palette0[2]) + u16::from(palette1[2])) / 2) as u8,
+            ];
+            let palette = [palette0, palette1, palette2];
+            let mut indices = 0u32;
+            for (index, pixel) in pixels.iter().enumerate() {
+                let selected = if pixel[3] < 128 {
+                    3
+                } else {
+                    palette
+                        .iter()
+                        .enumerate()
+                        .min_by_key(|(_, color)| rgb_distance(pixel, color))
+                        .map(|(index, _)| index as u32)
+                        .unwrap_or(0)
+                };
+                indices |= selected << (index * 2);
+            }
+            writer.seek((block_y * blocks_wide + block_x) * 8);
+            writer.write_u16(color0);
+            writer.write_u16(color1);
+            writer.write_u32(indices);
+        }
+    }
+    *blocks = writer.into_inner();
+    Ok(())
+}
+
+fn farthest_bc1_endpoints(pixels: &[&[u8; 4]]) -> ([u8; 3], [u8; 3]) {
+    if pixels.is_empty() {
+        return ([0; 3], [0; 3]);
+    }
+    let mut best = (pixels[0], pixels[0]);
+    let mut best_distance = 0u32;
+    for left in pixels {
+        for right in pixels {
+            let distance = rgb_distance(left, &[right[0], right[1], right[2]]);
+            if distance > best_distance {
+                best = (left, right);
+                best_distance = distance;
+            }
+        }
+    }
+    (
+        [best.0[0], best.0[1], best.0[2]],
+        [best.1[0], best.1[1], best.1[2]],
+    )
+}
+
+fn rgb_distance(pixel: &[u8; 4], color: &[u8; 3]) -> u32 {
+    (0..3)
+        .map(|channel| {
+            let difference = i32::from(pixel[channel]) - i32::from(color[channel]);
+            (difference * difference) as u32
+        })
+        .sum()
+}
+
+fn rgb_to_565(color: [u8; 3]) -> u16 {
+    (u16::from(color[0] >> 3) << 11) | (u16::from(color[1] >> 2) << 5) | u16::from(color[2] >> 3)
+}
+
+fn rgb_from_565(color: u16) -> [u8; 3] {
+    let red = ((color >> 11) & 0x1f) as u8;
+    let green = ((color >> 5) & 0x3f) as u8;
+    let blue = (color & 0x1f) as u8;
+    [
+        (red << 3) | (red >> 2),
+        (green << 2) | (green >> 4),
+        (blue << 3) | (blue >> 2),
+    ]
+}
+
+/// BNTX PNG pixels are already in display-space bytes. Block compression must not
+/// apply a second sRGB transfer; the BNTX format field retains the sRGB semantic.
+pub fn encoding_format(format: ImageFormat) -> ImageFormat {
+    use ImageFormat::*;
+    match format {
+        BC1RgbaUnormSrgb => BC1RgbaUnorm,
+        BC2RgbaUnormSrgb => BC2RgbaUnorm,
+        BC3RgbaUnormSrgb => BC3RgbaUnorm,
+        BC7RgbaUnormSrgb => BC7RgbaUnorm,
+        Rgba8UnormSrgb => Rgba8Unorm,
+        Bgra8UnormSrgb => Bgra8Unorm,
+        other => other,
+    }
 }
 
 pub fn format_from_bntx(value: u32) -> io::Result<ImageFormat> {
@@ -334,6 +465,19 @@ pub fn apply_component_selectors(image: &mut RgbaImage, selectors: [u8; 4]) {
     }
 }
 
+pub fn invert_component_selectors(image: &mut RgbaImage, selectors: [u8; 4]) {
+    for pixel in image.pixels_mut() {
+        let displayed = pixel.0;
+        let mut stored = [0, 0, 0, 255];
+        for (display_channel, selector) in selectors.into_iter().enumerate() {
+            if let 2..=5 = selector {
+                stored[(selector - 2) as usize] = displayed[display_channel];
+            }
+        }
+        pixel.0 = stored;
+    }
+}
+
 #[cfg(test)]
 mod component_selector_tests {
     use super::*;
@@ -345,6 +489,14 @@ mod component_selector_tests {
         assert_eq!(image.get_pixel(0, 0).0, [10, 20, 30, 40]);
         apply_component_selectors(&mut image, [0, 1, 2, 5]);
         assert_eq!(image.get_pixel(0, 0).0, [0, 255, 10, 40]);
+    }
+
+    #[test]
+    fn inverts_permuted_component_selectors() {
+        let mut image = RgbaImage::from_pixel(1, 1, image::Rgba([10, 20, 30, 40]));
+        invert_component_selectors(&mut image, [5, 4, 3, 2]);
+        apply_component_selectors(&mut image, [5, 4, 3, 2]);
+        assert_eq!(image.get_pixel(0, 0).0, [10, 20, 30, 40]);
     }
 }
 

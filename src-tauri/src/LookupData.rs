@@ -24,7 +24,12 @@ pub(crate) fn read_support_bytes(name: &str) -> std::io::Result<Vec<u8>> {
             Err(error) => last_error = Some((path, error)),
         }
     }
-    let (path, error) = last_error.expect("support path list is not empty");
+    let (path, error) = last_error.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no support-file search paths are configured",
+        )
+    })?;
     Err(std::io::Error::new(
         error.kind(),
         format!(

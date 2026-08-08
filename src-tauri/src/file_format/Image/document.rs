@@ -2,6 +2,8 @@ use base64::Engine;
 use serde::Serialize;
 use std::{io, path::Path};
 
+use crate::parser::binary::{BinaryReader, BinaryWriter, Endian as BinaryEndian};
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedImage {
@@ -41,7 +43,175 @@ pub struct ImageSubimage {
 
 pub struct ImageDocument;
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BntxReplacementReport {
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub format: String,
+    pub similarity: f64,
+}
+
 impl ImageDocument {
+    /// Replace the sole texture in a weapon BNTX, preserving its format and layout.
+    /// The PNG is resized to the original dimensions and every mip is regenerated.
+    pub fn replace_single_bntx_from_png(
+        source: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+        png: impl AsRef<Path>,
+        new_name: &str,
+        zstd: &crate::Zstd::TotkZstd<'_>,
+    ) -> io::Result<BntxReplacementReport> {
+        if new_name.is_empty() || new_name.as_bytes().contains(&0) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "invalid BNTX texture name",
+            ));
+        }
+        let source_bytes = std::fs::read(source)?;
+        let (mut data, dictionary) = decode_compressed_bntx(&source_bytes, Some(zstd))?;
+        let bntx = crate::parser::bntx::BntxFile::parse(&data).map_err(invalid)?;
+        if bntx.textures.len() != 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "weapon BNTX must contain exactly one texture, found {}",
+                    bntx.textures.len()
+                ),
+            ));
+        }
+        let texture = &bntx.textures[0];
+        if texture.array_length.max(1) != 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "array BNTX replacement is not supported for weapon images",
+            ));
+        }
+        if super::switch_texture::astc_block_from_bntx(texture.format).is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "ASTC BNTX replacement is not supported",
+            ));
+        }
+        let format = super::switch_texture::format_from_bntx(texture.format)?;
+        let encoding_format = super::switch_texture::encoding_format(format);
+        let supplied = image::open(png)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?
+            .to_rgba8();
+        let resized = if supplied.dimensions() == (texture.width, texture.height) {
+            supplied
+        } else {
+            image::imageops::resize(
+                &supplied,
+                texture.width,
+                texture.height,
+                image::imageops::FilterType::Lanczos3,
+            )
+        };
+        let allocation_end =
+            texture.data_offsets[0].saturating_add(u64::from(texture.image_size)) as usize;
+        let data_len = data.len();
+        let mut writer = BinaryWriter::from_vec(data, BinaryEndian::Little);
+        for mip in 0..u32::from(texture.mip_count) {
+            let width = (texture.width >> mip).max(1);
+            let height = (texture.height >> mip).max(1);
+            let mut mip_image = if mip == 0 {
+                resized.clone()
+            } else {
+                image::imageops::resize(
+                    &resized,
+                    width,
+                    height,
+                    image::imageops::FilterType::Triangle,
+                )
+            };
+            super::switch_texture::invert_component_selectors(
+                &mut mip_image,
+                texture.channel_types,
+            );
+            let offset = texture.data_offsets[mip as usize] as usize;
+            let end = texture
+                .data_offsets
+                .get(mip as usize + 1)
+                .copied()
+                .map(|value| value as usize)
+                .unwrap_or(allocation_end)
+                .min(data_len);
+            let encoded = super::switch_texture::encode(
+                &mip_image,
+                encoding_format,
+                texture.block_height_log2.saturating_sub(mip as u8),
+                texture.tile_mode == 1,
+            )?;
+            if encoded.len() > end.saturating_sub(offset) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("encoded mip {mip} does not fit the original BNTX allocation"),
+                ));
+            }
+            writer.seek(offset);
+            writer.write_bytes(&vec![0; end.saturating_sub(offset)]);
+            writer.seek(offset);
+            writer.write_bytes(&encoded);
+        }
+        let data = writer.into_inner();
+
+        let base_offset = texture.data_offsets[0] as usize;
+        let base_end = texture
+            .data_offsets
+            .get(1)
+            .copied()
+            .map(|value| value as usize)
+            .unwrap_or(allocation_end)
+            .min(data.len());
+        let mut decoded = super::switch_texture::decode(
+            texture.width,
+            texture.height,
+            format,
+            &data[base_offset..base_end],
+            texture.block_height_log2,
+            texture.tile_mode == 1,
+        )?;
+        super::switch_texture::apply_component_selectors(&mut decoded, texture.channel_types);
+        let similarity = rgba_similarity(&resized, &decoded);
+        if similarity < 0.99 {
+            let source_mean = rgba_channel_means(&resized);
+            let decoded_mean = rgba_channel_means(&decoded);
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "BNTX round-trip similarity is {:.3}%, below the required 99% (format {format:?}, selectors {:?}, means {source_mean:?} -> {decoded_mean:?})",
+                    similarity * 100.0,
+                    texture.channel_types
+                ),
+            ));
+        }
+
+        let data = rename_single_bntx_texture_bytes(data, texture, new_name)?;
+        let reparsed = crate::parser::bntx::BntxFile::parse(&data).map_err(invalid)?;
+        if reparsed.textures.len() != 1 || reparsed.textures[0].name != new_name {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "renamed BNTX failed validation",
+            ));
+        }
+        let output = match dictionary {
+            Some(dictionary) => zstd.compress_with_dictionary(&data, dictionary)?,
+            None => data,
+        };
+        if let Some(parent) = destination.as_ref().parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(destination, output)?;
+        Ok(BntxReplacementReport {
+            name: new_name.to_owned(),
+            width: texture.width,
+            height: texture.height,
+            format: format!("{format:?}"),
+            similarity,
+        })
+    }
     pub fn render_bntx_bytes(data: &[u8], texture_index: usize) -> io::Result<RenderedImage> {
         let bntx = crate::parser::bntx::BntxFile::parse(data).map_err(invalid)?;
         let texture = bntx.textures.get(texture_index).ok_or_else(|| {
@@ -795,6 +965,164 @@ fn decode_compressed_bntx(
         "no configured Zstandard dictionary produced a BNTX payload",
     ))
 }
+
+fn rename_single_bntx_texture_bytes(
+    data: Vec<u8>,
+    texture: &crate::parser::bntx::BntxTexture,
+    new_name: &str,
+) -> io::Result<Vec<u8>> {
+    let bytes = new_name.as_bytes();
+    let reader = BinaryReader::new(&data);
+    let mut writer = BinaryWriter::from_vec(data.clone(), BinaryEndian::Little);
+    if bytes.len() <= texture.name_capacity {
+        let length = u16::try_from(bytes.len())
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "BNTX name is too long"))?;
+        writer.seek(texture.name_offset);
+        writer.write_u16(length);
+        let start = texture.name_offset + 2;
+        writer.seek(start);
+        writer.write_bytes(&vec![0; texture.name_capacity]);
+        writer.seek(start);
+        writer.write_bytes(bytes);
+        return Ok(writer.into_inner());
+    }
+
+    let relocation = reader.read_u32_at(0x18)? as usize;
+    if reader.read_bytes_at(relocation, 4)? != b"_RLT" {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "BNTX relocation table is missing",
+        ));
+    }
+    let required = 2usize
+        .checked_add(bytes.len())
+        .and_then(|value| value.checked_add(1))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "BNTX name is too long"))?;
+    let zero_start = reader
+        .read_bytes_at(0, relocation)?
+        .iter()
+        .rposition(|byte| *byte != 0)
+        .map(|position| position + 1)
+        .unwrap_or(0);
+    if relocation.saturating_sub(zero_start) < required {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "BNTX has insufficient string-pool padding for the longer name",
+        ));
+    }
+    let new_offset = relocation - required;
+    writer.seek(new_offset);
+    writer.write_u16(bytes.len() as u16);
+    writer.write_bytes(bytes);
+    writer.write_u8(0);
+
+    let pointer_fields = bntx_relocation_pointer_fields(&reader, relocation)?;
+    let mut updated = 0;
+    for field in pointer_fields {
+        let target = reader.read_u64_at(field)? as usize;
+        if target == texture.name_offset {
+            writer.seek(field);
+            writer.write_u64(new_offset as u64);
+            updated += 1;
+        }
+    }
+    if updated == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "BNTX name has no relocation-tracked pointer",
+        ));
+    }
+    Ok(writer.into_inner())
+}
+
+fn bntx_relocation_pointer_fields(
+    reader: &BinaryReader<'_>,
+    relocation: usize,
+) -> io::Result<Vec<usize>> {
+    let section_count = reader.read_u32_at(relocation + 8)? as usize;
+    if section_count == 0 || section_count > 64 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid BNTX relocation section count",
+        ));
+    }
+    let sections = relocation + 16;
+    let entries = sections
+        .checked_add(section_count * 24)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "BNTX RLT overflow"))?;
+    let mut total_entries = 0usize;
+    for index in 0..section_count {
+        let section = sections + index * 24;
+        let entry_index = reader.read_u32_at(section + 16)? as usize;
+        let entry_count = reader.read_u32_at(section + 20)? as usize;
+        total_entries = total_entries.max(entry_index.saturating_add(entry_count));
+    }
+    if total_entries > reader.len().saturating_sub(entries) / 8 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "truncated BNTX relocation entries",
+        ));
+    }
+    let mut fields = Vec::new();
+    for index in 0..total_entries {
+        let entry = entries + index * 8;
+        let position = reader.read_u32_at(entry)? as usize;
+        let structures = reader.read_u16_at(entry + 4)? as usize;
+        let offsets = reader.read_u8_at(entry + 6)? as usize;
+        let padding = reader.read_u8_at(entry + 7)? as usize;
+        let stride = (offsets + padding) * 8;
+        for structure in 0..structures {
+            for pointer in 0..offsets {
+                let field = position + structure * stride + pointer * 8;
+                if field + 8 > relocation {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "BNTX relocated pointer is outside the data section",
+                    ));
+                }
+                fields.push(field);
+            }
+        }
+    }
+    fields.sort_unstable();
+    fields.dedup();
+    Ok(fields)
+}
+
+fn rgba_similarity(left: &image::RgbaImage, right: &image::RgbaImage) -> f64 {
+    if left.dimensions() != right.dimensions() || left.as_raw().is_empty() {
+        return 0.0;
+    }
+    let error: u64 = left
+        .pixels()
+        .zip(right.pixels())
+        .map(|(left, right)| {
+            let left_alpha = u32::from(left[3]);
+            let right_alpha = u32::from(right[3]);
+            let rgb_error: u32 = (0..3)
+                .map(|channel| {
+                    let left = u32::from(left[channel]) * left_alpha / 255;
+                    let right = u32::from(right[channel]) * right_alpha / 255;
+                    left.abs_diff(right)
+                })
+                .sum();
+            u64::from(rgb_error + left_alpha.abs_diff(right_alpha))
+        })
+        .sum();
+    1.0 - error as f64 / (left.width() as f64 * left.height() as f64 * 4.0 * 255.0)
+}
+
+fn rgba_channel_means(image: &image::RgbaImage) -> [u8; 4] {
+    let mut sums = [0u64; 4];
+    for pixel in image.pixels() {
+        for channel in 0..4 {
+            sums[channel] += u64::from(pixel[channel]);
+        }
+    }
+    let count = u64::from(image.width()) * u64::from(image.height());
+    sums.map(|sum| (sum / count.max(1)) as u8)
+}
+
 fn invalid(error: impl ToString) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, error.to_string())
 }
@@ -802,6 +1130,9 @@ fn invalid(error: impl ToString) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
+    use base64::Engine;
+    use std::{fs, sync::Arc};
 
     #[test]
     fn compressed_non_image_is_not_accepted_by_extension() {
@@ -828,5 +1159,122 @@ mod tests {
             .iter()
             .flat_map(|entry| &entry.subimages)
             .all(|surface| surface.mip_index == 0));
+    }
+
+    #[test]
+    #[ignore = "requires the Weapon Restoration BNTX fixture and ROMFS dictionaries"]
+    fn single_bntx_png_round_trip_preserves_format_and_similarity() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tmp/BotW Weapon Restoration/romfs/UI/Tex/Icon/Weapon_Lsword_005.bntx.zs");
+        if !source.is_file() {
+            return;
+        }
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(
+            crate::Zstd::TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL)
+                .expect("load ROMFS dictionaries"),
+        );
+        let rendered =
+            ImageDocument::render_path_selection_with_zstd(&source, 0, 0, 0, Some(zstd.as_ref()))
+                .unwrap();
+        let png = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bntx_roundtrip_input.png");
+        let output =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bntx_roundtrip_output.bntx.zs");
+        let encoded = rendered.data_url.split_once(',').unwrap().1;
+        fs::write(
+            &png,
+            base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .unwrap(),
+        )
+        .unwrap();
+        let report = ImageDocument::replace_single_bntx_from_png(
+            &source,
+            &output,
+            &png,
+            "Weapon_Lsword_900",
+            zstd.as_ref(),
+        )
+        .unwrap();
+        assert!(report.similarity >= 0.99);
+        assert_eq!(report.format, rendered.dds_type.unwrap());
+        let (raw, _) =
+            decode_compressed_bntx(&fs::read(&output).unwrap(), Some(zstd.as_ref())).unwrap();
+        let parsed = crate::parser::bntx::BntxFile::parse(&raw).unwrap();
+        assert_eq!(parsed.textures.len(), 1);
+        assert_eq!(parsed.textures[0].name, "Weapon_Lsword_900");
+        fs::remove_file(png).unwrap();
+        fs::remove_file(output).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires the supplied custom PNG, restoration BNTX, and ROMFS dictionaries"]
+    fn supplied_weapon_png_round_trips_through_bntx() {
+        let fixture_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
+        let source = fixture_root
+            .join("BotW Weapon Restoration/romfs/UI/Tex/Icon/Weapon_Lsword_005.bntx.zs");
+        let png = fixture_root.join("BotW Weapon Restoration/Weapon_Lsword_002.png");
+        if !source.is_file() || !png.is_file() {
+            return;
+        }
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(
+            crate::Zstd::TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL)
+                .expect("load ROMFS dictionaries"),
+        );
+        let output = fixture_root.join("Weapon_Lsword_902.test.bntx.zs");
+        let exported = fixture_root.join("Weapon_Lsword_902.test.png");
+        let report = ImageDocument::replace_single_bntx_from_png(
+            &source,
+            &output,
+            &png,
+            "Weapon_Lsword_902",
+            zstd.as_ref(),
+        )
+        .unwrap();
+        println!(
+            "supplied weapon PNG: format={}, size={}x{}, similarity={:.4}%",
+            report.format,
+            report.width,
+            report.height,
+            report.similarity * 100.0
+        );
+        assert!(
+            report.similarity >= 0.99,
+            "similarity was {}",
+            report.similarity
+        );
+
+        let rendered =
+            ImageDocument::render_path_selection_with_zstd(&output, 0, 0, 0, Some(zstd.as_ref()))
+                .unwrap();
+        let encoded = rendered.data_url.split_once(',').unwrap().1;
+        fs::write(
+            &exported,
+            base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .unwrap(),
+        )
+        .unwrap();
+        let input_image = image::open(&png).unwrap();
+        assert_eq!(
+            (input_image.width(), input_image.height()),
+            (report.width, report.height)
+        );
+        let exported_image = image::open(&exported).unwrap();
+        assert_eq!(
+            (exported_image.width(), exported_image.height()),
+            (report.width, report.height)
+        );
+        let (raw, _) =
+            decode_compressed_bntx(&fs::read(&output).unwrap(), Some(zstd.as_ref())).unwrap();
+        let parsed = crate::parser::bntx::BntxFile::parse(&raw).unwrap();
+        assert_eq!(parsed.textures[0].name, "Weapon_Lsword_902");
+        fs::remove_file(output).unwrap();
+        fs::remove_file(exported).unwrap();
     }
 }

@@ -53,6 +53,7 @@ impl CliCommand {
                 | "replace_bars_from_folder"
                 | "batch_g1m_worker"
                 | "replace_g1m"
+                | "replace_bfres"
                 | "g1m_to_fbx"
         );
         let expected_arguments = if operation == "decompress" { 5 } else { 6 };
@@ -62,7 +63,7 @@ impl CliCommand {
             arguments.len() == expected_arguments
         };
         if !is_public_operation || !valid_arguments {
-            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n");
+            eprintln!("Usage:\n  Totkbits.exe --cli <bin_to_text|text_to_bin|extract_archive|dir_to_archive> <type> <input> <output>\n  Totkbits.exe --cli decompress <input> <output>\n  Totkbits.exe --cli decompress_dir -i <input_dir> -o <output_dir>\n  Totkbits.exe --cli compress <zs|pack|empty|bcett|yaz0> <input> <output>\n  Totkbits.exe --cli replace_bars_from_folder <input.bars> <audio-folder> <output.bars>\n  Totkbits.exe --cli replace_g1m <input.g1m> <input.fbx> <output.g1m>\n  Totkbits.exe --cli replace_bfres <input.bfres> <input.fbx> <output.bfres>\n  Totkbits.exe --cli g1m_to_fbx <none|png|dds> <input.g1m> <output.fbx>\n");
             return Some(Self {
                 operation: String::new(),
                 file_type: String::new(),
@@ -139,6 +140,7 @@ impl CliCommand {
             "replace_bars_from_folder" => self.replace_bars_from_folder(),
             "batch_g1m_worker" => self.batch_g1m_worker(),
             "replace_g1m" => self.replace_g1m(),
+            "replace_bfres" => self.replace_bfres(),
             "g1m_to_fbx" => self.g1m_to_fbx(),
             value => Err(format!("unknown CLI operation: {value}")),
         }
@@ -448,6 +450,18 @@ impl CliCommand {
             .unwrap_or("G1M");
         let rebuilt = crate::parser::AOC::g1m_replace::replace_meshes_from_fbx(&source, &fbx, name)
             .map_err(|error| error.to_string())?;
+        write_output(&self.output, &rebuilt)
+    }
+
+    fn replace_bfres(&self) -> Result<(), String> {
+        let source_path = Path::new(&self.file_type);
+        let source = fs::read(source_path)
+            .map_err(|error| format!("failed to read {}: {error}", source_path.display()))?;
+        let fbx = fs::read(&self.input)
+            .map_err(|error| format!("failed to read {}: {error}", self.input.display()))?;
+        let rebuilt =
+            crate::file_format::Model3D::bfres::BfresFile::replace_geometry_from_fbx(&source, &fbx)
+                .map_err(|error| error.to_string())?;
         write_output(&self.output, &rebuilt)
     }
 

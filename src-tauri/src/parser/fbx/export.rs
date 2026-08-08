@@ -480,10 +480,10 @@ fn build_ascii(
                     objects,
                     "    Deformer: {skin}, \"Deformer::Skin\", \"Skin\" {{"
                 )
-                .unwrap();
-                writeln!(objects, "        Version: 101").unwrap();
-                writeln!(objects, "        Link_DeformAcuracy: 50").unwrap();
-                writeln!(objects, "    }}").unwrap();
+                .ok();
+                writeln!(objects, "        Version: 101").ok();
+                writeln!(objects, "        Link_DeformAcuracy: 50").ok();
+                writeln!(objects, "    }}").ok();
                 for &(cluster, bone) in &clusters {
                     write_cluster(&mut objects, cluster, mesh, bone, &input.model.render.bones);
                 }
@@ -600,9 +600,9 @@ fn write_bone_attribute(out: &mut String, id: i64, name: &str) {
         "    NodeAttribute: {id}, \"NodeAttribute::{}\", \"LimbNode\" {{",
         escaped(name)
     )
-    .unwrap();
-    writeln!(out, "        TypeFlags: \"Skeleton\"").unwrap();
-    writeln!(out, "    }}").unwrap();
+    .ok();
+    writeln!(out, "        TypeFlags: \"Skeleton\"").ok();
+    writeln!(out, "    }}").ok();
 }
 
 fn write_geometry(out: &mut String, id: i64, mesh: &BfresMesh, bones: &[BfresBone]) {
@@ -612,7 +612,7 @@ fn write_geometry(out: &mut String, id: i64, mesh: &BfresMesh, bones: &[BfresBon
         "    Geometry: {id}, \"Geometry::{}\", \"Mesh\" {{",
         escaped(&mesh.name)
     )
-    .unwrap();
+    .ok();
     write_vec3_array(out, "Vertices", &positions);
     let polygons: Vec<i64> = mesh
         .indices
@@ -627,13 +627,13 @@ fn write_geometry(out: &mut String, id: i64, mesh: &BfresMesh, bones: &[BfresBon
         .collect();
     write_i64_array(out, "PolygonVertexIndex", &polygons);
     if normals.len() == positions.len() {
-        writeln!(out, "        LayerElementNormal: 0 {{").unwrap();
-        writeln!(out, "            Version: 101").unwrap();
-        writeln!(out, "            Name: \"Normals\"").unwrap();
-        writeln!(out, "            MappingInformationType: \"ByVertice\"").unwrap();
-        writeln!(out, "            ReferenceInformationType: \"Direct\"").unwrap();
+        writeln!(out, "        LayerElementNormal: 0 {{").ok();
+        writeln!(out, "            Version: 101").ok();
+        writeln!(out, "            Name: \"Normals\"").ok();
+        writeln!(out, "            MappingInformationType: \"ByVertice\"").ok();
+        writeln!(out, "            ReferenceInformationType: \"Direct\"").ok();
         write_vec3_array_indented(out, "Normals", &normals, 12);
-        writeln!(out, "        }}").unwrap();
+        writeln!(out, "        }}").ok();
     }
     let uv_maps = if mesh.uv_maps.is_empty() {
         std::slice::from_ref(&mesh.uv0)
@@ -645,26 +645,26 @@ fn write_geometry(out: &mut String, id: i64, mesh: &BfresMesh, bones: &[BfresBon
         .filter(|uv| uv.len() == positions.len())
         .collect();
     for (index, uv) in valid_uvs.iter().enumerate() {
-        writeln!(out, "        LayerElementUV: {index} {{").unwrap();
-        writeln!(out, "            Version: 101").unwrap();
-        writeln!(out, "            Name: \"UVChannel_{}\"", index + 1).unwrap();
-        writeln!(out, "            MappingInformationType: \"ByVertice\"").unwrap();
-        writeln!(out, "            ReferenceInformationType: \"Direct\"").unwrap();
+        writeln!(out, "        LayerElementUV: {index} {{").ok();
+        writeln!(out, "            Version: 101").ok();
+        writeln!(out, "            Name: \"UVChannel_{}\"", index + 1).ok();
+        writeln!(out, "            MappingInformationType: \"ByVertice\"").ok();
+        writeln!(out, "            ReferenceInformationType: \"Direct\"").ok();
         write_uv_array(out, "UV", uv);
-        writeln!(out, "        }}").unwrap();
+        writeln!(out, "        }}").ok();
     }
-    writeln!(out, "        LayerElementMaterial: 0 {{").unwrap();
-    writeln!(out, "            Version: 101").unwrap();
-    writeln!(out, "            Name: \"\"").unwrap();
-    writeln!(out, "            MappingInformationType: \"AllSame\"").unwrap();
+    writeln!(out, "        LayerElementMaterial: 0 {{").ok();
+    writeln!(out, "            Version: 101").ok();
+    writeln!(out, "            Name: \"\"").ok();
+    writeln!(out, "            MappingInformationType: \"AllSame\"").ok();
     writeln!(
         out,
         "            ReferenceInformationType: \"IndexToDirect\""
     )
-    .unwrap();
-    writeln!(out, "            Materials: *1 {{ a: 0 }}").unwrap();
-    writeln!(out, "        }}").unwrap();
-    writeln!(out, "        Layer: 0 {{").unwrap();
+    .ok();
+    writeln!(out, "            Materials: *1 {{ a: 0 }}").ok();
+    writeln!(out, "        }}").ok();
+    writeln!(out, "        Layer: 0 {{").ok();
     if normals.len() == positions.len() {
         layer_element(out, "LayerElementNormal", 0);
     }
@@ -672,13 +672,13 @@ fn write_geometry(out: &mut String, id: i64, mesh: &BfresMesh, bones: &[BfresBon
         layer_element(out, "LayerElementUV", 0);
     }
     layer_element(out, "LayerElementMaterial", 0);
-    writeln!(out, "        }}").unwrap();
+    writeln!(out, "        }}").ok();
     for index in 1..valid_uvs.len() {
-        writeln!(out, "        Layer: {index} {{").unwrap();
+        writeln!(out, "        Layer: {index} {{").ok();
         layer_element(out, "LayerElementUV", index);
-        writeln!(out, "        }}").unwrap();
+        writeln!(out, "        }}").ok();
     }
-    writeln!(out, "    }}").unwrap();
+    writeln!(out, "    }}").ok();
 }
 
 fn write_model_object(
@@ -695,19 +695,19 @@ fn write_model_object(
         "    Model: {id}, \"Model::{}\", \"{kind}\" {{",
         escaped(name)
     )
-    .unwrap();
-    writeln!(out, "        Version: 232").unwrap();
-    writeln!(out, "        Properties70:  {{").unwrap();
+    .ok();
+    writeln!(out, "        Version: 232").ok();
+    writeln!(out, "        Properties70:  {{").ok();
     property_vec3(out, "Lcl Translation", "Lcl Translation", translation);
     property_vec3(out, "Lcl Rotation", "Lcl Rotation", rotation);
     property_vec3(out, "Lcl Scaling", "Lcl Scaling", scale);
     if kind == "Mesh" {
         property_vec3(out, "GeometricRotation", "Vector3D", [-90.0, 0.0, 0.0]);
     }
-    writeln!(out, "        }}").unwrap();
-    writeln!(out, "        Shading: T").unwrap();
-    writeln!(out, "        Culling: \"CullingOff\"").unwrap();
-    writeln!(out, "    }}").unwrap();
+    writeln!(out, "        }}").ok();
+    writeln!(out, "        Shading: T").ok();
+    writeln!(out, "        Culling: \"CullingOff\"").ok();
+    writeln!(out, "    }}").ok();
 }
 
 fn write_material(out: &mut String, id: i64, name: &str) {
@@ -716,29 +716,29 @@ fn write_material(out: &mut String, id: i64, name: &str) {
         "    Material: {id}, \"Material::{}\", \"\" {{",
         escaped(name)
     )
-    .unwrap();
-    writeln!(out, "        Version: 102").unwrap();
-    writeln!(out, "        ShadingModel: \"phong\"").unwrap();
-    writeln!(out, "        MultiLayer: 0").unwrap();
-    writeln!(out, "        Properties70:  {{").unwrap();
+    .ok();
+    writeln!(out, "        Version: 102").ok();
+    writeln!(out, "        ShadingModel: \"phong\"").ok();
+    writeln!(out, "        MultiLayer: 0").ok();
+    writeln!(out, "        Properties70:  {{").ok();
     writeln!(
         out,
         "            P: \"DiffuseColor\", \"Color\", \"\", \"A\",0.8,0.8,0.8"
     )
-    .unwrap();
+    .ok();
     writeln!(
         out,
         "            P: \"TransparentColor\", \"Color\", \"\", \"A\",1,1,1"
     )
-    .unwrap();
+    .ok();
     writeln!(
         out,
         "            P: \"TransparencyFactor\", \"Number\", \"\", \"A\",0"
     )
-    .unwrap();
-    writeln!(out, "            P: \"Opacity\", \"Number\", \"\", \"A\",1").unwrap();
-    writeln!(out, "        }}").unwrap();
-    writeln!(out, "    }}").unwrap();
+    .ok();
+    writeln!(out, "            P: \"Opacity\", \"Number\", \"\", \"A\",1").ok();
+    writeln!(out, "        }}").ok();
+    writeln!(out, "    }}").ok();
 }
 
 fn write_texture(out: &mut String, texture: &TextureLink) {
@@ -749,32 +749,32 @@ fn write_texture(out: &mut String, texture: &TextureLink) {
         texture.video_id,
         escaped(&texture.name)
     )
-    .unwrap();
-    writeln!(out, "        Type: \"Clip\"").unwrap();
-    writeln!(out, "        FileName: \"{}\"", escaped(&path)).unwrap();
-    writeln!(out, "        RelativeFilename: \"{}\"", escaped(&path)).unwrap();
-    writeln!(out, "    }}").unwrap();
+    .ok();
+    writeln!(out, "        Type: \"Clip\"").ok();
+    writeln!(out, "        FileName: \"{}\"", escaped(&path)).ok();
+    writeln!(out, "        RelativeFilename: \"{}\"", escaped(&path)).ok();
+    writeln!(out, "    }}").ok();
     writeln!(
         out,
         "    Texture: {}, \"Texture::{}\", \"\" {{",
         texture.id,
         escaped(&texture.name)
     )
-    .unwrap();
-    writeln!(out, "        Type: \"TextureVideoClip\"").unwrap();
-    writeln!(out, "        Version: 202").unwrap();
+    .ok();
+    writeln!(out, "        Type: \"TextureVideoClip\"").ok();
+    writeln!(out, "        Version: 202").ok();
     writeln!(
         out,
         "        TextureName: \"Texture::{}\"",
         escaped(&texture.name)
     )
-    .unwrap();
-    writeln!(out, "        Media: \"Video::{}\"", escaped(&texture.name)).unwrap();
-    writeln!(out, "        FileName: \"{}\"", escaped(&path)).unwrap();
-    writeln!(out, "        RelativeFilename: \"{}\"", escaped(&path)).unwrap();
-    writeln!(out, "        UVSet: \"{}\"", texture.uv_set).unwrap();
-    writeln!(out, "        AlphaSource: \"Black\"").unwrap();
-    writeln!(out, "    }}").unwrap();
+    .ok();
+    writeln!(out, "        Media: \"Video::{}\"", escaped(&texture.name)).ok();
+    writeln!(out, "        FileName: \"{}\"", escaped(&path)).ok();
+    writeln!(out, "        RelativeFilename: \"{}\"", escaped(&path)).ok();
+    writeln!(out, "        UVSet: \"{}\"", texture.uv_set).ok();
+    writeln!(out, "        AlphaSource: \"Black\"").ok();
+    writeln!(out, "    }}").ok();
 }
 
 fn write_cluster(out: &mut String, id: i64, mesh: &BfresMesh, bone: usize, bones: &[BfresBone]) {
@@ -814,15 +814,15 @@ fn write_cluster(out: &mut String, id: i64, mesh: &BfresMesh, bone: usize, bones
         out,
         "    Deformer: {id}, \"SubDeformer::Cluster_{bone}\", \"Cluster\" {{"
     )
-    .unwrap();
-    writeln!(out, "        Version: 100").unwrap();
+    .ok();
+    writeln!(out, "        Version: 100").ok();
     write_i64_array(out, "Indexes", &indices);
     write_f64_array(out, "Weights", &weights, 8);
     let bone_world = bone_world_matrix(bones, bone);
     write_matrix(out, "Transform", inverse_affine_matrix(bone_world));
     write_matrix(out, "TransformLink", bone_world);
     write_matrix(out, "TransformAssociateModel", identity_matrix());
-    writeln!(out, "    }}").unwrap();
+    writeln!(out, "    }}").ok();
 }
 
 fn mesh_bones(mesh: &BfresMesh, bone_count: usize) -> Vec<usize> {
@@ -1070,27 +1070,27 @@ fn write_uv_array(out: &mut String, name: &str, values: &[[f32; 2]]) {
     write_f64_array(out, name, &flat, 12);
 }
 fn write_i64_array(out: &mut String, name: &str, values: &[i64]) {
-    writeln!(out, "        {name}: *{} {{", values.len()).unwrap();
-    write!(out, "            a: ").unwrap();
+    writeln!(out, "        {name}: *{} {{", values.len()).ok();
+    write!(out, "            a: ").ok();
     for (index, value) in values.iter().enumerate() {
         if index > 0 {
             out.push(',');
         }
-        write!(out, "{value}").unwrap();
+        write!(out, "{value}").ok();
     }
-    writeln!(out, "\n        }}").unwrap();
+    writeln!(out, "\n        }}").ok();
 }
 fn write_f64_array(out: &mut String, name: &str, values: &[f64], indent: usize) {
     let spaces = " ".repeat(indent);
-    writeln!(out, "{spaces}{name}: *{} {{", values.len()).unwrap();
-    write!(out, "{spaces}    a: ").unwrap();
+    writeln!(out, "{spaces}{name}: *{} {{", values.len()).ok();
+    write!(out, "{spaces}    a: ").ok();
     for (index, value) in values.iter().enumerate() {
         if index > 0 {
             out.push(',');
         }
-        write!(out, "{value:.9}").unwrap();
+        write!(out, "{value:.9}").ok();
     }
-    writeln!(out, "\n{spaces}}}").unwrap();
+    writeln!(out, "\n{spaces}}}").ok();
 }
 fn write_matrix(out: &mut String, name: &str, values: [f64; 16]) {
     // FBX stores transform matrices transposed relative to the column-vector
@@ -1109,19 +1109,19 @@ fn property_vec3(out: &mut String, name: &str, kind: &str, value: [f32; 3]) {
         "            P: \"{name}\", \"{kind}\", \"\", \"A\",{},{},{}",
         value[0], value[1], value[2]
     )
-    .unwrap();
+    .ok();
 }
 fn layer_element(out: &mut String, kind: &str, index: usize) {
-    writeln!(out, "            LayerElement:  {{").unwrap();
-    writeln!(out, "                Type: \"{kind}\"").unwrap();
-    writeln!(out, "                TypedIndex: {index}").unwrap();
-    writeln!(out, "            }}").unwrap();
+    writeln!(out, "            LayerElement:  {{").ok();
+    writeln!(out, "                Type: \"{kind}\"").ok();
+    writeln!(out, "                TypedIndex: {index}").ok();
+    writeln!(out, "            }}").ok();
 }
 fn connection(out: &mut String, child: i64, parent: i64) {
-    writeln!(out, "    C: \"OO\",{child},{parent}").unwrap();
+    writeln!(out, "    C: \"OO\",{child},{parent}").ok();
 }
 fn property_connection(out: &mut String, child: i64, parent: i64, property: &str) {
-    writeln!(out, "    C: \"OP\",{child},{parent},\"{property}\"").unwrap();
+    writeln!(out, "    C: \"OP\",{child},{parent},\"{property}\"").ok();
 }
 fn texture_key(prefix: &str, name: &str) -> String {
     format!("{prefix}\0{name}")

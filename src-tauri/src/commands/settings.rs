@@ -2,12 +2,7 @@ use crate::{DocumentState::DocumentState, Open_and_Save::SendData, Settings::NO_
 use rfd::MessageDialog;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::{
-    env, fs,
-    os::windows::process::CommandExt,
-    path::Path,
-    process::{self, Command},
-};
+use std::{env, fs, os::windows::process::CommandExt, path::Path, process::Command};
 use tauri::Manager;
 
 #[tauri::command]
@@ -136,9 +131,7 @@ pub fn update_toml_config(
 }
 
 #[tauri::command]
-pub fn restart_app() -> Option<()> {
-    let totkbits_exe = env::current_exe().ok()?;
-    let no_window_flag = NO_WINDOW_FLAG;
+pub fn restart_app(app_handle: tauri::AppHandle) -> Option<()> {
     if let rfd::MessageDialogResult::No = MessageDialog::new()
         .set_title("Warning")
         .set_description("Totkbits will be restarted, all unsaved progress will be lost. Proceed?")
@@ -147,22 +140,8 @@ pub fn restart_app() -> Option<()> {
     {
         return Some(());
     }
-    // let _ = Command::new(totkbits_exe)
-    let p = Command::new("cmd")
-        .creation_flags(no_window_flag)
-        .args([
-            "/C",
-            "start",
-            "",
-            &totkbits_exe.to_string_lossy().into_owned(),
-        ])
-        .spawn();
-    // .map(|_| ())?;
-    // .ok()?;
-    match p {
-        Ok(_) => process::exit(0),
-        Err(_) => None,
-    }
+    app_handle.request_restart();
+    Some(())
 }
 
 #[tauri::command]

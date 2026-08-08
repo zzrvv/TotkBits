@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 //mod Zstd;
 
+use crate::file_format::BinTextFile::BymlFile;
 use crate::Open_and_Save::SendData;
 use crate::Settings::Magic;
 use crate::Settings::{makedirs, Pathlib};
@@ -402,7 +403,7 @@ pub struct PackFile<'a> {
 }
 
 #[allow(dead_code)]
-impl<'a> PackFile<'_> {
+impl<'a> PackFile<'a> {
     pub fn default(zstd: Arc<TotkZstd<'a>>) -> io::Result<PackFile<'a>> {
         let mut writer = SarcWriter::new(roead::Endian::Little);
         let sarc = Sarc::new(writer.to_binary().clone())
@@ -463,6 +464,40 @@ impl<'a> PackFile<'_> {
         self.hashes = candidate_hashes;
         self.dirty = true;
         Ok(())
+    }
+
+    /// Rebuilds this archive from named entries and reapplies the compression
+    /// detected when it was opened. Format-specific callers should use this
+    /// instead of constructing SARC data or selecting dictionaries themselves.
+    pub fn rebuild_binary(
+        &self,
+        entries: impl IntoIterator<Item = (String, Vec<u8>)>,
+    ) -> io::Result<Vec<u8>> {
+        let mut writer = SarcWriter::new(self.endian);
+        for (path, data) in entries {
+            writer.add_file(&path, data);
+        }
+        let raw = writer.to_binary();
+        Sarc::new(raw.clone())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        match self.compression {
+            Some(ZstdDictionary::Yaz0) => {
+                TotkZstd::compress_yaz0_with_alignment(&raw, self.yaz0_alignment)
+            }
+            Some(dictionary) => self.zstd.compress_with_dictionary(&raw, dictionary),
+            None => Ok(raw),
+        }
+    }
+
+    /// Parses one internal BYML entry through TotkBits' BYML document wrapper.
+    pub fn byml_file(&self, path: &str) -> io::Result<BymlFile<'a>> {
+        let data = self.sarc.get_data(path).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("pack entry is missing: {path}"),
+            )
+        })?;
+        BymlFile::from_binary(data, self.zstd.clone(), path)
     }
 
     pub fn reload(&mut self) -> io::Result<()> {

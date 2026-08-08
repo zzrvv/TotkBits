@@ -20,8 +20,8 @@ impl BinaryChunk {
         }
     }
 
-    fn push(&mut self, bytes: &[u8], target: Option<u32>) -> usize {
-        self.data.align(4).expect("constant GLB alignment is valid");
+    fn push(&mut self, bytes: &[u8], target: Option<u32>) -> io::Result<usize> {
+        self.data.align(4)?;
         let offset = self.data.position();
         self.data.write_bytes(bytes);
         let mut view = json!({ "buffer": 0, "byteOffset": offset, "byteLength": bytes.len() });
@@ -30,7 +30,7 @@ impl BinaryChunk {
         }
         let index = self.views.len();
         self.views.push(view);
-        index
+        Ok(index)
     }
 }
 
@@ -255,7 +255,7 @@ pub fn export_g1m(
             let Some((bytes, has_transparency)) = texture_png(texture) else {
                 continue;
             };
-            let view = binary.push(&bytes, None);
+            let view = binary.push(&bytes, None)?;
             let index = images.len();
             images.push(json!({ "name": format!("{prefix}{}.png", texture.name), "bufferView": view, "mimeType": "image/png" }));
             textures.push(json!({ "source": index, "sampler": 0 }));
@@ -345,7 +345,7 @@ pub fn export_g1m(
             let matrices = bone_worlds
                 .iter()
                 .flat_map(|matrix| transpose(inverse_affine_matrix(*matrix)));
-            let view = binary.push(&floats(matrices), None);
+            let view = binary.push(&floats(matrices), None)?;
             let inverse_bind_accessor = accessors.len();
             accessors.push(accessor(view, 5126, bone_worlds.len(), "MAT4"));
             let joints: Vec<_> = (0..model.render.bones.len())
@@ -382,7 +382,7 @@ pub fn export_g1m(
                 }
             }
             let position_view =
-                binary.push(&floats(positions.iter().flatten().copied()), Some(34962));
+                binary.push(&floats(positions.iter().flatten().copied()), Some(34962))?;
             let position_accessor = accessors.len();
             let mut position = accessor(position_view, 5126, positions.len(), "VEC3");
             let mut minimum = [f32::INFINITY; 3];
@@ -426,18 +426,18 @@ pub fn export_g1m(
                     joints.extend(indices);
                     weights.extend(values);
                 }
-                let view = binary.push(&u16s(joints), Some(34962));
+                let view = binary.push(&u16s(joints), Some(34962))?;
                 let index = accessors.len();
                 accessors.push(accessor(view, 5123, mesh.positions.len(), "VEC4"));
                 attributes.insert("JOINTS_0".into(), index.into());
-                let view = binary.push(&floats(weights), Some(34962));
+                let view = binary.push(&floats(weights), Some(34962))?;
                 let index = accessors.len();
                 accessors.push(accessor(view, 5126, mesh.positions.len(), "VEC4"));
                 attributes.insert("WEIGHTS_0".into(), index.into());
             }
 
             if normals.len() == positions.len() {
-                let view = binary.push(&floats(normals.iter().flatten().copied()), Some(34962));
+                let view = binary.push(&floats(normals.iter().flatten().copied()), Some(34962))?;
                 let index = accessors.len();
                 accessors.push(accessor(view, 5126, normals.len(), "VEC3"));
                 attributes.insert("NORMAL".into(), index.into());
@@ -452,13 +452,13 @@ pub fn export_g1m(
                     let view = binary.push(
                         &floats(uvs.iter().copied().map(convert_uv_for_glb).flatten()),
                         Some(34962),
-                    );
+                    )?;
                     let index = accessors.len();
                     accessors.push(accessor(view, 5126, uvs.len(), "VEC2"));
                     attributes.insert(format!("TEXCOORD_{uv_index}"), index.into());
                 }
             }
-            let index_view = binary.push(&u32s(mesh.indices.iter().copied()), Some(34963));
+            let index_view = binary.push(&u32s(mesh.indices.iter().copied()), Some(34963))?;
             let index_accessor = accessors.len();
             accessors.push(accessor(index_view, 5125, mesh.indices.len(), "SCALAR"));
             let mesh_index = meshes.len();

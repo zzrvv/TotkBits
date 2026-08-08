@@ -5,8 +5,6 @@ const MCPK_MAGIC: &[u8; 4] = b"MCPK";
 const MCPK_VERSION: [u8; 4] = [1, 1, 0, 0];
 const MCPK_ALIGNMENT: usize = 0x1000;
 const MCPK_ZSTD_LEVEL: i32 = 20;
-const BFRES_EXTERNAL_FLAGS_OFFSET: usize = 0xee;
-const BFRES_MCPK_RESAVE_FLAG_OFFSET: usize = 0xef;
 use meshcodec_bindings::MeshCodecBindings;
 
 pub struct MeshCodec;
@@ -44,18 +42,18 @@ impl MeshCodec {
         }
 
         Self::ensure_platform()?;
-        Self::decompress_loaded(data)
+        Self::decompress_loaded(data).or_else(|_| Self::decompress_pseudo(data))
     }
 
     /// Reproduces Switch Toolbox's "fake" MeshCodec compression: an MCPK
     /// header followed by a dictionaryless, magicless ZSTD frame.
     pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
-        let mut source = data.to_vec();
-        if crate::Settings::Magic::is_bfres(&source) && source.len() > BFRES_MCPK_RESAVE_FLAG_OFFSET
-        {
-            source[BFRES_EXTERNAL_FLAGS_OFFSET] = 0;
-            source[BFRES_MCPK_RESAVE_FLAG_OFFSET] = 1;
-        }
+        // Keep BFRES external-resource flags intact. This writer preserves the
+        // game's external string and GPU references, so labelling the payload
+        // as a fully self-contained Toolbox resave makes readers skip the
+        // required external tables and interpret those references as invalid
+        // stream offsets.
+        let source = data.to_vec();
 
         let aligned_size = source
             .len()
@@ -92,11 +90,33 @@ impl MeshCodec {
     fn decompress_loaded(data: &[u8]) -> io::Result<Vec<u8>> {
         MeshCodecBindings::decompress(data)
     }
+
+    fn decompress_pseudo(data: &[u8]) -> io::Result<Vec<u8>> {
+        let flags = data
+            .get(8..12)
+            .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
+            .map(u32::from_le_bytes)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "truncated MCPK header"))?;
+        let size = ((flags >> 5) << (flags & 0xf)) as usize;
+        let mut decompressor = zstd::bulk::Decompressor::new()?;
+        decompressor.set_parameter(zstd::zstd_safe::DParameter::Format(
+            zstd::zstd_safe::FrameFormat::Magicless,
+        ))?;
+        let mut output = decompressor.decompress(&data[12..], size)?;
+        if output.len() > size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "pseudo-MCPK payload exceeds its advertised size",
+            ));
+        }
+        output.resize(size, 0);
+        Ok(output)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MeshCodec, BFRES_EXTERNAL_FLAGS_OFFSET, BFRES_MCPK_RESAVE_FLAG_OFFSET};
+    use super::MeshCodec;
 
     #[test]
     fn magic_gate_rejects_non_mcpk_before_loading() {
@@ -141,10 +161,7 @@ mod tests {
         assert_eq!(((flags >> 5) << (flags & 0xf)) as usize, expected_size);
 
         let decompressed = MeshCodec::decompress(&compressed).unwrap();
-        let mut expected = input;
-        expected[BFRES_EXTERNAL_FLAGS_OFFSET] = 0;
-        expected[BFRES_MCPK_RESAVE_FLAG_OFFSET] = 1;
-        assert_eq!(&decompressed[..expected.len()], expected);
-        assert!(decompressed[expected.len()..].iter().all(|byte| *byte == 0));
+        assert_eq!(&decompressed[..input.len()], input);
+        assert!(decompressed[input.len()..].iter().all(|byte| *byte == 0));
     }
 }

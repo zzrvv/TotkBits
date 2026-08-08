@@ -6,7 +6,7 @@ use crate::{
 use roead::sarc::Sarc;
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     error::Error,
     fmt::{self, Display, Formatter},
     fs,
@@ -26,7 +26,9 @@ const ALIGNMENT: u64 = 0x20;
 pub struct RstbEstimator<'a> {
     zstd: Arc<TotkZstd<'a>>,
     dev_mode: bool,
+    vanilla_romfs: Option<PathBuf>,
     vanilla_sarc_hashes: Option<Arc<HashMap<String, String>>>,
+    pub modified_sarc_entries: HashSet<String>,
     pub entries: HashMap<String, u32>,
 }
 
@@ -35,7 +37,9 @@ impl<'a> RstbEstimator<'a> {
         Self {
             zstd,
             dev_mode: false,
+            vanilla_romfs: None,
             vanilla_sarc_hashes: None,
+            modified_sarc_entries: HashSet::new(),
             entries: HashMap::new(),
         }
     }
@@ -44,13 +48,21 @@ impl<'a> RstbEstimator<'a> {
         Self {
             zstd,
             dev_mode,
+            vanilla_romfs: None,
             vanilla_sarc_hashes: None,
+            modified_sarc_entries: HashSet::new(),
             entries: HashMap::new(),
         }
     }
 
     pub const fn dev_mode(&self) -> bool {
         self.dev_mode
+    }
+
+    /// Uses matching archives from a clean ROMFS to identify unchanged SARC
+    /// members before estimating them.
+    pub fn set_vanilla_romfs(&mut self, romfs: impl AsRef<Path>) {
+        self.vanilla_romfs = Some(romfs.as_ref().to_path_buf());
     }
 
     /// Recursively estimates every regular resource file below `folder`.
@@ -77,6 +89,7 @@ impl<'a> RstbEstimator<'a> {
         }
 
         let mut estimated = HashMap::<String, u32>::new();
+        let mut modified_sarc_entries = HashSet::new();
         for entry in WalkDir::new(root).follow_links(false) {
             let entry = entry.map_err(|error| {
                 RstbEstimateError::new(format!("failed to traverse '{}': {error}", root.display()))
@@ -93,6 +106,13 @@ impl<'a> RstbEstimator<'a> {
                     root.display()
                 ))
             })?;
+            if relative
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("rstb.yaml"))
+            {
+                continue;
+            }
             let resource_path = restbl_entry_path(relative);
             let file_type = infer_totk_file_type(&resource_path);
             if file_type == TotkFileType::Restbl {
@@ -125,18 +145,89 @@ impl<'a> RstbEstimator<'a> {
                     disk_path.display()
                 ))
             })? {
-                if self.vanilla_sarc_hashes.is_none() {
-                    self.vanilla_sarc_hashes = Some(get_sarc_entries_data());
+                if let Some(vanilla_hashes) = self.vanilla_archive_hashes(relative)? {
+                    self.estimate_sarc_entries(
+                        relative,
+                        &sarc_data,
+                        &vanilla_hashes,
+                        &mut estimated,
+                        &mut modified_sarc_entries,
+                    )?;
+                } else {
+                    if self.vanilla_sarc_hashes.is_none() {
+                        self.vanilla_sarc_hashes = Some(get_sarc_entries_data());
+                    }
+                    let vanilla_hashes = self.vanilla_sarc_hashes.as_ref().ok_or_else(|| {
+                        RstbEstimateError::new("failed to initialize the vanilla SARC hash cache")
+                    })?;
+                    self.estimate_sarc_entries(
+                        relative,
+                        &sarc_data,
+                        vanilla_hashes,
+                        &mut estimated,
+                        &mut modified_sarc_entries,
+                    )?;
                 }
-                let vanilla_hashes = self.vanilla_sarc_hashes.as_ref().ok_or_else(|| {
-                    RstbEstimateError::new("failed to initialize the vanilla SARC hash cache")
-                })?;
-                self.estimate_sarc_entries(relative, &sarc_data, vanilla_hashes, &mut estimated)?;
             }
         }
 
         self.entries = estimated;
+        self.modified_sarc_entries = modified_sarc_entries;
         Ok(&self.entries)
+    }
+
+    fn vanilla_archive_hashes(
+        &self,
+        relative_path: &Path,
+    ) -> Result<Option<HashMap<String, String>>, RstbEstimateError> {
+        let Some(romfs) = &self.vanilla_romfs else {
+            return Ok(None);
+        };
+        let source = romfs.join(relative_path);
+        if !source.is_file() {
+            return Ok(None);
+        }
+        let bytes = fs::read(&source).map_err(|error| {
+            RstbEstimateError::new(format!(
+                "failed to read vanilla archive '{}': {error}",
+                source.display()
+            ))
+        })?;
+        let effective = self
+            .effective_data(relative_path, &bytes)
+            .map_err(|error| {
+                RstbEstimateError::new(format!(
+                    "failed to decompress vanilla archive '{}': {error}",
+                    source.display()
+                ))
+            })?;
+        let Some(data) = sarc_payload(&effective).map_err(|error| {
+            RstbEstimateError::new(format!(
+                "failed to read vanilla archive '{}': {error}",
+                source.display()
+            ))
+        })?
+        else {
+            return Err(RstbEstimateError::new(format!(
+                "matching vanilla resource is not a SARC: '{}'",
+                source.display()
+            )));
+        };
+        let sarc = Sarc::new(data).map_err(|error| {
+            RstbEstimateError::new(format!(
+                "failed to parse vanilla SARC '{}': {error}",
+                source.display()
+            ))
+        })?;
+        let hashes = sarc
+            .files()
+            .filter_map(|file| {
+                file.name
+                    .filter(|name| !name.is_empty())
+                    .map(|name| (name.to_owned(), sha256(file.data().to_vec())))
+            })
+            .collect();
+        Ok(Some(hashes))
     }
 
     /// Recursively estimates `folder` and saves the resulting map as
@@ -270,6 +361,7 @@ impl<'a> RstbEstimator<'a> {
         data: &[u8],
         vanilla_hashes: &HashMap<String, String>,
         estimated: &mut HashMap<String, u32>,
+        modified: &mut HashSet<String>,
     ) -> Result<(), RstbEstimateError> {
         let sarc = Sarc::new(data.to_vec()).map_err(|error| {
             RstbEstimateError::new(format!(
@@ -292,6 +384,9 @@ impl<'a> RstbEstimator<'a> {
             }
 
             let resource_path = restbl_entry_path(Path::new(file_name));
+            if vanilla_hashes.contains_key(file_name) {
+                modified.insert(resource_path.clone());
+            }
             let file_type = infer_totk_file_type(&resource_path);
             if file_type == TotkFileType::Restbl {
                 continue;
@@ -795,6 +890,9 @@ impl Error for RstbEstimateError {}
 mod tests {
     use super::RstbEstimator;
     use crate::{
+        file_format::Pack::PackFile,
+        parser::rstb::ResourceSizeTable,
+        tools::items_creator::rstb::ModRstbProcessor,
         TotkConfig::TotkConfig,
         Zstd::{sha256, TotkFileType, TotkZstd, TOTK_ZSTD_COMPRESSION_LEVEL},
     };
@@ -803,7 +901,7 @@ mod tests {
         collections::{BTreeMap, HashMap},
         error::Error,
         fs,
-        path::PathBuf,
+        path::{Path, PathBuf},
         sync::Arc,
         time::{SystemTime, UNIX_EPOCH},
     };
@@ -819,6 +917,66 @@ mod tests {
 
     fn test_estimator() -> RstbEstimator<'static> {
         RstbEstimator::new(test_zstd())
+    }
+
+    #[test]
+    #[ignore = "requires a configured clean ROMFS"]
+    fn real_unmodified_pack_preserves_internal_restbl_values_exactly() -> TestResult {
+        let romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let pack_path = romfs.join("Pack/Actor/Weapon_Lsword_108.pack.zs");
+        if !pack_path.is_file() {
+            return Ok(());
+        }
+        let mut config = TotkConfig::default();
+        config.romfs = romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(TotkZstd::new(
+            Arc::new(config),
+            TOTK_ZSTD_COMPRESSION_LEVEL,
+        )?);
+        let output_romfs = unique_temp_directory()?;
+        fs::create_dir_all(output_romfs.join("Pack/Actor"))?;
+        fs::copy(
+            &pack_path,
+            output_romfs.join("Pack/Actor/Weapon_Lsword_108.pack.zs"),
+        )?;
+        let report = ModRstbProcessor::new(romfs, &output_romfs, zstd.clone()).generate()?;
+        let pack = PackFile::from_binary(&fs::read(&pack_path)?, zstd.clone())?;
+        let clean_rstb_path = romfs.join("System/Resource").join(
+            report
+                .output
+                .file_name()
+                .ok_or("generated RSTB filename is missing")?,
+        );
+        let (clean_raw, _) =
+            zstd.try_decompress_for_path(&clean_rstb_path, &fs::read(&clean_rstb_path)?)?;
+        let clean = ResourceSizeTable::from_bytes(&clean_raw)?;
+        let (generated_raw, _) =
+            zstd.try_decompress_for_path(&report.output, &fs::read(&report.output)?)?;
+        let generated = ResourceSizeTable::from_bytes(&generated_raw)?;
+
+        let mut checked = 0usize;
+        for file in pack.sarc.files() {
+            let Some(name) = file.name() else { continue };
+            let entry = name.replace('\\', "/");
+            let Some(expected) = clean.get(entry.clone()).copied() else {
+                continue;
+            };
+            assert!(!report.entries.contains_key(&entry));
+            assert_eq!(generated.get(entry), Some(&expected));
+            checked += 1;
+            if checked == 20 {
+                break;
+            }
+        }
+        assert_eq!(
+            checked, 20,
+            "not enough internal vanilla RESTBL entries found"
+        );
+        assert!(report
+            .entries
+            .contains_key("Pack/Actor/Weapon_Lsword_108.pack"));
+        fs::remove_dir_all(output_romfs)?;
+        Ok(())
     }
 
     #[test]
@@ -1098,6 +1256,39 @@ mod tests {
         assert!(estimator.entries.keys().all(|path| !path.contains('\\')));
 
         fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn matching_vanilla_archive_skips_unchanged_members_before_estimation() -> TestResult {
+        let parent = unique_temp_directory()?;
+        let clean = parent.join("clean");
+        let output = parent.join("mod");
+        fs::create_dir_all(clean.join("Mals"))?;
+        fs::create_dir_all(output.join("Mals"))?;
+
+        let mut vanilla = SarcWriter::new(Endian::Little);
+        vanilla.add_file("ChallengeMsg/Unchanged.msbt", vec![1; 33]);
+        vanilla.add_file("ChallengeMsg/Changed.msbt", vec![2; 33]);
+        fs::write(clean.join("Mals/Test.sarc"), vanilla.to_binary())?;
+
+        let mut modified = SarcWriter::new(Endian::Little);
+        modified.add_file("ChallengeMsg/Unchanged.msbt", vec![1; 33]);
+        modified.add_file("ChallengeMsg/Changed.msbt", vec![3; 33]);
+        modified.add_file("ChallengeMsg/Custom.msbt", vec![4; 33]);
+        fs::write(output.join("Mals/Test.sarc"), modified.to_binary())?;
+
+        let mut estimator = test_estimator();
+        estimator.set_vanilla_romfs(&clean);
+        estimator.estimate_folder(&output)?;
+
+        assert!(!estimator
+            .entries
+            .contains_key("ChallengeMsg/Unchanged.msbt"));
+        assert!(estimator.entries.contains_key("ChallengeMsg/Changed.msbt"));
+        assert!(estimator.entries.contains_key("ChallengeMsg/Custom.msbt"));
+
+        fs::remove_dir_all(parent)?;
         Ok(())
     }
 

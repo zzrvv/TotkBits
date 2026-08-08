@@ -67,12 +67,15 @@ pub fn inspect_3d_model(
             )
         });
     if let Some(bfres) = internal_bfres {
-        let textures = resolve_bfres_textures(
-            &bfres,
-            Path::new(&path),
-            internal_bfres_data.as_deref(),
-            Path::new(&romfs),
-        );
+        let textures = documents.with(&documentId, |app| {
+            resolve_bfres_textures(
+                &bfres,
+                Path::new(&path),
+                internal_bfres_data.as_deref(),
+                Path::new(&romfs),
+                Some(&app.zstd),
+            )
+        });
         let mut value = serde_json::to_value(bfres).map_err(|error| error.to_string())?;
         if let Some(object) = value.as_object_mut() {
             object.insert(
@@ -128,7 +131,15 @@ pub fn inspect_3d_model(
     } else {
         let bfres = crate::file_format::Model3D::bfres::BfresFile::from_bytes(&data)
             .map_err(|error| error.to_string())?;
-        let textures = resolve_bfres_textures(&bfres, Path::new(&path), None, Path::new(&romfs));
+        let textures = documents.with(&documentId, |app| {
+            resolve_bfres_textures(
+                &bfres,
+                Path::new(&path),
+                None,
+                Path::new(&romfs),
+                Some(&app.zstd),
+            )
+        });
         let mut value = serde_json::to_value(bfres).map_err(|error| error.to_string())?;
         if let Some(object) = value.as_object_mut() {
             object.insert(
@@ -349,6 +360,7 @@ fn resolve_bfres_textures(
     source: &Path,
     source_data: Option<&[u8]>,
     romfs: &Path,
+    zstd: Option<&crate::Zstd::TotkZstd<'_>>,
 ) -> Vec<BfresResolvedTexture> {
     let names: HashSet<&str> = bfres
         .materials
@@ -356,18 +368,64 @@ fn resolve_bfres_textures(
         .flat_map(|material| material.texture_slots.iter().map(|slot| slot.name.as_str()))
         .collect();
     let mut textures = resolve_embedded_bntx_textures(source, source_data, &names);
-    let resolved_names: HashSet<String> = textures
+    let mut resolved_names: HashSet<String> = textures
         .iter()
         .map(|texture| texture.name.to_ascii_lowercase())
         .collect();
-    if !crate::TotkConfig::TotkConfig::check_for_zsdic(romfs) {
-        return textures;
+
+    for root in bfres_textogo_roots(source, romfs) {
+        let files = index_textogo_files(&root);
+        for name in &names {
+            let lowercase_name = name.to_ascii_lowercase();
+            if resolved_names.contains(&lowercase_name) {
+                continue;
+            }
+            let logical_name = lowercase_name
+                .strip_suffix(".txtg")
+                .unwrap_or(&lowercase_name);
+            let Some(path) = files.get(logical_name) else {
+                continue;
+            };
+            let Ok(rendered) =
+                crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
+                    path, 0, 0, 0, zstd,
+                )
+            else {
+                continue;
+            };
+            textures.push(BfresResolvedTexture {
+                name: (*name).to_owned(),
+                path: path.to_string_lossy().into_owned(),
+                source: "textogo".into(),
+                data_url: rendered.data_url,
+                width: rendered.width,
+                height: rendered.height,
+            });
+            resolved_names.insert(lowercase_name);
+        }
     }
-    let root = romfs.join("TexToGo");
-    if !root.is_dir() {
-        return textures;
+    textures.sort_by(|left, right| left.name.cmp(&right.name));
+    textures
+}
+
+fn bfres_textogo_roots(source: &Path, romfs: &Path) -> Vec<std::path::PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(mod_romfs) = source.parent().and_then(Path::parent) {
+        let adjacent = mod_romfs.join("TexToGo");
+        if adjacent.is_dir() {
+            roots.push(adjacent);
+        }
     }
-    let files: HashMap<String, std::path::PathBuf> = std::fs::read_dir(&root)
+
+    let fallback = romfs.join("TexToGo");
+    if fallback.is_dir() && !roots.contains(&fallback) {
+        roots.push(fallback);
+    }
+    roots
+}
+
+fn index_textogo_files(root: &Path) -> HashMap<String, std::path::PathBuf> {
+    std::fs::read_dir(root)
         .into_iter()
         .flatten()
         .filter_map(Result::ok)
@@ -382,32 +440,7 @@ fn resolve_bfres_textures(
                 .or_else(|| file_name.strip_suffix(".txtg"))?;
             Some((logical_name.to_owned(), path))
         })
-        .collect();
-    for name in names {
-        if resolved_names.contains(&name.to_ascii_lowercase()) {
-            continue;
-        }
-        let lowercase_name = name.to_ascii_lowercase();
-        let logical_name = lowercase_name
-            .strip_suffix(".txtg")
-            .unwrap_or(&lowercase_name);
-        let Some(path) = files.get(logical_name) else {
-            continue;
-        };
-        let Ok(rendered) = crate::file_format::Image::ImageDocument::render_path(path) else {
-            continue;
-        };
-        textures.push(BfresResolvedTexture {
-            name: name.to_owned(),
-            path: path.to_string_lossy().into_owned(),
-            source: "textogo".into(),
-            data_url: rendered.data_url,
-            width: rendered.width,
-            height: rendered.height,
-        });
-    }
-    textures.sort_by(|left, right| left.name.cmp(&right.name));
-    textures
+        .collect()
 }
 
 fn resolve_embedded_bntx_textures(

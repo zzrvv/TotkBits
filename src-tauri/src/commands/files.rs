@@ -1,6 +1,5 @@
 use crate::{DocumentState::DocumentState, Open_and_Save::SendData, TotkApp::SaveData};
 use rfd::MessageDialog;
-use std::process;
 use tauri::Manager;
 
 use super::{report_monaco_save_error, show_open_error};
@@ -189,7 +188,7 @@ pub fn close_document(app_handle: tauri::AppHandle, documentId: String) -> bool 
 }
 
 #[tauri::command]
-pub fn exit_app() {
+pub fn exit_app(app_handle: tauri::AppHandle) {
     if MessageDialog::new()
         .set_title("Warning")
         .set_description("The program will be closed, all unsaved progress will be lost. Proceed?")
@@ -197,7 +196,7 @@ pub fn exit_app() {
         .show()
         == rfd::MessageDialogResult::Yes
     {
-        process::exit(0); // Replace 0 with the desired exit code
+        app_handle.exit(0);
     }
 }
 

@@ -172,7 +172,8 @@ fn validate_and_order(
             )));
         }
         if !generated_end {
-            let global = bone_index(bone).unwrap();
+            let global = bone_index(bone)
+                .ok_or_else(|| invalid(format!("FBX armature contains unknown bone {bone}")))?;
             if original
                 .global_to_local_bones
                 .get(global)

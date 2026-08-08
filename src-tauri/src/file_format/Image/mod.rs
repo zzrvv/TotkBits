@@ -6,4 +6,4 @@ pub mod png;
 pub mod raster;
 mod switch_texture;
 
-pub use document::{ImageDocument, RenderedImage};
+pub use document::{BntxReplacementReport, ImageDocument, RenderedImage};

@@ -22,7 +22,7 @@ function MenuBarDisplay({ updateButton = null }) {
     isAddPrompt, setIsAddPrompt,
     activeTab, setActiveTab,
     setPhysicsMergeReturnTab,
-    editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang,
+    editorContainerRef, editorRef, editorValue, setEditorValue, lang, setLang, readOnly,
     statusText, setStatusText, selectedPath, setSelectedPath, labelTextDisplay, setLabelTextDisplay,
     paths, setpaths, isModalOpen, setIsModalOpen, updateEditorContent, changeModal,
     compareData, setCompareData,
@@ -326,8 +326,7 @@ function MenuBarDisplay({ updateButton = null }) {
   const iconSize = '20px';
   const blankIcon = 'menu/blank.png';
   const isSaveEnabled = !['COMPARER', 'AOC_MODELS'].includes(activeTab)
-    && !(activeTab === 'YAML'
-      && editorRef.current?.getOption(monaco.editor.EditorOption.readOnly));
+    && !(activeTab === 'YAML' && readOnly);
 
   const fileMenuItems = [
     { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.png', shortcut: 'Ctrl+O' },

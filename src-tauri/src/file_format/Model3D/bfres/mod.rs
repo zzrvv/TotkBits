@@ -1,10 +1,11 @@
-//! Read-only parser for Nintendo BFRES resource containers.
+//! Parser and conservative name editor for Nintendo BFRES resource containers.
 //!
 //! BFRES stores its object graph as relocated pointers.  This module parses the
 //! container header and inventories the typed resource sections without tying
 //! the result to TotkBits' document/YAML representation.
 
 mod material;
+mod replace;
 mod skeleton;
 
 use rfd::{FileDialog, MessageDialog};
@@ -129,6 +130,256 @@ impl fmt::Display for BfresError {
 impl std::error::Error for BfresError {}
 
 impl BfresFile {
+    /// Replaces model geometry from an FBX while retaining the BFRES resource
+    /// graph, skeleton, materials and all other sections.
+    pub fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u8>, BfresError> {
+        replace::replace_geometry_from_fbx(data, fbx)
+    }
+    /// Renames the first FMDL model and the container's internal BFRES name.
+    ///
+    /// BFRES files keep absolute name pointers. The new `ResString` is placed in
+    /// trailing file padding so all existing sections, geometry, and offsets remain unchanged.
+    pub fn rename_first_model(data: &[u8], new_name: &str) -> Result<Vec<u8>, BfresError> {
+        Self::rename_first_model_and_container(data, new_name, new_name)
+    }
+
+    /// Renames the first FMDL and the top-level BFRES container independently.
+    pub fn rename_first_model_and_container(
+        data: &[u8],
+        model_name: &str,
+        container_name: &str,
+    ) -> Result<Vec<u8>, BfresError> {
+        if !crate::Settings::Magic::is_bfres(data) {
+            return Err(BfresError::new(
+                0,
+                "rename requires an uncompressed BFRES file",
+            ));
+        }
+        if model_name.is_empty()
+            || container_name.is_empty()
+            || model_name.as_bytes().contains(&0)
+            || container_name.as_bytes().contains(&0)
+        {
+            return Err(BfresError::new(
+                0,
+                "BFRES model name must be non-empty and contain no NUL",
+            ));
+        }
+        if [model_name, container_name]
+            .iter()
+            .any(|name| name.len() > 0x1000 || u16::try_from(name.len()).is_err())
+        {
+            return Err(BfresError::new(0, "BFRES model name is too long"));
+        }
+
+        let parsed = Self::from_bytes(data)?;
+        if !matches!(parsed.header.version[2], 8 | 9 | 10) {
+            return Err(BfresError::new(
+                8,
+                "safe name-only serialization supports BFRES versions 8 through 10",
+            ));
+        }
+        let model = parsed
+            .sections_with_signature(b"FMDL")
+            .next()
+            .ok_or_else(|| BfresError::new(0, "BFRES contains no FMDL model"))?;
+        let model_pointer_field = usize::try_from(model.offset)
+            .ok()
+            .and_then(|offset| {
+                offset.checked_add(if parsed.header.version[2] <= 8 { 16 } else { 8 })
+            })
+            .ok_or_else(|| BfresError::new(0, "FMDL name pointer offset overflow"))?;
+        let pointer_size = match parsed.header.target_address_size {
+            4 => 4,
+            8 | 0 => 8,
+            value => {
+                return Err(BfresError::new(
+                    0x0F,
+                    format!("unsupported BFRES pointer size {value}"),
+                ))
+            }
+        };
+        if model_pointer_field + pointer_size > data.len() {
+            return Err(BfresError::new(
+                model_pointer_field,
+                "truncated FMDL name pointer",
+            ));
+        }
+
+        let old_model_pointer = match pointer_size {
+            4 => u32_at(data, model_pointer_field, parsed.header.endian)? as usize,
+            _ => usize::try_from(u64_at(data, model_pointer_field, parsed.header.endian)?)
+                .map_err(|_| BfresError::new(model_pointer_field, "model name pointer overflow"))?,
+        };
+        let old_model_name = model
+            .name
+            .as_deref()
+            .ok_or_else(|| BfresError::new(old_model_pointer, "first FMDL has no name"))?;
+        let internal_pointer = parsed.header.name_offset as usize;
+        let old_internal_name = parsed.name.as_deref();
+        let mut output = data.to_vec();
+
+        // Keep all resource and buffer offsets stable. Growing a string in the
+        // middle of the string pool also requires rewriting non-pointer relative
+        // buffer offsets, which is easy to miss and corrupts vertex streams.
+        // New strings are therefore inserted immediately before _RLT and only
+        // their explicit owners are redirected to the new locations.
+        if let Some(old_internal_name) = old_internal_name {
+            let internal_slot = res_string_slot(data, internal_pointer, old_internal_name)?;
+            let points_to_characters = internal_pointer == internal_slot + 2;
+            let new_slot = append_res_string_before_relocation(&mut output, container_name)?;
+            let new_pointer = new_slot + usize::from(points_to_characters) * 2;
+            write_u32(
+                &mut output,
+                0x10,
+                u32::try_from(new_pointer)
+                    .map_err(|_| BfresError::new(0x10, "container name offset overflow"))?,
+                parsed.header.endian,
+            )?;
+        }
+
+        let shifted = Self::from_bytes(&output)?;
+        let shifted_model = shifted
+            .sections_with_signature(b"FMDL")
+            .next()
+            .ok_or_else(|| BfresError::new(0, "BFRES contains no FMDL model"))?;
+        let shifted_model_pointer_field = shifted_model.offset as usize
+            + if shifted.header.version[2] <= 8 {
+                16
+            } else {
+                8
+            };
+        let shifted_model_pointer = match pointer_size {
+            4 => u32_at(&output, shifted_model_pointer_field, shifted.header.endian)? as usize,
+            _ => u64_at(&output, shifted_model_pointer_field, shifted.header.endian)? as usize,
+        };
+        let model_slot = res_string_slot(&output, shifted_model_pointer, old_model_name)?;
+        let points_to_characters = shifted_model_pointer == model_slot + 2;
+        let new_slot = append_res_string_before_relocation(&mut output, model_name)?;
+        let new_pointer = new_slot + usize::from(points_to_characters) * 2;
+        match pointer_size {
+            4 => write_u32(
+                &mut output,
+                shifted_model_pointer_field,
+                u32::try_from(new_pointer).map_err(|_| {
+                    BfresError::new(shifted_model_pointer_field, "model name offset overflow")
+                })?,
+                shifted.header.endian,
+            )?,
+            _ => write_u64(
+                &mut output,
+                shifted_model_pointer_field,
+                new_pointer as u64,
+                shifted.header.endian,
+            )?,
+        }
+        let model_slot = new_slot;
+
+        let reopened = Self::from_bytes(&output)?;
+        let reopened_model = reopened
+            .sections_with_signature(b"FMDL")
+            .next()
+            .and_then(|section| section.name.as_deref());
+        if reopened_model != Some(model_name)
+            || (parsed.name.is_some() && reopened.name.as_deref() != Some(container_name))
+        {
+            return Err(BfresError::new(
+                model_slot,
+                format!(
+                    "renamed BFRES failed name-pointer validation (model={reopened_model:?}, internal={:?})",
+                    reopened.name
+                ),
+            ));
+        }
+        Ok(output)
+    }
+
+    pub fn rename_first_model_file(
+        source: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+        new_name: &str,
+    ) -> io::Result<()> {
+        let source = fs::read(source)?;
+        let renamed = Self::rename_first_model(&source, new_name).map_err(io::Error::other)?;
+        fs::write(destination, renamed)
+    }
+
+    /// Replaces `base` with `new_name` in every texture slot of every FMAT.
+    /// Shared ResStrings (including resource-dictionary keys) are edited once.
+    pub fn rename_material_texture_slots(
+        data: &[u8],
+        base: &str,
+        new_name: &str,
+    ) -> Result<Vec<u8>, BfresError> {
+        if base.is_empty() {
+            return Err(BfresError::new(0, "texture-name base must not be empty"));
+        }
+        if new_name.as_bytes().contains(&0) {
+            return Err(BfresError::new(0, "texture name must contain no NUL"));
+        }
+        let parsed = Self::from_bytes(data)?;
+        let mut replacements = std::collections::BTreeMap::<usize, (String, String)>::new();
+        for section in parsed.sections_with_signature(b"FMAT") {
+            let material = section.offset as usize;
+            let (names_pointer_offset, count_offset) = match parsed.header.version[2] {
+                0..=8 => (56, 168),
+                9 => (48, 179),
+                _ => (32, 163),
+            };
+            let names =
+                u64_at(data, material + names_pointer_offset, parsed.header.endian)? as usize;
+            let count = data.get(material + count_offset).copied().unwrap_or(0) as usize;
+            for index in 0..count {
+                let pointer_field = names + index * 8;
+                let pointer_value = u64_at(data, pointer_field, parsed.header.endian)?;
+                let pointer = pointer_value as usize;
+                let old = read_string(data, pointer_value).ok_or_else(|| {
+                    BfresError::new(pointer_field, "invalid FMAT texture-name pointer")
+                })?;
+                let new = old.replace(base, new_name);
+                if new == old {
+                    continue;
+                }
+                let slot = res_string_slot(data, pointer, &old)?;
+                if let Some((_, existing)) = replacements.get(&slot) {
+                    if existing != &new {
+                        return Err(BfresError::new(
+                            slot,
+                            "shared texture string has conflicting replacements",
+                        ));
+                    }
+                } else {
+                    replacements.insert(slot, (old, new));
+                }
+            }
+        }
+
+        let expected: Vec<_> = parsed
+            .materials
+            .iter()
+            .flat_map(|material| &material.texture_slots)
+            .map(|slot| slot.name.replace(base, new_name))
+            .collect();
+        let mut output = data.to_vec();
+        for (slot, (old, new)) in replacements {
+            output = redirect_res_string(&output, slot, &old, &new)?;
+        }
+        let reopened = Self::from_bytes(&output)?;
+        let actual: Vec<_> = reopened
+            .materials
+            .iter()
+            .flat_map(|material| &material.texture_slots)
+            .map(|slot| slot.name.clone())
+            .collect();
+        if actual != expected {
+            return Err(BfresError::new(
+                0,
+                "rewritten BFRES texture slots failed validation",
+            ));
+        }
+        Ok(output)
+    }
+
     pub fn open_internal(
         bytes: Vec<u8>,
         path: &str,
@@ -238,13 +489,15 @@ impl BfresFile {
         crate::Open_and_Save::SendData,
     )> {
         let rawdata = fs::read(path).ok()?;
-        let (source, compression) = zstd.try_decompress_all_ordered_safe(&rawdata, path);
-        println!(
-            "[BFRES] open {} compression {:?}, is bfres? {}",
-            path.display(),
-            compression,
-            crate::Settings::Magic::is_bfres(&source)
-        );
+        // Handle MCPK before the generic Zstandard probing. Pseudo-MCPK files
+        // contain a magicless Zstandard payload, so treating them as ordinary
+        // Zstandard can leave the wrapper intact and reject an otherwise valid
+        // BFRES before `from_bytes` gets a chance to parse it.
+        let (source, compression) = if crate::Settings::Magic::is_mcpk(&rawdata) {
+            (zstd.decompress_mcpk(&rawdata).ok()?, ZstdDictionary::Mcpk)
+        } else {
+            zstd.try_decompress_all_ordered_safe(&rawdata, path)
+        };
 
         if !crate::Settings::Magic::is_bfres(&source) {
             return None;
@@ -440,9 +693,10 @@ fn parse_render_graph(
     } else {
         let buffer_info = u64_at(data, 0xB0, endian)? as usize;
         let external_flags = byte_at(data, 0xEE).unwrap_or(0);
+        let mcpk_resave = byte_at(data, 0xEF).unwrap_or(0);
         if buffer_info != 0 && buffer_info + 16 <= data.len() {
             u64_at(data, buffer_info + 8, endian)? as usize
-        } else if external_flags & 1 != 0 {
+        } else if external_flags & 1 != 0 || mcpk_resave != 0 {
             logical_file_size + 288
         } else {
             return Ok(BfresRenderGraph::default());
@@ -991,6 +1245,451 @@ pub(super) fn read_string(data: &[u8], offset: u64) -> Option<String> {
     std::str::from_utf8(bytes).ok().map(str::to_owned)
 }
 
+fn res_string_slot(data: &[u8], pointer: usize, expected: &str) -> Result<usize, BfresError> {
+    let matches = |prefix: usize, characters: usize| {
+        data.get(prefix..prefix + 2)
+            .and_then(|bytes| bytes.try_into().ok())
+            .map(u16::from_le_bytes)
+            == Some(expected.len() as u16)
+            && data.get(characters..characters + expected.len()) == Some(expected.as_bytes())
+    };
+    if matches(pointer, pointer.saturating_add(2)) {
+        return Ok(pointer);
+    }
+    if let Some(prefix) = pointer.checked_sub(2) {
+        if matches(prefix, pointer) {
+            return Ok(prefix);
+        }
+    }
+    Err(BfresError::new(
+        pointer,
+        "name pointer does not reference the expected ResString",
+    ))
+}
+
+fn write_res_string_in_place(
+    data: &mut [u8],
+    offset: usize,
+    capacity: usize,
+    value: &str,
+) -> Result<(), BfresError> {
+    if value.len() > capacity {
+        return Err(BfresError::new(
+            offset,
+            "replacement ResString exceeds its slot",
+        ));
+    }
+    let end = offset
+        .checked_add(2 + capacity)
+        .ok_or_else(|| BfresError::new(offset, "ResString destination overflow"))?;
+    let destination = data
+        .get_mut(offset..end)
+        .ok_or_else(|| BfresError::new(offset, "truncated ResString destination"))?;
+    destination.fill(0);
+    destination[..2].copy_from_slice(&(value.len() as u16).to_le_bytes());
+    destination[2..2 + value.len()].copy_from_slice(value.as_bytes());
+    Ok(())
+}
+
+fn append_res_string_before_relocation(
+    data: &mut Vec<u8>,
+    value: &str,
+) -> Result<usize, BfresError> {
+    let parsed = BfresFile::from_bytes(data)?;
+    let relocation = parsed.header.relocation_table_offset as usize;
+    if data.get(relocation..relocation.saturating_add(4)) != Some(b"_RLT") {
+        return Err(BfresError::new(
+            relocation,
+            "BFRES relocation table is missing",
+        ));
+    }
+    let mut encoded = Vec::with_capacity(value.len() + 9);
+    encoded.extend_from_slice(&(value.len() as u16).to_le_bytes());
+    encoded.extend_from_slice(value.as_bytes());
+    encoded.push(0);
+    while encoded.len() % 8 != 0 {
+        encoded.push(0);
+    }
+    let added = encoded.len();
+    data.splice(relocation..relocation, encoded);
+    let new_relocation = relocation
+        .checked_add(added)
+        .ok_or_else(|| BfresError::new(relocation, "relocation offset overflow"))?;
+    let new_file_size = parsed
+        .header
+        .file_size
+        .checked_add(
+            u32::try_from(added)
+                .map_err(|_| BfresError::new(relocation, "appended BFRES string is too large"))?,
+        )
+        .ok_or_else(|| BfresError::new(0x1C, "BFRES file size overflow"))?;
+    write_u32(
+        data,
+        0x18,
+        u32::try_from(new_relocation)
+            .map_err(|_| BfresError::new(0x18, "relocation offset overflow"))?,
+        parsed.header.endian,
+    )?;
+    write_u32(data, 0x1C, new_file_size, parsed.header.endian)?;
+    write_u32(
+        data,
+        new_relocation + 4,
+        u32::try_from(new_relocation)
+            .map_err(|_| BfresError::new(new_relocation + 4, "relocation offset overflow"))?,
+        parsed.header.endian,
+    )?;
+    Ok(relocation)
+}
+
+fn redirect_res_string(
+    data: &[u8],
+    slot: usize,
+    old_value: &str,
+    new_value: &str,
+) -> Result<Vec<u8>, BfresError> {
+    let slot = res_string_slot(data, slot, old_value)?;
+    if old_value.len() == new_value.len() {
+        let mut output = data.to_vec();
+        write_res_string_in_place(&mut output, slot, old_value.len(), new_value)?;
+        return Ok(output);
+    }
+    let parsed = BfresFile::from_bytes(data)?;
+    let old_relocation = parsed.header.relocation_table_offset as usize;
+    let relocation = parse_relocation_layout(data, old_relocation, parsed.header.endian)?;
+    let mut owners = Vec::new();
+    for field in relocation.pointer_fields {
+        let pointer = u64_at(data, field, parsed.header.endian)? as usize;
+        if pointer == slot || pointer == slot + 2 {
+            owners.push((field, pointer == slot + 2));
+        }
+    }
+    if owners.is_empty() {
+        return Err(BfresError::new(
+            slot,
+            "ResString has no relocated pointer owner",
+        ));
+    }
+    let mut output = data.to_vec();
+    let new_slot = append_res_string_before_relocation(&mut output, new_value)?;
+    let added = output
+        .len()
+        .checked_sub(data.len())
+        .ok_or_else(|| BfresError::new(slot, "BFRES size unexpectedly decreased"))?;
+    for (field, points_to_characters) in owners {
+        let shifted_field = if field >= old_relocation {
+            field
+                .checked_add(added)
+                .ok_or_else(|| BfresError::new(field, "pointer field overflow"))?
+        } else {
+            field
+        };
+        write_u64(
+            &mut output,
+            shifted_field,
+            (new_slot + usize::from(points_to_characters) * 2) as u64,
+            parsed.header.endian,
+        )?;
+    }
+    Ok(output)
+}
+
+fn replace_res_string(
+    data: &[u8],
+    slot: usize,
+    old_value: &str,
+    new_value: &str,
+) -> Result<Vec<u8>, BfresError> {
+    let verified_slot = res_string_slot(data, slot, old_value)?;
+    if verified_slot != slot {
+        return Err(BfresError::new(slot, "ResString slot changed unexpectedly"));
+    }
+    if old_value.len() == new_value.len() {
+        let mut output = data.to_vec();
+        write_res_string_in_place(&mut output, slot, old_value.len(), new_value)?;
+        return Ok(output);
+    }
+
+    let parsed = BfresFile::from_bytes(data)?;
+    let old_end = slot
+        .checked_add(2 + old_value.len())
+        .ok_or_else(|| BfresError::new(slot, "old ResString end overflow"))?;
+    let replacement_len = 2 + new_value.len();
+    let delta = replacement_len as i64 - (2 + old_value.len()) as i64;
+    let old_relocation = parsed.header.relocation_table_offset as usize;
+    if old_end > old_relocation {
+        return Err(BfresError::new(
+            slot,
+            "cannot resize a name inside the relocation table",
+        ));
+    }
+
+    // Switch Toolbox rebuilds the ResFile through NintenTools, which regenerates
+    // this table. For a name-only edit we can preserve the file byte-for-byte and
+    // use the same table as the authoritative list of pointer fields instead.
+    let relocation = parse_relocation_layout(data, old_relocation, parsed.header.endian)?;
+    let mut pointer_updates = Vec::new();
+    for &field in &relocation.pointer_fields {
+        let value = u64_at(data, field, parsed.header.endian)?;
+        if value >= old_end as u64 && value < parsed.header.file_size as u64 {
+            pointer_updates.push((field, shifted_u64(value, delta, field)?));
+        }
+    }
+
+    let mut replacement = Vec::with_capacity(replacement_len);
+    replacement.extend_from_slice(&(new_value.len() as u16).to_le_bytes());
+    replacement.extend_from_slice(new_value.as_bytes());
+    let mut output = Vec::with_capacity((data.len() as i64 + delta) as usize);
+    output.extend_from_slice(&data[..slot]);
+    output.extend_from_slice(&replacement);
+    output.extend_from_slice(&data[old_end..]);
+
+    for (old_field, value) in pointer_updates {
+        let field = shifted_position(old_field, old_end, delta)?;
+        write_u64(&mut output, field, value, parsed.header.endian)?;
+    }
+
+    let update_offset = |field: usize| -> Result<u32, BfresError> {
+        let value = u32_at(data, field, parsed.header.endian)?;
+        if value >= old_end as u32 && value < parsed.header.file_size {
+            shifted_u32(value, delta, field)
+        } else {
+            Ok(value)
+        }
+    };
+    write_u32(
+        &mut output,
+        0x10,
+        update_offset(0x10)?,
+        parsed.header.endian,
+    )?;
+    write_u32(
+        &mut output,
+        0x18,
+        shifted_u32(parsed.header.relocation_table_offset, delta, 0x18)?,
+        parsed.header.endian,
+    )?;
+    write_u32(
+        &mut output,
+        0x1C,
+        shifted_u32(parsed.header.file_size, delta, 0x1C)?,
+        parsed.header.endian,
+    )?;
+    let pool_start = parsed.header.string_pool_offset as usize;
+    let pool_end = pool_start.saturating_add(parsed.header.string_pool_size as usize);
+    let pool_size = if slot >= pool_start && old_end <= pool_end {
+        shifted_u32(parsed.header.string_pool_size, delta, 0x20)?
+    } else {
+        parsed.header.string_pool_size
+    };
+    write_u32(&mut output, 0x20, pool_size, parsed.header.endian)?;
+    write_u32(
+        &mut output,
+        0x24,
+        update_offset(0x24)?,
+        parsed.header.endian,
+    )?;
+
+    let new_relocation = shifted_position(old_relocation, old_end, delta)?;
+    for section in &relocation.sections {
+        let new_position = if section.position as usize >= old_end {
+            shifted_u32(section.position, delta, section.position_field)?
+        } else {
+            section.position
+        };
+        let section_end = section.position as usize + section.size as usize;
+        let new_size = if slot >= section.position as usize && old_end <= section_end {
+            shifted_u32(section.size, delta, section.size_field)?
+        } else {
+            section.size
+        };
+        write_u32(
+            &mut output,
+            shifted_position(section.position_field, old_end, delta)?,
+            new_position,
+            parsed.header.endian,
+        )?;
+        write_u32(
+            &mut output,
+            shifted_position(section.size_field, old_end, delta)?,
+            new_size,
+            parsed.header.endian,
+        )?;
+    }
+    for entry in &relocation.entries {
+        let new_position = if entry.position as usize >= old_end {
+            shifted_u32(entry.position, delta, entry.position_field)?
+        } else {
+            entry.position
+        };
+        write_u32(
+            &mut output,
+            shifted_position(entry.position_field, old_end, delta)?,
+            new_position,
+            parsed.header.endian,
+        )?;
+    }
+    let rlt_self_field = new_relocation + 4;
+    if output.get(rlt_self_field.saturating_sub(4)..rlt_self_field) == Some(b"_RLT") {
+        write_u32(
+            &mut output,
+            rlt_self_field,
+            u32::try_from(new_relocation)
+                .map_err(|_| BfresError::new(rlt_self_field, "relocation offset overflow"))?,
+            parsed.header.endian,
+        )?;
+    } else {
+        return Err(BfresError::new(
+            new_relocation,
+            "shifted BFRES relocation table is missing",
+        ));
+    }
+    Ok(output)
+}
+
+#[derive(Debug)]
+struct RelocationSectionLayout {
+    position_field: usize,
+    size_field: usize,
+    position: u32,
+    size: u32,
+}
+
+#[derive(Debug)]
+struct RelocationEntryLayout {
+    position_field: usize,
+    position: u32,
+}
+
+#[derive(Debug)]
+struct RelocationLayout {
+    sections: Vec<RelocationSectionLayout>,
+    entries: Vec<RelocationEntryLayout>,
+    pointer_fields: Vec<usize>,
+}
+
+fn parse_relocation_layout(
+    data: &[u8],
+    offset: usize,
+    endian: Endian,
+) -> Result<RelocationLayout, BfresError> {
+    if data.get(offset..offset + 4) != Some(b"_RLT") {
+        return Err(BfresError::new(offset, "BFRES relocation table is missing"));
+    }
+    let section_count = u32_at(data, offset + 8, endian)? as usize;
+    if section_count == 0 || section_count > 64 {
+        return Err(BfresError::new(
+            offset + 8,
+            "invalid relocation section count",
+        ));
+    }
+    let section_table = offset + 16;
+    let entry_table = section_table
+        .checked_add(section_count * 24)
+        .ok_or_else(|| BfresError::new(offset, "relocation section table overflow"))?;
+    let mut sections = Vec::with_capacity(section_count);
+    let mut total_entries = 0usize;
+    for index in 0..section_count {
+        let base = section_table + index * 24;
+        let position_field = base + 8;
+        let size_field = base + 12;
+        let entry_index = u32_at(data, base + 16, endian)? as usize;
+        let entry_count = u32_at(data, base + 20, endian)? as usize;
+        total_entries = total_entries.max(
+            entry_index
+                .checked_add(entry_count)
+                .ok_or_else(|| BfresError::new(base + 20, "relocation entry count overflow"))?,
+        );
+        sections.push(RelocationSectionLayout {
+            position_field,
+            size_field,
+            position: u32_at(data, position_field, endian)?,
+            size: u32_at(data, size_field, endian)?,
+        });
+    }
+    if total_entries > data.len().saturating_sub(entry_table) / 8 {
+        return Err(BfresError::new(entry_table, "truncated relocation entries"));
+    }
+    let mut entries = Vec::with_capacity(total_entries);
+    let mut pointer_fields = Vec::new();
+    for index in 0..total_entries {
+        let base = entry_table + index * 8;
+        let position = u32_at(data, base, endian)?;
+        let struct_count = u16_at(data, base + 4, endian)? as usize;
+        let offset_count = data[base + 6] as usize;
+        let padding_count = data[base + 7] as usize;
+        if struct_count == 0 || offset_count == 0 {
+            return Err(BfresError::new(base, "invalid relocation entry dimensions"));
+        }
+        let stride = (offset_count + padding_count)
+            .checked_mul(8)
+            .ok_or_else(|| BfresError::new(base, "relocation stride overflow"))?;
+        for structure in 0..struct_count {
+            let first = position as usize + structure * stride;
+            for pointer in 0..offset_count {
+                let field = first + pointer * 8;
+                if field + 8 > offset {
+                    return Err(BfresError::new(
+                        field,
+                        "relocated pointer lies outside data section",
+                    ));
+                }
+                pointer_fields.push(field);
+            }
+        }
+        entries.push(RelocationEntryLayout {
+            position_field: base,
+            position,
+        });
+    }
+    pointer_fields.sort_unstable();
+    pointer_fields.dedup();
+    Ok(RelocationLayout {
+        sections,
+        entries,
+        pointer_fields,
+    })
+}
+
+fn shifted_position(position: usize, threshold: usize, delta: i64) -> Result<usize, BfresError> {
+    if position < threshold {
+        return Ok(position);
+    }
+    usize::try_from(position as i128 + delta as i128)
+        .map_err(|_| BfresError::new(position, "shifted file position is out of range"))
+}
+
+fn shifted_u64(value: u64, delta: i64, offset: usize) -> Result<u64, BfresError> {
+    u64::try_from(value as i128 + delta as i128)
+        .map_err(|_| BfresError::new(offset, "shifted 64-bit offset is out of range"))
+}
+
+fn shifted_u32(value: u32, delta: i64, offset: usize) -> Result<u32, BfresError> {
+    u32::try_from(value as i64 + delta)
+        .map_err(|_| BfresError::new(offset, "shifted 32-bit offset is out of range"))
+}
+
+fn write_u32(data: &mut [u8], offset: usize, value: u32, endian: Endian) -> Result<(), BfresError> {
+    let bytes = match endian {
+        Endian::Little => value.to_le_bytes(),
+        Endian::Big => value.to_be_bytes(),
+    };
+    data.get_mut(offset..offset + 4)
+        .ok_or_else(|| BfresError::new(offset, "truncated u32 destination"))?
+        .copy_from_slice(&bytes);
+    Ok(())
+}
+
+fn write_u64(data: &mut [u8], offset: usize, value: u64, endian: Endian) -> Result<(), BfresError> {
+    let bytes = match endian {
+        Endian::Little => value.to_le_bytes(),
+        Endian::Big => value.to_be_bytes(),
+    };
+    data.get_mut(offset..offset + 8)
+        .ok_or_else(|| BfresError::new(offset, "truncated u64 destination"))?
+        .copy_from_slice(&bytes);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -998,6 +1697,32 @@ mod tests {
     #[test]
     fn rejects_non_bfres_data() {
         assert!(BfresFile::from_bytes(b"not a bfres file").is_err());
+    }
+
+    #[test]
+    fn opens_generated_weapon_pseudo_mcpk() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tmp/test_sic/romfs/Model/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc");
+        if !path.is_file() {
+            return;
+        }
+        let parsed = BfresFile::from_path(&path)
+            .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+        serde_json::to_value(&parsed).expect("generated BFRES must serialize for the 3D viewer");
+        assert!(!parsed.render.meshes.is_empty());
+        assert!(parsed.render.meshes.iter().all(|mesh| {
+            usize::from(mesh.material_index) < parsed.materials.len()
+                && mesh
+                    .positions
+                    .iter()
+                    .flatten()
+                    .all(|component| component.is_finite())
+        }));
+        let zstd = Arc::new(TotkZstd::dictionaryless(
+            Arc::new(crate::TotkConfig::TotkConfig::default()),
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+        ));
+        assert!(BfresFile::open(&path, zstd).is_some());
     }
 
     #[test]
@@ -1166,6 +1891,239 @@ mod tests {
             parsed += 1;
         }
         assert!(parsed > 0, "BFRES corpus is empty");
+    }
+
+    #[test]
+    fn renames_first_model_and_internal_name_without_changing_geometry() {
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bfres");
+        if !corpus.is_dir() {
+            return;
+        }
+        let new_name = "Custom_Sword_900";
+        let mut tested = 0;
+        for entry in fs::read_dir(corpus).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|value| value.to_str()) != Some("bfres") {
+                continue;
+            }
+            let source = fs::read(&path).unwrap();
+            let before = BfresFile::from_bytes(&source).unwrap();
+            let first_model = before
+                .sections_with_signature(b"FMDL")
+                .next()
+                .expect("fixture has no FMDL");
+            let pointer_field =
+                first_model.offset as usize + if before.header.version[2] <= 8 { 16 } else { 8 };
+            let pointer_size = match before.header.target_address_size {
+                4 => 4,
+                _ => 8,
+            };
+            let model_string = match pointer_size {
+                4 => u32_at(&source, pointer_field, before.header.endian).unwrap() as usize,
+                _ => u64_at(&source, pointer_field, before.header.endian).unwrap() as usize,
+            };
+            let model_string_start =
+                res_string_slot(&source, model_string, first_model.name.as_deref().unwrap())
+                    .unwrap();
+            let before_relocation = parse_relocation_layout(
+                &source,
+                before.header.relocation_table_offset as usize,
+                before.header.endian,
+            )
+            .unwrap();
+            let before_model_references = before_relocation
+                .pointer_fields
+                .iter()
+                .filter(|field| {
+                    let target = u64_at(&source, **field, before.header.endian).unwrap() as usize;
+                    target == model_string_start || target == model_string_start + 2
+                })
+                .count();
+            let renamed = BfresFile::rename_first_model(&source, new_name)
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            let after = BfresFile::from_bytes(&renamed).unwrap();
+
+            assert_eq!(after.name.as_deref(), Some(new_name), "{}", path.display());
+            assert_eq!(
+                after
+                    .sections_with_signature(b"FMDL")
+                    .next()
+                    .and_then(|section| section.name.as_deref()),
+                Some(new_name),
+                "{}",
+                path.display()
+            );
+            let after_model_pointer = match pointer_size {
+                4 => u32_at(&renamed, pointer_field, after.header.endian).unwrap() as usize,
+                _ => u64_at(&renamed, pointer_field, after.header.endian).unwrap() as usize,
+            };
+            assert_eq!(after_model_pointer, model_string_start);
+            let after_model_string_start =
+                res_string_slot(&renamed, after_model_pointer, new_name).unwrap();
+            let after_relocation = parse_relocation_layout(
+                &renamed,
+                after.header.relocation_table_offset as usize,
+                after.header.endian,
+            )
+            .unwrap();
+            let after_model_references = after_relocation
+                .pointer_fields
+                .iter()
+                .filter(|field| {
+                    let target = u64_at(&renamed, **field, after.header.endian).unwrap() as usize;
+                    target == after_model_string_start || target == after_model_string_start + 2
+                })
+                .count();
+            assert!(
+                before_model_references >= 2,
+                "{} model name is not referenced by both FMDL and dictionary",
+                path.display()
+            );
+            assert_eq!(
+                after_model_references,
+                before_model_references,
+                "{} lost a relocated model-name reference",
+                path.display()
+            );
+            assert_eq!(after.render.bones.len(), before.render.bones.len());
+            assert_eq!(after.render.meshes.len(), before.render.meshes.len());
+            assert!(after.render.meshes.iter().zip(&before.render.meshes).all(
+                |(after, before)| after.name == before.name
+                    && after.positions.len() == before.positions.len()
+                    && after.indices == before.indices
+            ));
+            assert_eq!(
+                after.materials,
+                before.materials,
+                "{} materials changed",
+                path.display()
+            );
+            assert_eq!(
+                after
+                    .sections
+                    .iter()
+                    .map(|section| (section.signature, section.offset))
+                    .collect::<Vec<_>>(),
+                before
+                    .sections
+                    .iter()
+                    .map(|section| (section.signature, section.offset))
+                    .collect::<Vec<_>>(),
+                "{} section layout changed",
+                path.display()
+            );
+
+            let expected_delta = 2 * new_name.len() as isize
+                - first_model.name.as_deref().unwrap().len() as isize
+                - before.name.as_deref().unwrap().len() as isize;
+            assert_eq!(
+                renamed.len() as isize,
+                source.len() as isize + expected_delta
+            );
+            tested += 1;
+        }
+        assert_eq!(tested, 7, "unexpected BFRES fixture count");
+    }
+
+    #[test]
+    fn resizes_bfres_names_by_exact_length_difference() {
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bfres");
+        if !corpus.is_dir() {
+            return;
+        }
+        let names = ["X", "Custom_Sword_Model_900"];
+        let mut tested = 0;
+        for entry in fs::read_dir(corpus).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|value| value.to_str()) != Some("bfres") {
+                continue;
+            }
+            let source = fs::read(&path).unwrap();
+            let before = BfresFile::from_bytes(&source).unwrap();
+            let old_model_len = before
+                .sections_with_signature(b"FMDL")
+                .next()
+                .and_then(|section| section.name.as_deref())
+                .unwrap()
+                .len();
+            let old_internal_len = before.name.as_deref().unwrap().len();
+            for name in names {
+                let renamed = BfresFile::rename_first_model(&source, name)
+                    .unwrap_or_else(|error| panic!("{} ({name}): {error}", path.display()));
+                let after = BfresFile::from_bytes(&renamed).unwrap();
+                let expected_delta =
+                    2 * name.len() as isize - old_model_len as isize - old_internal_len as isize;
+                assert_eq!(
+                    renamed.len() as isize,
+                    source.len() as isize + expected_delta,
+                    "{} ({name})",
+                    path.display()
+                );
+                assert_eq!(after.name.as_deref(), Some(name));
+                assert_eq!(
+                    after
+                        .sections_with_signature(b"FMDL")
+                        .next()
+                        .and_then(|section| section.name.as_deref()),
+                    Some(name)
+                );
+                assert_eq!(after.materials, before.materials);
+                assert_eq!(after.render.bones.len(), before.render.bones.len());
+                assert_eq!(after.render.meshes.len(), before.render.meshes.len());
+                assert!(after.render.meshes.iter().zip(&before.render.meshes).all(
+                    |(after, before)| after.name == before.name
+                        && after.positions.len() == before.positions.len()
+                        && after.indices == before.indices
+                ));
+            }
+            tested += 1;
+        }
+        assert_eq!(tested, 7, "unexpected BFRES fixture count");
+    }
+
+    #[test]
+    fn renames_material_texture_slots_without_changing_geometry() {
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/bfres");
+        if !corpus.is_dir() {
+            return;
+        }
+        let mut tested = 0;
+        for entry in fs::read_dir(corpus).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|value| value.to_str()) != Some("bfres") {
+                continue;
+            }
+            let source = fs::read(&path).unwrap();
+            let before = BfresFile::from_bytes(&source).unwrap();
+            let Some(base) = before
+                .materials
+                .iter()
+                .flat_map(|material| &material.texture_slots)
+                .map(|slot| slot.name.clone())
+                .next()
+            else {
+                continue;
+            };
+            let custom = "Custom_Texture_900";
+            let renamed = BfresFile::rename_material_texture_slots(&source, &base, custom)
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            let after = BfresFile::from_bytes(&renamed).unwrap();
+            assert!(after
+                .materials
+                .iter()
+                .flat_map(|material| &material.texture_slots)
+                .any(|slot| slot.name == custom));
+            assert_eq!(after.render.bones, before.render.bones);
+            assert_eq!(after.render.matrix_to_bone, before.render.matrix_to_bone);
+            assert!(after.render.meshes.iter().zip(&before.render.meshes).all(
+                |(after, before)| after.name == before.name
+                    && after.positions.len() == before.positions.len()
+                    && after.indices == before.indices
+            ));
+            assert_eq!(after.materials.len(), before.materials.len());
+            tested += 1;
+        }
+        assert!(tested > 0, "BFRES corpus has no material textures");
     }
 
     #[test]

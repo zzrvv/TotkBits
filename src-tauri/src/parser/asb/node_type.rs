@@ -46,14 +46,37 @@ impl NodeType {
         self as u16
     }
     pub fn from_u16(value: u16) -> io::Result<Self> {
-        if !(1..=25).contains(&value) {
-            return Err(io::Error::new(
+        match value {
+            1 => Ok(Self::FloatSelector),
+            2 => Ok(Self::StringSelector),
+            3 => Ok(Self::SkeletalAnimation),
+            4 => Ok(Self::State),
+            5 => Ok(Self::Unknown2),
+            6 => Ok(Self::OneDimensionalBlender),
+            7 => Ok(Self::Sequential),
+            8 => Ok(Self::IntSelector),
+            9 => Ok(Self::Simultaneous),
+            10 => Ok(Self::Event),
+            11 => Ok(Self::MaterialAnimation),
+            12 => Ok(Self::FrameController),
+            13 => Ok(Self::DummyAnimation),
+            14 => Ok(Self::RandomSelector),
+            15 => Ok(Self::Unknown4),
+            16 => Ok(Self::PreviousTagSelector),
+            17 => Ok(Self::BonePositionSelector),
+            18 => Ok(Self::BoneAnimation),
+            19 => Ok(Self::InitialFrame),
+            20 => Ok(Self::BoneBlender),
+            21 => Ok(Self::BoolSelector),
+            22 => Ok(Self::Alert),
+            23 => Ok(Self::SubtractAnimation),
+            24 => Ok(Self::ShapeAnimation),
+            25 => Ok(Self::Unknown7),
+            _ => Err(io::Error::new(
                 ErrorKind::InvalidData,
                 format!("invalid ASB node type {value}"),
-            ));
+            )),
         }
-        // NodeType is contiguous and has a stable u16 representation in ASB.
-        Ok(unsafe { std::mem::transmute::<u8, Self>(value as u8) })
     }
     pub fn name(self) -> &'static str {
         match self {

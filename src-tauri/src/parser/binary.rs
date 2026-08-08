@@ -233,6 +233,13 @@ impl BinaryWriter {
             endian,
         }
     }
+    pub fn from_vec(data: Vec<u8>, endian: Endian) -> Self {
+        Self {
+            data,
+            position: 0,
+            endian,
+        }
+    }
     pub fn position(&self) -> usize {
         self.position
     }
