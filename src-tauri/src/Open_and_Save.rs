@@ -88,16 +88,14 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
     }
 
     if Magic::is_byml(&rawdata) {
-        if let Ok(file_data) = BymlFile::byml_data_to_bytes(&rawdata, zstd.clone()) {
-            if let Ok(byml_file) = BymlFile::from_binary(file_data, zstd.clone(), path.clone()) {
-                let text = byml_file.to_string();
-                internal_file.endian = byml_file.endian;
-                internal_file.path = Pathlib::new(path.clone());
-                internal_file.file_type = byml_file.file_data.file_type.clone();
-                internal_file.byml = Some(byml_file);
-                internal_file.compression = compression;
-                return Some((internal_file, text));
-            }
+        if let Ok(byml_file) = BymlFile::from_binary(&rawdata, zstd.clone(), path.clone()) {
+            let text = byml_file.to_string();
+            internal_file.endian = byml_file.endian;
+            internal_file.path = Pathlib::new(path.clone());
+            internal_file.file_type = byml_file.file_data.file_type;
+            internal_file.byml = Some(byml_file);
+            internal_file.compression = compression;
+            return Some((internal_file, text));
         }
         println!("Unable to parse named BYML archive entry {path}");
         return None;
@@ -156,8 +154,6 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
 
     None
 }
-
-
 
 pub fn check_if_save_in_romfs(dest_file: &str, zstd: Arc<TotkZstd>) -> bool {
     if !dest_file.is_empty() {
@@ -644,8 +640,6 @@ mod remembered_compression_tests {
         assert_eq!(TotkZstd::decompress_yaz0(&compressed).unwrap(), raw);
     }
 }
-
-
 
 pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
     path: P,

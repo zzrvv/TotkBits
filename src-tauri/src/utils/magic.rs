@@ -92,12 +92,14 @@ impl Magic {
             TotkFileType::Archive
         } else if Self::is_bars(data) {
             TotkFileType::Bars
-        } else if Self::is_mcpk(data) || Self::is_zstd(data) || Self::is_yaz0(data) {
+        } else if Self::is_compressed(data) {
             TotkFileType::Compressed
         } else if Self::is_g1m(data) {
             TotkFileType::G1M
         } else if Self::is_fbx(data) {
             TotkFileType::Fbx
+        } else if Self::is_valid_utf8(data) {
+            TotkFileType::Text
         } else if Self::is_bwav(data)
             || Self::is_bfwav(data)
             || Self::is_amta(data)
@@ -107,6 +109,41 @@ impl Magic {
         } else {
             TotkFileType::None
         }
+    }
+
+    pub fn magic_to_str(data: &[u8]) -> String {
+        let mut remaining = &data[..data.len().min(8)];
+        let mut result = String::new();
+
+        while !remaining.is_empty() {
+            match std::str::from_utf8(remaining) {
+                Ok(text) => {
+                    result.push_str(text);
+                    break;
+                }
+                Err(error) => {
+                    let valid_len = error.valid_up_to();
+
+                    // Append the valid UTF-8 prefix.
+                    if valid_len > 0 {
+                        // SAFETY: `valid_up_to()` guarantees this prefix is valid UTF-8.
+                        result.push_str(unsafe {
+                            std::str::from_utf8_unchecked(&remaining[..valid_len])
+                        });
+                    }
+
+                    // Format each invalid byte as 0xAA.
+                    let invalid_len = error.error_len().unwrap_or(remaining.len() - valid_len);
+                    for byte in &remaining[valid_len..valid_len + invalid_len] {
+                        result.push_str(&format!("0x{byte:02X}"));
+                    }
+
+                    remaining = &remaining[valid_len + invalid_len..];
+                }
+            }
+        }
+
+        result
     }
 
     pub fn from_file<P: AsRef<Path>>(path: P) -> TotkFileType {
@@ -121,6 +158,14 @@ impl Magic {
         Self::from_binary(&data)
     }
 
+    pub fn is_valid_utf8(data: &[u8]) -> bool {
+        std::str::from_utf8(data).is_ok()
+    }
+
+    #[inline]
+    pub fn is_compressed(data: &[u8]) -> bool {
+        Self::is_mcpk(data) || Self::is_zstd(data) || Self::is_yaz0(data)
+    }
     #[inline]
     pub fn is_byml(data: &[u8]) -> bool {
         data.starts_with(b"BY") || data.starts_with(b"YB")

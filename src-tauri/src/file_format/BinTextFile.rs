@@ -86,8 +86,11 @@ impl<'a> BymlFile<'_> {
 #[allow(dead_code, unused_variables, unused_assignments)]
 impl<'a> BymlFile<'_> {
     pub fn new<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<BymlFile<'a>> {
-        let data = BymlFile::byml_file_to_bytes(path.as_ref(), zstd.clone()).ok()?;
-        BymlFile::from_binary(data, zstd, path.as_ref()).ok()
+        let file_data = BymlFile::byml_file_to_bytes(path.as_ref(), zstd.clone()).ok()?;
+        let mut byml = BymlFile::from_binary(&file_data.data, zstd, path.as_ref()).ok()?;
+        byml.file_type = file_data.file_type;
+        byml.file_data = file_data;
+        Some(byml)
     }
 
     pub fn save(&self, path: String) -> io::Result<()> {
@@ -134,20 +137,30 @@ impl<'a> BymlFile<'_> {
     }
 
     pub fn from_binary<P: AsRef<Path>>(
-        data: FileData,
+        data: &[u8],
         zstd: Arc<TotkZstd<'a>>,
         full_path: P,
     ) -> io::Result<BymlFile<'a>> {
-        let pio = Byml::from_binary(&data.data);
-        let file_type = data.file_type;
+        let endian = BymlFile::get_endiannes(data).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "BYML data does not begin with YB or BY magic",
+            )
+        })?;
+        let pio = Byml::from_binary(data);
         match pio {
             Ok(ok_pio) => Ok(BymlFile {
-                endian: BymlFile::get_endiannes(&data.data),
-                file_data: data,
+                endian: Some(endian),
+                file_data: FileData {
+                    file_type: TotkFileType::Byml,
+                    data: data.to_vec(),
+                    compression: None,
+                    yaz0_alignment: 0,
+                },
                 path: Pathlib::new(full_path),
                 pio: ok_pio,
-                zstd: zstd.clone(),
-                file_type: file_type,
+                zstd,
+                file_type: TotkFileType::Byml,
             }),
             Err(_err) => {
                 return Err(io::Error::new(
@@ -167,7 +180,7 @@ impl<'a> BymlFile<'_> {
         return roead::Endian::Little;
     }
 
-    pub fn get_endiannes(data: &Vec<u8>) -> Option<roead::Endian> {
+    pub fn get_endiannes(data: &[u8]) -> Option<roead::Endian> {
         if Magic::is_byml_big_endian(data) {
             return Some(roead::Endian::Big);
         }

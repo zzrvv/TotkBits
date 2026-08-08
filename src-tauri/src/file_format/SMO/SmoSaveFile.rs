@@ -73,13 +73,10 @@ impl<'a> SmoSaveFile<'a> {
             ));
         }
         let header = data[0..SMO_HEADER_SIZE].to_vec();
-        let file_data = FileData {
-            file_type: TotkFileType::SmoSaveFile,
-            data: data[SMO_HEADER_SIZE..].to_vec(),
-            compression: None,
-            yaz0_alignment: 0,
-        };
-        let byml_file = BymlFile::from_binary(file_data, zstd.clone(), path.as_ref())?;
+        let mut byml_file =
+            BymlFile::from_binary(&data[SMO_HEADER_SIZE..], zstd.clone(), path.as_ref())?;
+        byml_file.file_type = TotkFileType::SmoSaveFile;
+        byml_file.file_data.file_type = TotkFileType::SmoSaveFile;
         if let Some(endian) = byml_file.endian {
             if endian != roead::Endian::Little {
                 return Err(io::Error::new(

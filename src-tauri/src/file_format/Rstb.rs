@@ -146,7 +146,7 @@ pub struct Restbl<'a> {
 }
 
 impl<'a> Restbl<'_> {
-    fn to_json(&self) -> io::Result<String> {
+    pub(crate) fn to_json(&self) -> io::Result<String> {
         table_to_json(&self.table, &self.hash_table)
     }
 
@@ -279,11 +279,13 @@ impl<'a> Restbl<'_> {
         Ok(res)
     }
 
-    pub fn from_path<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'_>>) -> Option<Restbl> {
-        let mut f_handle = File::open(&path).ok()?;
-        let mut buffer = Vec::new();
-        f_handle.read_to_end(&mut buffer).ok()?;
-        let (buffer, compression) = zstd.try_decompress_all_ordered_safe(&buffer, &path);
+    pub fn from_binary<P: AsRef<Path>>(
+        data: &[u8],
+        zstd: Arc<TotkZstd<'a>>,
+        path: P,
+    ) -> Option<Restbl<'a>> {
+        let path = path.as_ref();
+        let (buffer, compression) = zstd.try_decompress_all_ordered_safe(data, path);
         if !Magic::is_restbl(&buffer) {
             return None; //invalid rstb
         }
@@ -295,14 +297,14 @@ impl<'a> Restbl<'_> {
                 // let hash_table = get_rstb_data().unwrap_or_default();
 
                 let mut new_restbl = Restbl {
-                    path: Pathlib::new(&path),
+                    path: Pathlib::new(path),
                     zstd: zstd.clone(),
                     table: t,
                     hash_table: Default::default(),
                     compression: (compression != ZstdDictionary::None).then_some(compression),
                 };
                 //TODO: check if self function works
-                new_restbl.hash_table = new_restbl.get_restb_entries(&path).unwrap_or_default();
+                new_restbl.hash_table = new_restbl.get_restb_entries(path).unwrap_or_default();
                 return Some(new_restbl);
             }
             Err(err) => {
@@ -312,6 +314,12 @@ impl<'a> Restbl<'_> {
         }
         // return Err(io::Error::new(io::ErrorKind::InvalidData, ""));
         None
+    }
+
+    pub fn from_path<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<Restbl<'a>> {
+        let path = path.as_ref();
+        let buffer = fs::read(path).ok()?;
+        Self::from_binary(&buffer, zstd, path)
     }
 
     pub fn save_default(&mut self) -> io::Result<()> {

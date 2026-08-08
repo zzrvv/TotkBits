@@ -382,6 +382,9 @@ impl<'a> TotkZstd<'_> {
         data: &[u8],
         file_path: impl AsRef<Path>,
     ) -> (Vec<u8>, ZstdDictionary) {
+        if !Magic::is_compressed(&data) {
+            return (data.to_vec(), ZstdDictionary::None);
+        }
         let res = self
             .try_decompress_all_ordered(&data, file_path.as_ref())
             .unwrap_or((data.to_vec(), ZstdDictionary::None));

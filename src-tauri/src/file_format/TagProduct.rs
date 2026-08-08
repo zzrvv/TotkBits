@@ -82,12 +82,14 @@ impl<'a> TagProduct<'a> {
         zstd: Arc<TotkZstd<'a>>,
     ) -> Option<Self> {
         let file_data = BymlFile::byml_data_to_bytes(data, zstd.clone()).ok()?;
-        let byml = BymlFile::from_binary(
-            file_data,
+        let mut byml = BymlFile::from_binary(
+            &file_data.data,
             zstd,
             path.as_ref().to_string_lossy().into_owned(),
         )
         .ok()?;
+        byml.file_type = file_data.file_type;
+        byml.file_data = file_data;
         let mut tag_product = TagProduct {
             byml,
             path_list: Vec::new(),

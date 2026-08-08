@@ -10,6 +10,7 @@ mod Comparer;
 mod DocumentState;
 mod InternalFile;
 mod LookupData;
+mod TotkFile;
 // mod InternalFile_EX;
 mod NestedSarc;
 mod Open_and_Save;
