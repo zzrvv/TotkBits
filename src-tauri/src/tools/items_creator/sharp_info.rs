@@ -19,7 +19,13 @@ pub fn generate_weapon_sharp_info(
     zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<PathBuf> {
     super::assets::ensure_output_outside_romfs(clean_romfs, output_romfs)?;
-    let source = clean_romfs.join(SHARP_INFO_PATH);
+    let output = output_romfs.join(SHARP_INFO_PATH);
+    let clean_source = clean_romfs.join(SHARP_INFO_PATH);
+    let source = if output.is_file() {
+        &output
+    } else {
+        &clean_source
+    };
     let mut file = BymlFile::new(&source, zstd.clone())
         .ok_or_else(|| invalid_data("invalid clean SharpInfo table"))?;
     let rows = sharp_info_rows_mut(&mut file.pio)?;
@@ -50,7 +56,6 @@ pub fn generate_weapon_sharp_info(
     rows.push(row);
     rows.sort_by(|left, right| row_actor(left).cmp(&row_actor(right)));
 
-    let output = output_romfs.join(SHARP_INFO_PATH);
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
     }

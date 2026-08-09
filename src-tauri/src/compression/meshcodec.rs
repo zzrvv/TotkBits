@@ -50,18 +50,10 @@ impl MeshCodec {
     /// Reproduces Switch Toolbox's "fake" MeshCodec compression: an MCPK
     /// header followed by a dictionaryless, magicless ZSTD frame.
     pub fn compress(data: &[u8]) -> io::Result<Vec<u8>> {
-        // Keep BFRES external-resource flags intact. This writer preserves the
-        // game's external string and GPU references, so labelling the payload
-        // as a fully self-contained Toolbox resave makes readers skip the
-        // required external tables and interpret those references as invalid
-        // stream offsets.
-        let mut source = data.to_vec();
-        if source.get(..4) == Some(b"FRES") && source.len() >= 0x20 {
-            let logical_size = u32::from_le_bytes(source[0x1c..0x20].try_into().unwrap()) as usize;
-            if logical_size <= source.len() {
-                source.truncate(logical_size);
-            }
-        }
+        // BFRES external strings, buffers, and GPU data can live beyond the
+        // header's logical file_size. Compress the complete supplied allocation;
+        // truncating to file_size makes otherwise valid models lose their meshes.
+        let source = data;
 
         let aligned_size = source
             .len()
@@ -78,7 +70,7 @@ impl MeshCodec {
         })?;
         let flags = ((aligned_size >> 12) << 5) + 12;
 
-        let compressed = BfresZstd155::compress(&source)?;
+        let compressed = BfresZstd155::compress(source)?;
 
         let mut output = Vec::with_capacity(12 + compressed.len());
         output.extend_from_slice(MCPK_MAGIC);

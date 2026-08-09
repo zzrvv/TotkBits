@@ -86,11 +86,16 @@ impl WeaponMessageRequest {
             .filter(|value| !value.trim().is_empty())
             .unwrap_or(&description);
 
-        let (_, source) = super::version::discover_product_file(
+        let (_, clean_source) = super::version::discover_product_file(
             &clean_romfs.join("Mals"),
             US_ENGLISH_MALS_PREFIX,
             US_ENGLISH_MALS_SUFFIX,
         )?;
+        let source = if output.is_file() {
+            output.to_path_buf()
+        } else {
+            clean_source
+        };
         let compressed = fs::read(&source)?;
         let pack = PackFile::from_binary(&compressed, zstd.clone())?;
         let mut replacements = BTreeMap::new();

@@ -209,7 +209,7 @@ impl WeaponSpec {
         let output = output_romfs
             .join("Pack/Actor")
             .join(format!("{}.pack.zs", self.actor_name));
-        let generated_policy;
+        let mut generated_policy;
         let policy = if self.actor_pack == actor_pack::ActorPackPolicy::default() {
             let mut parameters = self.weapon_parameters.clone();
             parameters.model_name = Some(self.effective_model_name().to_owned());
@@ -231,6 +231,30 @@ impl WeaponSpec {
                     parameters,
                 )?
             };
+            let attachment_source = format!(
+                "Component/AttachmentParam/{}.game__component__AttachmentParam.bgyml",
+                self.template_actor
+            );
+            let template_pack = self.clean_actor_pack_entries(clean_romfs, zstd.clone())?;
+            if !template_pack.contains(&attachment_source) {
+                let attachment_output = format!(
+                    "Component/AttachmentParam/{}.game__component__AttachmentParam.bgyml",
+                    self.actor_name
+                );
+                generated_policy
+                    .renames
+                    .retain(|rename| rename.from != attachment_source);
+                generated_policy.parameter_edits.retain(|edit| {
+                    edit.file != attachment_output
+                        && !(edit.file
+                            == format!("Actor/{}.engine__actor__ActorParam.bgyml", self.actor_name)
+                            && edit.path
+                                == [
+                                    actor_pack::BymlPathComponent::Key("Components".into()),
+                                    actor_pack::BymlPathComponent::Key("AttachmentRef".into()),
+                                ])
+                });
+            }
             &generated_policy
         } else {
             &self.actor_pack
@@ -249,6 +273,22 @@ impl WeaponSpec {
             zstd,
         )?;
         Ok(output)
+    }
+
+    fn clean_actor_pack_entries(
+        &self,
+        clean_romfs: &Path,
+        zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
+    ) -> io::Result<std::collections::BTreeSet<String>> {
+        let source = clean_romfs
+            .join("Pack/Actor")
+            .join(format!("{}.pack.zs", self.template_actor));
+        let pack = crate::file_format::Pack::PackFile::from_binary(&fs::read(source)?, zstd)?;
+        Ok(pack
+            .sarc
+            .files()
+            .filter_map(|file| file.name().map(str::to_owned))
+            .collect())
     }
 
     /// Generates the weapon RSDB rows, including optional vendor buying/selling prices.
@@ -947,6 +987,336 @@ mod tests {
         rstb::ModRstbProcessor::new(clean_romfs, &output_romfs, zstd)
             .generate()
             .expect("generate RSTB");
+    }
+
+    #[test]
+    #[ignore = "writes the expanded real-ROMFS test_sic item matrix"]
+    fn generates_expanded_test_sic_item_matrix() {
+        use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
+        use std::sync::Arc;
+
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        if !clean_romfs.is_dir() {
+            return;
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/test_sic/multi");
+        if root.is_dir() {
+            fs::remove_dir_all(&root).expect("remove previous expanded test_sic matrix");
+        }
+        fs::create_dir_all(&root).expect("create expanded test_sic matrix");
+        let output_romfs = root.join("romfs");
+        fs::create_dir_all(&output_romfs).expect("create shared multi-item ROMFS");
+
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(
+            crate::Zstd::TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL)
+                .expect("load ROMFS dictionaries"),
+        );
+        let vendor = serde_json::json!({
+            "actor_name": "Npc_TripMaster_00",
+            "buying_price": 500,
+            "selling_price": 125,
+            "quantity": 3
+        });
+        let cases = [
+            (
+                "Weapon_Bow_900",
+                "bow",
+                "Weapon_Bow_001",
+                "Moonwhistle Bow",
+                "A pale bow that hums whenever its arrows pass beneath starlight.",
+            ),
+            (
+                "Weapon_Bow_901",
+                "bow",
+                "Weapon_Bow_002",
+                "Brambleflash Bow",
+                "Twisted forest fibers snap forward with the sound of a summer storm.",
+            ),
+            (
+                "Weapon_Shield_900",
+                "shield",
+                "Weapon_Shield_001",
+                "Cloudglass Shield",
+                "A mirrored shield said to hold a tiny piece of the morning sky.",
+            ),
+            (
+                "Weapon_Shield_901",
+                "shield",
+                "Weapon_Shield_002",
+                "Mossback Guard",
+                "Ancient wood and living moss soften blows with surprising strength.",
+            ),
+            (
+                "Weapon_Sword_900",
+                "small_sword",
+                "Weapon_Sword_070",
+                "Comet Needle",
+                "A nimble blade forged from metal gathered after a brilliant meteor shower.",
+            ),
+            (
+                "Weapon_Sword_901",
+                "small_sword",
+                "Weapon_Sword_001",
+                "Cinderleaf Saber",
+                "Its leaf-shaped edge leaves a warm orange trail through the air.",
+            ),
+            (
+                "Weapon_Spear_900",
+                "spear",
+                "Weapon_Spear_001",
+                "Riverstar Pike",
+                "Blue lacquer guides rainwater along the shaft and toward its silver point.",
+            ),
+            (
+                "Weapon_Spear_901",
+                "spear",
+                "Weapon_Spear_002",
+                "Thunderreed Lance",
+                "A flexible reed core lets this lance bend before striking like lightning.",
+            ),
+        ];
+
+        let mut all_inputs = Vec::new();
+        for (index, (actor, kind, template, display_name, description)) in
+            cases.into_iter().enumerate()
+        {
+            let weapon_parameters = match (kind, template) {
+                ("bow" | "shield", _) | (_, "Weapon_Sword_070") => serde_json::json!({
+                    "base_attack": 18 + index as i32,
+                    "max_life": 24 + index as i32
+                }),
+                _ => serde_json::json!({
+                    "base_attack": 18 + index as i32,
+                    "max_life": 24 + index as i32,
+                    "additional_damage": 5 + index as i32,
+                    "shield_bash_damage": 7 + index as i32
+                }),
+            };
+            let input = serde_json::json!({
+                "actor_name": actor,
+                "kind": kind,
+                "template_actor": template,
+                "model_name": actor,
+                "weapon_parameters": weapon_parameters,
+                "display_name": display_name,
+                "description": description,
+                "assets": {},
+                "vendors": [vendor.clone()]
+            });
+            all_inputs.push(input.clone());
+            let input_text = serde_json::to_string_pretty(&input).unwrap();
+            let spec = WeaponSpec::from_json(&input_text).expect("parse case input");
+            spec.validate(&root).expect("validate case input");
+            spec.clone_actor_pack(clean_romfs, &output_romfs, zstd.clone())
+                .expect("clone actor pack");
+            assets::WeaponModelAssetsRequest {
+                base_name: template.to_owned(),
+                new_name: actor.to_owned(),
+                model_source: None,
+                model_destination: None,
+                fbx_path: None,
+            }
+            .generate(clean_romfs, &output_romfs, zstd.clone())
+            .expect("generate per-item BFRES and TexToGo assets");
+            for (suffix, source_suffix) in [("", ""), ("_Icon", "_Icon"), ("_Detail", "_Detail")] {
+                let (folder, source_name, destination_name) = if suffix.is_empty() {
+                    (
+                        "UI/Tex/Icon",
+                        format!("{template}.bntx.zs"),
+                        format!("{actor}.bntx.zs"),
+                    )
+                } else {
+                    (
+                        "UI/Tex/PictureBook",
+                        format!("{template}{source_suffix}.bntx.zs"),
+                        format!("{actor}{suffix}.bntx.zs"),
+                    )
+                };
+                assets::WeaponBntxAssetRequest {
+                    texture_source: PathBuf::from(folder).join(source_name),
+                    png_source: None,
+                    new_name: format!("{actor}{suffix}"),
+                    texture_destination: PathBuf::from(folder).join(destination_name),
+                }
+                .generate(clean_romfs, &output_romfs, zstd.clone())
+                .expect("generate per-item BNTX asset");
+            }
+            spec.generate_rsdb(clean_romfs, &output_romfs, zstd.clone())
+                .expect("generate RSDB");
+            if !matches!(kind, "bow" | "shield") && template != "Weapon_Sword_070" {
+                spec.generate_sharp_info(clean_romfs, &output_romfs, zstd.clone())
+                    .expect("generate SharpInfo");
+            }
+            messages::WeaponMessageRequest::from_json(
+                &serde_json::json!({
+                    "actor_name": actor,
+                    "display_name": display_name,
+                    "description": description,
+                    "base_name": display_name,
+                    "attachment_adjective": display_name
+                })
+                .to_string(),
+            )
+            .expect("parse message request")
+            .generate_to_mod_romfs(clean_romfs, &output_romfs, zstd.clone())
+            .expect("generate MALS");
+            gamedata::WeaponGameDataRequest::from_json(
+                &serde_json::json!({
+                    "actor_name": actor,
+                    "picture_book": true,
+                    "inventory_flags": true
+                })
+                .to_string(),
+            )
+            .expect("parse GameData request")
+            .generate(clean_romfs, &output_romfs, zstd.clone())
+            .expect("generate GameData");
+            spec.generate_vendor_pack(clean_romfs, &output_romfs, zstd.clone())
+                .expect("generate vendor pack");
+        }
+        fs::write(
+            root.join("items_creator_input.json"),
+            serde_json::to_string_pretty(&all_inputs).unwrap(),
+        )
+        .expect("write multi-item JSON list");
+        rstb::ModRstbProcessor::new(clean_romfs, &output_romfs, zstd.clone())
+            .generate()
+            .expect("generate one merged RSTB");
+
+        let actor_names: Vec<_> = cases.iter().map(|case| case.0).collect();
+        for actor in &actor_names {
+            assert!(output_romfs
+                .join(format!("Pack/Actor/{actor}.pack.zs"))
+                .is_file());
+            assert!(output_romfs
+                .join(format!("Model/{actor}.{actor}.bfres.mc"))
+                .is_file());
+            assert!(output_romfs
+                .join(format!("UI/Tex/Icon/{actor}.bntx.zs"))
+                .is_file());
+            assert!(output_romfs
+                .join(format!("UI/Tex/PictureBook/{actor}_Icon.bntx.zs"))
+                .is_file());
+            assert!(output_romfs
+                .join(format!("UI/Tex/PictureBook/{actor}_Detail.bntx.zs"))
+                .is_file());
+        }
+
+        let mals_path = output_romfs.join("Mals/USen.Product.121.sarc.zs");
+        let mals = crate::file_format::Pack::PackFile::from_binary(
+            &fs::read(&mals_path).expect("read merged MALS"),
+            zstd.clone(),
+        )
+        .expect("parse merged MALS");
+        let pouch = crate::parser::msbt::Msbt::from_bytes(
+            mals.sarc
+                .get_data("ActorMsg/PouchContent.msbt")
+                .expect("merged pouch messages"),
+        )
+        .expect("parse merged pouch messages");
+        for actor in &actor_names {
+            assert!(pouch
+                .messages
+                .iter()
+                .any(|message| message.label.as_deref() == Some(&format!("{actor}_Name"))));
+        }
+
+        let (_, path) = version::discover_product_file(
+            &output_romfs.join("RSDB"),
+            "ActorInfo.Product.",
+            ".rstbl.byml.zs",
+        )
+        .expect("discover merged ActorInfo");
+        let file = crate::file_format::BinTextFile::BymlFile::new(&path, zstd.clone())
+            .expect("parse merged ActorInfo");
+        let text = file.pio.to_text();
+        for actor in &actor_names {
+            assert!(text.contains(actor), "{path:?} is missing {actor}");
+        }
+        let (_, game_data_path) = version::discover_product_file(
+            &output_romfs.join("GameData"),
+            "GameDataList.Product.",
+            ".byml.zs",
+        )
+        .expect("discover merged GameDataList");
+        assert!(game_data_path.is_file());
+    }
+
+    #[test]
+    #[ignore = "inspects the exact ROMFS Weapon_Bow_001 BFRES"]
+    fn inspects_weapon_bow_001_romfs_bfres() {
+        use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
+        use std::sync::Arc;
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let path = clean_romfs.join("Model/Weapon_Bow_001.Weapon_Bow_001.bfres.mc");
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(
+            crate::Zstd::TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL).unwrap(),
+        );
+        let raw = zstd.decompress_mcpk(&fs::read(&path).unwrap()).unwrap();
+        let bfres = crate::file_format::Model3D::bfres::BfresFile::from_bytes(&raw).unwrap();
+        let fmdl = bfres
+            .sections
+            .iter()
+            .filter(|section| &section.signature == b"FMDL")
+            .count();
+        let fshp = bfres
+            .sections
+            .iter()
+            .filter(|section| &section.signature == b"FSHP")
+            .count();
+        println!(
+            "{} raw={} name={:?} sections={} fmdl={} fshp={} meshes={}",
+            path.display(),
+            raw.len(),
+            bfres.name,
+            bfres.sections.len(),
+            fmdl,
+            fshp,
+            bfres.render.meshes.len()
+        );
+        assert!(!bfres.render.meshes.is_empty());
+        let renamed =
+            crate::file_format::Model3D::bfres::BfresFile::rename_first_model_and_container(
+                &raw,
+                "Weapon_Bow_900",
+                "Weapon_Bow_900.Weapon_Bow_900",
+            )
+            .unwrap();
+        let renamed_parsed =
+            crate::file_format::Model3D::bfres::BfresFile::from_bytes(&renamed).unwrap();
+        println!(
+            "after model rename meshes={}",
+            renamed_parsed.render.meshes.len()
+        );
+        let textures =
+            crate::file_format::Model3D::bfres::BfresFile::rename_material_texture_slots(
+                &renamed,
+                "Weapon_Bow_001",
+                "Weapon_Bow_900",
+            )
+            .unwrap();
+        let textures_parsed =
+            crate::file_format::Model3D::bfres::BfresFile::from_bytes(&textures).unwrap();
+        println!(
+            "after texture rename meshes={}",
+            textures_parsed.render.meshes.len()
+        );
+        assert!(!textures_parsed.render.meshes.is_empty());
+        let compressed = zstd.compress_mcpk(&textures).unwrap();
+        let roundtrip = zstd.decompress_mcpk(&compressed).unwrap();
+        let roundtrip_parsed =
+            crate::file_format::Model3D::bfres::BfresFile::from_bytes(&roundtrip).unwrap();
+        println!(
+            "after MCPK roundtrip raw={}/{} meshes={}",
+            textures.len(),
+            roundtrip.len(),
+            roundtrip_parsed.render.meshes.len()
+        );
+        assert!(!roundtrip_parsed.render.meshes.is_empty());
     }
 
     #[test]

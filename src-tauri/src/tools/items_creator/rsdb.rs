@@ -170,8 +170,14 @@ impl<'a> WeaponRsdbProcessor<'a> {
         let mut outputs = Vec::with_capacity(5);
         for (name, overrides) in tables {
             let destination = output_rsdb.join(&name);
+            let clean_source = clean_rsdb.join(&name);
+            let source = if destination.is_file() {
+                &destination
+            } else {
+                &clean_source
+            };
             Self::clone_rsdb_row(
-                &clean_rsdb.join(&name),
+                source,
                 &destination,
                 &request.template_actor,
                 &request.actor_name,
@@ -181,8 +187,14 @@ impl<'a> WeaponRsdbProcessor<'a> {
             outputs.push(destination);
         }
         let tag_output = output_rsdb.join(&tag_product);
+        let clean_tag = clean_rsdb.join(&tag_product);
+        let tag_source = if tag_output.is_file() {
+            &tag_output
+        } else {
+            &clean_tag
+        };
         Self::clone_tag_entry(
-            &clean_rsdb.join(&tag_product),
+            tag_source,
             &tag_output,
             &request.template_actor,
             &request.actor_name,

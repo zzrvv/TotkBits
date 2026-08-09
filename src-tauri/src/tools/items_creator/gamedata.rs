@@ -87,7 +87,12 @@ impl<'a> GameDataListProcessor<'a> {
         let game_data = self.clean_romfs.join("GameData");
         let (version, source) =
             super::version::discover_product_file(&game_data, PRODUCT_PREFIX, PRODUCT_SUFFIX)?;
-        let mut file = BymlFile::new(&source, self.zstd.clone())
+        let file_name = source
+            .file_name()
+            .ok_or_else(|| invalid_data("GameDataList filename is missing"))?;
+        let output = self.output_romfs.join("GameData").join(file_name);
+        let merge_source = if output.is_file() { &output } else { &source };
+        let mut file = BymlFile::new(merge_source, self.zstd.clone())
             .ok_or_else(|| invalid_data("invalid clean GameDataList"))?;
         let hashes = apply_weapon_flags(
             &mut file.pio,
@@ -97,10 +102,6 @@ impl<'a> GameDataListProcessor<'a> {
         )?;
         verify_hashes(&file.pio, &hashes)?;
 
-        let file_name = source
-            .file_name()
-            .ok_or_else(|| invalid_data("GameDataList filename is missing"))?;
-        let output = self.output_romfs.join("GameData").join(file_name);
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent)?;
         }
