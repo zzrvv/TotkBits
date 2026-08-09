@@ -4,7 +4,7 @@ use fbxcel_dom::{
     v7400::data::mesh::layer::TypedLayerElementHandle,
     v7400::object::{geometry::TypedGeometryHandle, model::TypedModelHandle, TypedObjectHandle},
 };
-use std::{collections::HashMap, io};
+use std::{cell::RefCell, collections::HashMap, io};
 
 #[derive(Debug, Clone)]
 pub struct ImportedMesh {
@@ -13,6 +13,7 @@ pub struct ImportedMesh {
     pub positions: Vec<[f32; 3]>,
     pub normals: Vec<[f32; 3]>,
     pub tangents: Vec<[f32; 4]>,
+    pub bitangents: Vec<[f32; 4]>,
     pub uv_maps: Vec<Vec<[f32; 2]>>,
     pub colors: Vec<Vec<[f32; 4]>>,
     pub bone_indices: Vec<[u16; 8]>,
@@ -125,8 +126,14 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
             .map_err(|error| invalid(error.to_string()))?
             .map(|p| [p.x as f32, p.y as f32, p.z as f32])
             .collect();
+        let polygon_vertex_ordinals = RefCell::new(HashMap::new());
         let triangles = polygons
             .triangulate_each(|_, polygon, output| {
+                let mut polygon_vertex_ordinals = polygon_vertex_ordinals.borrow_mut();
+                for &index in polygon {
+                    let ordinal = polygon_vertex_ordinals.len();
+                    polygon_vertex_ordinals.entry(index).or_insert(ordinal);
+                }
                 if polygon.len() >= 3 {
                     for index in 1..polygon.len() - 1 {
                         output.push([polygon[0], polygon[index], polygon[index + 1]]);
@@ -135,6 +142,7 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
                 Ok(())
             })
             .map_err(|error| invalid(error.to_string()))?;
+        let polygon_vertex_ordinals = polygon_vertex_ordinals.into_inner();
         let mut control_weights = vec![Vec::<(u16, f32)>::new(); control.len()];
         let mut palette_bones = Vec::new();
         for cluster in skins.first().into_iter().flat_map(|skin| skin.clusters()) {
@@ -171,6 +179,8 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
         }
         let mut normal_layer = None;
         let mut uv_layers = Vec::new();
+        let mut color_layers = Vec::new();
+        let mut raw_color_layers = Vec::new();
         for layer in geometry.layers() {
             for entry in layer.layer_element_entries() {
                 match entry
@@ -187,6 +197,35 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
                     TypedLayerElementHandle::Uv(handle) => {
                         uv_layers.push(handle.uv().map_err(|error| invalid(error.to_string()))?)
                     }
+                    TypedLayerElementHandle::Color(handle) => {
+                        if let Ok(layer) = handle.color() {
+                            color_layers.push(layer);
+                        } else {
+                            let node = handle.node();
+                            let direct = child_f64_optional(&node, "Colors")
+                                .ok_or_else(|| invalid("FBX color layer has no Colors array"))?;
+                            if direct.len() % 4 != 0 {
+                                return Err(invalid(
+                                    "FBX Colors array length is not divisible by 4",
+                                ));
+                            }
+                            let direct = direct
+                                .chunks_exact(4)
+                                .map(|value| {
+                                    [
+                                        value[0] as f32,
+                                        value[1] as f32,
+                                        value[2] as f32,
+                                        value[3] as f32,
+                                    ]
+                                })
+                                .collect::<Vec<_>>();
+                            let indices = child_i32_optional(&node, "ColorIndex")
+                                .or_else(|| child_i32_optional(&node, "ColorsIndex"))
+                                .map(<[i32]>::to_vec);
+                            raw_color_layers.push((direct, indices));
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -200,12 +239,13 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
         let mut positions = Vec::with_capacity(corner_count);
         let mut normals = Vec::with_capacity(corner_count);
         let mut uv_maps = vec![Vec::with_capacity(corner_count); uv_layers.len()];
-        let colors = Vec::new();
+        let mut colors =
+            vec![Vec::with_capacity(corner_count); color_layers.len() + raw_color_layers.len()];
         let mut bone_indices = Vec::with_capacity(corner_count);
         let mut bone_weights = Vec::with_capacity(corner_count);
         let mut indices = Vec::with_capacity(corner_count);
         let mut source_control_indices = Vec::with_capacity(corner_count);
-        for triangle_vertex in triangles.triangle_vertex_indices() {
+        for (triangle_corner, triangle_vertex) in triangles.triangle_vertex_indices().enumerate() {
             let control_index = triangles
                 .control_point_index(triangle_vertex)
                 .ok_or_else(|| invalid("polygon index is out of range"))?
@@ -215,11 +255,16 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
             let normal = normal_layer
                 .normal(&triangles, triangle_vertex)
                 .map_err(|error| invalid(error.to_string()))?;
-            let normal = [normal.x as f32, normal.y as f32, normal.z as f32];
+            let mut normal = [normal.x as f32, normal.y as f32, normal.z as f32];
             if !normal.iter().all(|value| value.is_finite())
                 || normal.iter().map(|value| value * value).sum::<f32>() <= f32::EPSILON
             {
                 return Err(invalid(format!("mesh {name} contains an invalid normal")));
+            }
+            let inverse_length = 1.0
+                / (normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]).sqrt();
+            for component in &mut normal {
+                *component *= inverse_length;
             }
             normals.push(normal);
             for (layer, values) in uv_layers.iter().enumerate() {
@@ -231,6 +276,45 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
                 }
                 // FBX uses a bottom-left UV origin while G1M stores V from the top.
                 uv_maps[layer].push([uv.x as f32, 1.0 - uv.y as f32]);
+            }
+            for (layer, values) in color_layers.iter().enumerate() {
+                let color = values
+                    .color(&triangles, triangle_vertex)
+                    .map_err(|error| invalid(error.to_string()))?;
+                colors[layer].push([
+                    color[0] as f32,
+                    color[1] as f32,
+                    color[2] as f32,
+                    color[3] as f32,
+                ]);
+            }
+            for (raw_layer, (direct, color_indices)) in raw_color_layers.iter().enumerate() {
+                let polygon_vertex = if color_indices
+                    .as_ref()
+                    .is_some_and(|indices| indices.len() == control.len())
+                {
+                    control_index
+                } else {
+                    let source = triangles
+                        .polygon_vertex_index(triangle_vertex)
+                        .ok_or_else(|| invalid("triangle vertex has no source polygon vertex"))?;
+                    *polygon_vertex_ordinals
+                        .get(&source)
+                        .ok_or_else(|| invalid("source polygon vertex is out of range"))?
+                };
+                let direct_index = match color_indices {
+                    Some(indices) => *indices.get(polygon_vertex).ok_or_else(|| {
+                        invalid(format!(
+                            "FBX ColorIndex is shorter than its polygon vertex data ({} indices, {} controls, corner {}, control {})",
+                            indices.len(), control.len(), triangle_corner, control_index
+                        ))
+                    })? as usize,
+                    None => polygon_vertex,
+                };
+                let color = direct
+                    .get(direct_index)
+                    .ok_or_else(|| invalid("FBX color index is out of range"))?;
+                colors[color_layers.len() + raw_layer].push(*color);
             }
             let mut influences = control_weights[control_index].clone();
             influences.sort_by(|a, b| b.1.total_cmp(&a.1));
@@ -261,6 +345,7 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
             positions,
             normals,
             tangents: Vec::new(),
+            bitangents: Vec::new(),
             uv_maps,
             colors,
             bone_indices,
@@ -283,47 +368,86 @@ fn import_meshes(data: &[u8], strict_g1m: bool) -> io::Result<ImportedFbx> {
     Ok(ImportedFbx { meshes, bones })
 }
 
-fn calculate_tangents(mesh: &mut ImportedMesh) -> io::Result<()> {
-    struct MikkGeometry<'a> {
-        mesh: &'a ImportedMesh,
-        corner_tangents: Vec<[f32; 4]>,
-    }
-    impl mikktspace::Geometry for MikkGeometry<'_> {
-        fn num_faces(&self) -> usize {
-            self.mesh.indices.len() / 3
-        }
-        fn num_vertices_of_face(&self, _face: usize) -> usize {
-            3
-        }
-        fn position(&self, face: usize, vert: usize) -> [f32; 3] {
-            self.mesh.positions[self.mesh.indices[face * 3 + vert] as usize]
-        }
-        fn normal(&self, face: usize, vert: usize) -> [f32; 3] {
-            self.mesh.normals[self.mesh.indices[face * 3 + vert] as usize]
-        }
-        fn tex_coord(&self, face: usize, vert: usize) -> [f32; 2] {
-            let uv = self.mesh.uv_maps[0][self.mesh.indices[face * 3 + vert] as usize];
-            [uv[0], 1.0 - uv[1]]
-        }
-        fn set_tangent_encoded(&mut self, tangent: [f32; 4], face: usize, vert: usize) {
-            self.corner_tangents[face * 3 + vert] = tangent;
-        }
-    }
+pub(crate) fn calculate_tangents(mesh: &mut ImportedMesh) -> io::Result<()> {
     if mesh.uv_maps.is_empty() {
         return Err(invalid("cannot calculate tangents without UVs"));
     }
-    let mut geometry = MikkGeometry {
-        mesh,
-        corner_tangents: vec![[0.0; 4]; mesh.indices.len()],
+    let mut tangents = vec![[0.0f32; 3]; mesh.positions.len()];
+    let mut bitangents = vec![[0.0f32; 3]; mesh.positions.len()];
+    for face in mesh.indices.chunks_exact(3) {
+        let indices = [face[0] as usize, face[1] as usize, face[2] as usize];
+        let [p1, p2, p3] = indices.map(|index| mesh.positions[index]);
+        let [uv1, uv2, uv3] = indices.map(|index| mesh.uv_maps[0][index]);
+        let edge1 = [p2[0] - p1[0], p2[1] - p1[1], p2[2] - p1[2]];
+        let edge2 = [p3[0] - p1[0], p3[1] - p1[1], p3[2] - p1[2]];
+        let s1 = uv2[0] - uv1[0];
+        let s2 = uv3[0] - uv1[0];
+        let t1 = uv2[1] - uv1[1];
+        let t2 = uv3[1] - uv1[1];
+        let divisor = s1 * t2 - s2 * t1;
+        let reciprocal = 1.0 / divisor;
+        let r = if reciprocal.is_infinite() {
+            1.0
+        } else {
+            reciprocal
+        };
+        let mut tangent = [
+            (t2 * edge1[0] - t1 * edge2[0]) * r,
+            (t2 * edge1[1] - t1 * edge2[1]) * r,
+            (t2 * edge1[2] - t1 * edge2[2]) * r,
+        ];
+        let mut bitangent = [
+            (s1 * edge2[0] - s2 * edge1[0]) * r,
+            (s1 * edge2[1] - s2 * edge1[1]) * r,
+            (s1 * edge2[2] - s2 * edge1[2]) * r,
+        ];
+        if ((uv1[0] - uv2[0]).abs() < 0.00075 && (uv2[0] - uv3[0]).abs() < 0.00075)
+            || ((uv1[1] - uv2[1]).abs() < 0.00075 && (uv2[1] - uv3[1]).abs() < 0.00075)
+        {
+            tangent = [1.0, 0.0, 0.0];
+            bitangent = [0.0, 1.0, 0.0];
+        }
+        for index in indices {
+            for axis in 0..3 {
+                tangents[index][axis] += tangent[axis];
+                bitangents[index][axis] += bitangent[axis];
+            }
+        }
+    }
+    let orthogonal = |value: [f32; 3], normal: [f32; 3]| {
+        let dot = normal[0] * value[0] + normal[1] * value[1] + normal[2] * value[2];
+        let mut result = [
+            value[0] - normal[0] * dot,
+            value[1] - normal[1] * dot,
+            value[2] - normal[2] * dot,
+        ];
+        let length = ((result[0] * result[0] + result[1] * result[1] + result[2] * result[2])
+            as f64)
+            .sqrt() as f32;
+        if length != 0.0 {
+            let scale = 1.0 / length;
+            for value in &mut result {
+                *value *= scale;
+            }
+        }
+        result
     };
-    if !mikktspace::generate_tangents(&mut geometry) {
-        return Err(invalid("MikkTSpace tangent generation failed"));
-    }
-    let mut tangents = vec![[0.0; 4]; mesh.positions.len()];
-    for (corner, &index) in mesh.indices.iter().enumerate() {
-        tangents[index as usize] = geometry.corner_tangents[corner];
-    }
-    mesh.tangents = tangents;
+    mesh.tangents = tangents
+        .iter()
+        .zip(&mesh.normals)
+        .map(|(&value, &normal)| {
+            let v = orthogonal(value, normal);
+            [v[0], v[1], v[2], 1.0]
+        })
+        .collect();
+    mesh.bitangents = bitangents
+        .iter()
+        .zip(&mesh.normals)
+        .map(|(&value, &normal)| {
+            let v = orthogonal(value, normal);
+            [-v[0], -v[1], -v[2], -1.0]
+        })
+        .collect();
     Ok(())
 }
 

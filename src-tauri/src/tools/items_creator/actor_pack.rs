@@ -226,10 +226,16 @@ impl WeaponPackRequest {
         output_pack: &Path,
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<()> {
-        validate_weapon_template_category(clean_romfs, &self.template_actor, zstd.clone())?;
         if self.chemical.is_some() && self.chemical_ref.is_some() {
             return Err(invalid("chemical and chemical_ref cannot both be provided"));
         }
+        validate_weapon_template_category(clean_romfs, &self.template_actor, zstd.clone())?;
+        let shield_bash_damage =
+            if super::rsdb::template_is_shield(clean_romfs, &self.template_actor, zstd.clone())? {
+                None
+            } else {
+                self.shield_bash_damage
+            };
         let mut policy = ActorPackPolicy::standard_weapon_clone(
             &self.template_actor,
             &self.actor_name,
@@ -238,7 +244,7 @@ impl WeaponPackRequest {
                 base_attack: self.base_attack,
                 max_life: self.durability,
                 additional_damage: self.attachment_damage,
-                shield_bash_damage: self.shield_bash_damage,
+                shield_bash_damage,
                 chemical_ref: self.chemical_ref.clone(),
             },
         )?;

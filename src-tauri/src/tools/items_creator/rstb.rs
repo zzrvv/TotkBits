@@ -19,6 +19,8 @@ pub struct RstbGenerationReport {
     pub yaml: PathBuf,
     pub product_version: String,
     pub entries: BTreeMap<String, u32>,
+    /// Modified resources whose freshly estimated value already matches vanilla.
+    pub modified_matching_vanilla: BTreeMap<String, u32>,
 }
 
 pub struct ModRstbProcessor<'a> {
@@ -67,18 +69,15 @@ impl<'a> ModRstbProcessor<'a> {
         let (raw, dictionary) = self.zstd.try_decompress_for_path(&source, &source_bytes)?;
         let mut table = ResourceSizeTable::from_bytes(&raw).map_err(io::Error::other)?;
         let mut entries = BTreeMap::new();
+        let mut modified_matching_vanilla = BTreeMap::new();
         for (path, estimated) in estimated_entries {
             let vanilla = table.get(path.clone()).copied();
-            let Some(value) = changed_mod_value(
-                estimated,
-                vanilla,
-                estimator.modified_sarc_entries.contains(&path),
-            )?
-            else {
+            if vanilla == Some(estimated) {
+                modified_matching_vanilla.insert(path, estimated);
                 continue;
-            };
-            table.set(path.clone(), value);
-            entries.insert(path, value);
+            }
+            table.set(path.clone(), estimated);
+            entries.insert(path, estimated);
         }
         estimator.entries = entries
             .iter()
@@ -115,35 +114,13 @@ impl<'a> ModRstbProcessor<'a> {
             yaml,
             product_version,
             entries,
+            modified_matching_vanilla,
         })
     }
 }
 
 fn invalid_data(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
-}
-
-/// Returns the value that must be written for a mod resource. New resource
-/// paths are always retained. Existing paths are retained only when the safe
-/// estimate exceeds the vanilla allocation; equal or smaller estimates keep
-/// the original table unchanged and are omitted from the review YAML.
-fn changed_mod_value(
-    estimated: u32,
-    vanilla: Option<u32>,
-    modified_binary: bool,
-) -> io::Result<Option<u32>> {
-    if modified_binary {
-        if let Some(original) = vanilla {
-            if estimated <= original {
-                return original
-                    .checked_add(0x20)
-                    .map(Some)
-                    .ok_or_else(|| invalid_data("modified resource RSTB value overflow"));
-            }
-        }
-    }
-    let value = vanilla.map_or(estimated, |original| estimated.max(original));
-    Ok((vanilla != Some(value)).then_some(value))
 }
 
 #[cfg(test)]
@@ -154,16 +131,6 @@ mod tests {
         TotkConfig::TotkConfig,
         Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
     };
-
-    #[test]
-    fn yaml_value_filter_retains_only_custom_or_changed_resources() {
-        assert_eq!(changed_mod_value(120, None, false).unwrap(), Some(120));
-        assert_eq!(changed_mod_value(120, Some(100), false).unwrap(), Some(120));
-        assert_eq!(changed_mod_value(100, Some(100), false).unwrap(), None);
-        assert_eq!(changed_mod_value(80, Some(100), false).unwrap(), None);
-        assert_eq!(changed_mod_value(100, Some(100), true).unwrap(), Some(132));
-        assert_eq!(changed_mod_value(80, Some(100), true).unwrap(), Some(132));
-    }
 
     #[test]
     #[ignore = "requires a configured clean ROMFS"]
@@ -225,5 +192,131 @@ mod tests {
             assert_eq!(table.get(path.clone()), Some(value));
         }
         fs::remove_dir_all(output_romfs).unwrap();
+    }
+
+    #[test]
+    #[ignore = "recalculates the existing tmp/test_sic - Copy mod"]
+    fn recalculate_test_sic_rstb() {
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let output_romfs =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/test_sic - Copy/romfs");
+        assert!(clean_romfs.is_dir(), "clean ROMFS is missing");
+        assert!(
+            output_romfs.is_dir(),
+            "tmp/test_sic - Copy/romfs is missing"
+        );
+
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL).unwrap());
+        let report = ModRstbProcessor::new(clean_romfs, &output_romfs, zstd)
+            .generate()
+            .unwrap();
+
+        println!(
+            "RSTB_CHANGED={}\n{}",
+            report.entries.len(),
+            serde_json::to_string_pretty(&report.entries).unwrap()
+        );
+        println!(
+            "RSTB_MODIFIED_MATCHING_VANILLA={}\n{}",
+            report.modified_matching_vanilla.len(),
+            serde_json::to_string_pretty(&report.modified_matching_vanilla).unwrap()
+        );
+    }
+
+    #[test]
+    #[ignore = "diagnostic comparison of reference and generated test_sic RSTBs"]
+    fn compare_test_sic_rstbs() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let mod_romfs = root.join("test_sic/romfs");
+        let correct_path = root.join(
+            "BotW Weapon Restoration/romfs/System/Resource/ResourceSizeTable.Product.121.rsizetable.zs",
+        );
+        let wrong_path =
+            mod_romfs.join("System/Resource/ResourceSizeTable.Product.121.rsizetable.zs");
+
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL).unwrap());
+        let read_table = |path: &Path| {
+            let bytes = fs::read(path).unwrap();
+            let (raw, _) = zstd.try_decompress_for_path(path, &bytes).unwrap();
+            ResourceSizeTable::from_bytes(&raw).unwrap()
+        };
+        let correct = read_table(&correct_path);
+        let wrong = read_table(&wrong_path);
+        let generated_yaml: BTreeMap<String, u32> =
+            serde_yaml::from_slice(&fs::read(mod_romfs.join("rstb.yaml")).unwrap()).unwrap();
+        let mut paths: Vec<_> = generated_yaml.keys().cloned().collect();
+        paths.sort();
+        let compared = paths.len();
+        let mut differences = 0;
+        for path in paths {
+            let estimated = generated_yaml[&path];
+            let correct_value = correct.get(path.clone()).copied();
+            let wrong_value = wrong.get(path.clone()).copied();
+            if correct_value != wrong_value {
+                differences += 1;
+                println!(
+                    "DIFF {path}\testimate={estimated}\tcorrect={correct_value:?}\tgenerated={wrong_value:?}"
+                );
+            }
+        }
+        println!("MOD_ENTRIES_COMPARED={compared} DIFFERENCES={differences}");
+        assert_eq!(differences, 0, "generated RSTB differs on mod-owned paths");
+    }
+
+    #[test]
+    #[ignore = "estimates the BotW Weapon Restoration mod and writes romfs/rstb.yaml"]
+    fn restoration_mod_estimates_match_shipped_rstb() {
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let mod_romfs =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/BotW Weapon Restoration/romfs");
+        let shipped_path =
+            mod_romfs.join("System/Resource/ResourceSizeTable.Product.121.rsizetable.zs");
+        assert!(clean_romfs.is_dir(), "clean ROMFS is missing");
+        assert!(shipped_path.is_file(), "restoration RSTB is missing");
+
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL).unwrap());
+        let mut estimator = RstbEstimator::new(zstd.clone());
+        estimator.set_vanilla_romfs(clean_romfs);
+        estimator.estimate_folder(&mod_romfs).unwrap();
+        estimator.save_yaml(mod_romfs.join("rstb.yaml")).unwrap();
+
+        let (raw, _) = zstd
+            .try_decompress_for_path(&shipped_path, &fs::read(&shipped_path).unwrap())
+            .unwrap();
+        let shipped = ResourceSizeTable::from_bytes(&raw).unwrap();
+        let differences: BTreeMap<_, _> = estimator
+            .entries
+            .iter()
+            .filter_map(|(path, estimated)| {
+                let expected = shipped.get(path.clone()).copied();
+                (expected != Some(*estimated)).then(|| (path.clone(), (*estimated, expected)))
+            })
+            .collect();
+        let underestimates = differences
+            .values()
+            .filter(|(estimated, expected)| expected.is_some_and(|expected| estimated < &expected))
+            .count();
+        let overestimates = differences.len() - underestimates;
+        println!(
+            "RESTORATION_ENTRIES={} DIFFERENCES={} UNDERESTIMATES={} OVERESTIMATES={}",
+            estimator.entries.len(),
+            differences.len(),
+            underestimates,
+            overestimates
+        );
+        for (path, values) in differences.iter().take(30) {
+            println!("DIFF {path}: {values:?}");
+        }
+        assert_eq!(
+            underestimates, 0,
+            "dynamic estimates must not be smaller than the shipped working RSTB"
+        );
     }
 }

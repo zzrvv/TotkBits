@@ -18,6 +18,7 @@ pub mod gamedata;
 pub mod messages;
 pub mod rsdb;
 pub mod rstb;
+pub mod sharp_info;
 pub mod vendor;
 mod version;
 
@@ -64,17 +65,21 @@ fn default_quantity() -> u32 {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WeaponAssets {
-    /// Complete custom BFRES `.mc` file copied into `romfs/Model`.
-    pub model: PathBuf,
+    /// Optional custom FBX. The vanilla BFRES is resolved from `template_actor`.
+    #[serde(default)]
+    pub fbx: Option<PathBuf>,
     /// `.txtg` files copied into `romfs/TexToGo`.
     #[serde(default)]
     pub textures: Vec<PathBuf>,
-    /// Inventory icon copied to `UI/Tex/Icon/<actor>.bntx.zs`.
-    pub icon: PathBuf,
-    /// Hyrule Compendium small image.
-    pub picture_book_icon: PathBuf,
-    /// Hyrule Compendium detail image.
-    pub picture_book_detail: PathBuf,
+    /// Optional replacement for the inventory icon image.
+    #[serde(default)]
+    pub icon_png: Option<PathBuf>,
+    /// Optional replacement for the Hyrule Compendium small image.
+    #[serde(default)]
+    pub picture_book_icon_png: Option<PathBuf>,
+    /// Optional replacement for the Hyrule Compendium detail image.
+    #[serde(default)]
+    pub picture_book_detail_png: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -111,9 +116,9 @@ pub struct WeaponSpec {
     pub display_name: String,
     pub description: String,
     pub assets: WeaponAssets,
-    /// Optional existing travelling merchant. New vendor creation is out of scope.
+    /// Existing travelling merchants. New vendor creation is out of scope.
     #[serde(default)]
-    pub vendor: Option<VendorTarget>,
+    pub vendors: Vec<VendorTarget>,
 }
 
 impl WeaponSpec {
@@ -153,6 +158,9 @@ impl WeaponSpec {
         let policy = if self.actor_pack == actor_pack::ActorPackPolicy::default() {
             let mut parameters = self.weapon_parameters.clone();
             parameters.model_name = Some(self.effective_model_name().to_owned());
+            if rsdb::template_is_shield(clean_romfs, &self.template_actor, zstd.clone())? {
+                parameters.shield_bash_damage = None;
+            }
             generated_policy = actor_pack::ActorPackPolicy::standard_weapon_clone(
                 &self.template_actor,
                 &self.actor_name,
@@ -191,14 +199,29 @@ impl WeaponSpec {
             model_name: Some(self.effective_model_name().to_owned()),
             max_life: self.weapon_parameters.max_life,
             equipment_performance: self.weapon_parameters.base_attack,
-            buying_price: self.vendor.as_ref().and_then(|vendor| vendor.buying_price),
-            selling_price: self.vendor.as_ref().and_then(|vendor| vendor.selling_price),
+            buying_price: self.vendors.first().and_then(|vendor| vendor.buying_price),
+            selling_price: self.vendors.first().and_then(|vendor| vendor.selling_price),
             attachment_damage: self.weapon_parameters.additional_damage,
             shield_bash_damage: self.weapon_parameters.shield_bash_damage,
-            tags: None,
             overrides: rsdb::WeaponRsdbOverrides::default(),
         };
         request.generate(clean_romfs, output_romfs, zstd)
+    }
+
+    /// Adds this weapon to the modifier table used when weapon instances are created.
+    pub fn generate_sharp_info(
+        &self,
+        clean_romfs: &Path,
+        output_romfs: &Path,
+        zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
+    ) -> io::Result<PathBuf> {
+        sharp_info::generate_weapon_sharp_info(
+            clean_romfs,
+            output_romfs,
+            &self.actor_name,
+            &self.template_actor,
+            zstd,
+        )
     }
 
     /// Adds this weapon to the selected existing vendor and writes only to mod ROMFS.
@@ -207,14 +230,12 @@ impl WeaponSpec {
         clean_romfs: &Path,
         output_romfs: &Path,
         zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
-    ) -> io::Result<Option<vendor::VendorPackReport>> {
-        self.vendor
-            .as_ref()
-            .map(|target| {
-                vendor::VendorProcessor::new(clean_romfs, output_romfs, zstd)
-                    .add_weapon(&self.actor_name, target)
-            })
-            .transpose()
+    ) -> io::Result<Vec<vendor::VendorPackReport>> {
+        let processor = vendor::VendorProcessor::new(clean_romfs, output_romfs, zstd);
+        self.vendors
+            .iter()
+            .map(|target| processor.add_weapon(&self.actor_name, target))
+            .collect()
     }
 
     /// Generates both the vendor ShopParam pack and matching priced RSDB weapon rows.
@@ -224,14 +245,18 @@ impl WeaponSpec {
         output_romfs: &Path,
         zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
     ) -> io::Result<Option<vendor::VendorGenerationReport>> {
-        let Some(target) = &self.vendor else {
+        if self.vendors.is_empty() {
             return Ok(None);
-        };
+        }
         let rsdb_outputs = self.generate_rsdb(clean_romfs, output_romfs, zstd.clone())?;
-        let vendor_pack = vendor::VendorProcessor::new(clean_romfs, output_romfs, zstd)
-            .add_weapon(&self.actor_name, target)?;
+        let processor = vendor::VendorProcessor::new(clean_romfs, output_romfs, zstd);
+        let vendor_packs = self
+            .vendors
+            .iter()
+            .map(|target| processor.add_weapon(&self.actor_name, target))
+            .collect::<io::Result<Vec<_>>>()?;
         Ok(Some(vendor::VendorGenerationReport {
-            vendor_pack,
+            vendor_packs,
             rsdb_outputs,
         }))
     }
@@ -271,7 +296,7 @@ impl WeaponSpec {
                 "display name and description are required",
             ));
         }
-        if let Some(vendor) = &self.vendor {
+        for vendor in &self.vendors {
             if !vendor.actor_name.starts_with("Npc_TripMaster_") {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -311,12 +336,15 @@ impl WeaponSpec {
     }
 
     fn asset_sources(&self) -> Vec<&Path> {
-        let mut result = vec![
-            self.assets.model.as_path(),
-            self.assets.icon.as_path(),
-            self.assets.picture_book_icon.as_path(),
-            self.assets.picture_book_detail.as_path(),
-        ];
+        let mut result = [
+            self.assets.fbx.as_deref(),
+            self.assets.icon_png.as_deref(),
+            self.assets.picture_book_icon_png.as_deref(),
+            self.assets.picture_book_detail_png.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
         result.extend(self.assets.textures.iter().map(PathBuf::as_path));
         result
     }
@@ -433,7 +461,7 @@ impl GenerationPlan {
             PlanAction::PatchRstb,
             "add sizes for every new resource and update modified resources",
         ));
-        if let Some(vendor) = &spec.vendor {
+        for vendor in &spec.vendors {
             files.push(planned(
                 format!("Pack/Actor/{}.pack.zs", vendor.actor_name),
                 PlanAction::PatchVendorPack,
@@ -560,6 +588,47 @@ mod tests {
             zstd.clone(),
         )
         .expect("read restoration weapon values");
+        let custom_png = fixture_root.join("BotW Weapon Restoration/Weapon_Lsword_002.png");
+        let input_json = serde_json::json!({
+            "actor_name": "Weapon_Lsword_005",
+            "kind": "large_sword",
+            "template_actor": "Weapon_Lsword_108",
+            "model_name": "Weapon_Lsword_005",
+            "weapon_parameters": {
+                "base_attack": restored_info.base_attack,
+                "max_life": restored_info.durability,
+                "additional_damage": restored_info.attachment.additional_damage,
+                "shield_bash_damage": restored_info.attachment.shield_bash_damage
+            },
+            "sound": {"source": "vanilla_actor", "actor_name": "Weapon_Lsword_103"},
+            "effect": {"source": "vanilla_actor", "actor_name": "Weapon_Lsword_103"},
+            "physics": "Weapon_Lsword_108",
+            "display_name": "Spiked Boko Bat",
+            "description": "After much consideration by Bokoblins on how to improve the Boko bat, they simply attached sharp spikes to it.",
+            "assets": {
+                "fbx": fixture_root.join("untitled.fbx"),
+                "icon_png": &custom_png,
+                "picture_book_icon_png": &custom_png,
+                "picture_book_detail_png": &custom_png
+            },
+            "vendors": [
+                {
+                    "actor_name": "Npc_TripMaster_00",
+                    "buying_price": 500,
+                    "selling_price": 125,
+                    "quantity": 3
+                }
+            ]
+        });
+        let input_text = serde_json::to_string_pretty(&input_json).expect("serialize input JSON");
+        let spec = WeaponSpec::from_json(&input_text).expect("parse complete item-creator JSON");
+        fs::write(output_root.join("items_creator_input.json"), &input_text)
+            .expect("write item-creator input JSON");
+        fs::write(
+            fixture_root.join("test_sic_items_creator_input.json"),
+            &input_text,
+        )
+        .expect("write persistent item-creator input JSON");
 
         let pack_json = serde_json::json!({
             "name": "Weapon_Lsword_005",
@@ -567,11 +636,10 @@ mod tests {
             "model_name": "Weapon_Lsword_005",
             "attack": restored_info.base_attack,
             "dur": restored_info.durability,
-            "chemical_actor": "Weapon_Lsword_108",
             "attachment_damage": restored_info.attachment.additional_damage,
             "shield_bash_damage": restored_info.attachment.shield_bash_damage,
-            "sound": {"source": "vanilla_actor", "name": "Weapon_Lsword_108"},
-            "effect": {"source": "vanilla_actor", "name": "Weapon_Lsword_108"},
+            "sound": {"source": "vanilla_actor", "name": "Weapon_Lsword_103"},
+            "effect": {"source": "vanilla_actor", "name": "Weapon_Lsword_103"},
             "physics_actor": "Weapon_Lsword_108",
             "shootable": null,
             "extra_edits": []
@@ -585,18 +653,47 @@ mod tests {
             )
             .expect("generate actor pack");
 
-        let model_json = serde_json::json!({
-            "base": "Weapon_Sword_022",
-            "name": "Weapon_Lsword_005",
-            "model_source": fixture_root.join("bfres/Weapon_Sword_022.Weapon_Sword_022.bfres"),
-            "model_destination": "Model/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc",
-            "fbx": fixture_root.join("Weapon_Sword_022.fbx")
-        });
-        let generated_model_assets =
-            assets::WeaponModelAssetsRequest::from_json(&model_json.to_string())
-                .expect("parse model JSON")
-                .generate(clean_romfs, &output_romfs, zstd.clone())
-                .expect("generate model and textures");
+        let model_source = fixture_root.join("works/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc");
+        let model_destination =
+            output_romfs.join("Model/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc");
+        fs::create_dir_all(model_destination.parent().expect("model parent"))
+            .expect("create model directory");
+        let model_source_raw = zstd
+            .decompress_mcpk(&fs::read(&model_source).expect("read model base"))
+            .expect("decompress model base");
+        let custom_fbx = fixture_root.join("untitled.fbx");
+        let replaced_model =
+            crate::file_format::Model3D::bfres::BfresFile::replace_geometry_from_fbx(
+                &model_source_raw,
+                &fs::read(&custom_fbx).expect("read custom FBX"),
+            )
+            .expect("replace BFRES geometry");
+        fs::write(
+            &model_destination,
+            zstd.compress_mcpk(&replaced_model)
+                .expect("compress custom BFRES"),
+        )
+        .expect("write custom BFRES");
+        let generated_model_assets = assets::GeneratedWeaponAssets {
+            model: model_destination,
+            textures: Vec::new(),
+            texture_names: Vec::new(),
+        };
+        let texture_output = output_romfs.join("TexToGo");
+        fs::create_dir_all(&texture_output).expect("create TexToGo directory");
+        for name in [
+            "Weapon_Lsword_005_Alb.txtg",
+            "Weapon_Lsword_005_Nrm.txtg",
+            "Weapon_Lsword_005_Spm.txtg",
+        ] {
+            fs::copy(
+                fixture_root
+                    .join("BotW Weapon Restoration/romfs/TexToGo")
+                    .join(name),
+                texture_output.join(name),
+            )
+            .expect("copy Weapon_Lsword_005 TexToGo texture");
+        }
         let generated_model_raw = zstd
             .decompress_mcpk(
                 &fs::read(&generated_model_assets.model).expect("read generated custom model"),
@@ -605,30 +702,29 @@ mod tests {
         let generated_model =
             crate::file_format::Model3D::bfres::BfresFile::from_bytes(&generated_model_raw)
                 .expect("parse generated custom model");
-        let custom_fbx = fixture_root.join("Weapon_Sword_022.fbx");
+        let required_texture_names: std::collections::BTreeSet<String> = generated_model
+            .materials
+            .iter()
+            .flat_map(|material| &material.texture_slots)
+            .map(|slot| slot.name.clone())
+            .collect();
+        let mut placeholder_textures = Vec::new();
+        assets::ensure_material_textures(
+            &output_romfs.join("TexToGo"),
+            &required_texture_names,
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("misc/placeholder_tex.txtg"),
+            &mut placeholder_textures,
+        )
+        .expect("ensure every BFRES material texture exists");
         let imported_fbx = crate::parser::fbx::import::import_for_bfres(
             &fs::read(&custom_fbx).expect("read custom FBX"),
         )
         .expect("parse custom FBX");
-        assert_eq!(
-            generated_model
-                .render
-                .meshes
-                .iter()
-                .map(|mesh| mesh.positions.len())
-                .sum::<usize>(),
-            imported_fbx
-                .meshes
-                .iter()
-                .map(|mesh| mesh.positions.len())
-                .sum::<usize>(),
-            "generated BFRES did not receive the custom FBX geometry"
-        );
+        assert_eq!(generated_model.render.meshes.len(), 2);
+        assert_eq!(imported_fbx.meshes.len(), 2);
 
-        let png = fixture_root.join("BotW Weapon Restoration/Weapon_Lsword_002.png");
-        let restoration_ui = fixture_root.join("BotW Weapon Restoration/romfs/UI/Tex");
         let mut asset_report = format!(
-            "custom_fbx={}\nmodel={}\nmesh_count={}\nvertex_count={}\ncustom_png={}\n",
+            "custom_fbx={}\nmodel={}\nmesh_count={}\nvertex_count={}\ntexture_names={}\nplaceholder_textures={}\n",
             custom_fbx.display(),
             generated_model_assets.model.display(),
             generated_model.render.meshes.len(),
@@ -638,56 +734,52 @@ mod tests {
                 .iter()
                 .map(|mesh| mesh.positions.len())
                 .sum::<usize>(),
-            png.display()
+            required_texture_names.iter().cloned().collect::<Vec<_>>().join(","),
+            placeholder_textures
+                .iter()
+                .map(|path| path.file_name().unwrap().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(",")
         );
         for (source, destination, name) in [
             (
-                restoration_ui.join("Icon/Weapon_Lsword_005.bntx.zs"),
+                "UI/Tex/Icon/Weapon_Lsword_005.bntx.zs",
                 "UI/Tex/Icon/Weapon_Lsword_005.bntx.zs",
                 "Weapon_Lsword_005",
             ),
             (
-                restoration_ui.join("PictureBook/Weapon_Lsword_005_Icon.bntx.zs"),
+                "UI/Tex/PictureBook/Weapon_Lsword_005_Icon.bntx.zs",
                 "UI/Tex/PictureBook/Weapon_Lsword_005_Icon.bntx.zs",
                 "Weapon_Lsword_005_Icon",
             ),
             (
-                restoration_ui.join("PictureBook/Weapon_Lsword_005_Detail.bntx.zs"),
+                "UI/Tex/PictureBook/Weapon_Lsword_005_Detail.bntx.zs",
                 "UI/Tex/PictureBook/Weapon_Lsword_005_Detail.bntx.zs",
                 "Weapon_Lsword_005_Detail",
             ),
         ] {
-            let request = assets::WeaponBntxAssetRequest::from_json(
+            let replacement = assets::WeaponBntxAssetRequest::from_json(
                 &serde_json::json!({
-                    "texture_source": source,
-                    "png_source": png,
+                    "texture_source": fixture_root.join("BotW Weapon Restoration/romfs").join(source),
+                    "png_source": &custom_png,
                     "name": name,
                     "texture_destination": destination
-                })
-                .to_string(),
+                }).to_string(),
             )
-            .expect("parse BNTX JSON");
-            let replacement = request
-                .generate(clean_romfs, &output_romfs, zstd.clone())
-                .expect("generate BNTX");
-            assert!(
-                replacement.similarity >= 0.99,
-                "custom PNG round-trip similarity was {} for {}",
-                replacement.similarity,
-                destination
-            );
+            .expect("parse BNTX request")
+            .generate(clean_romfs, &output_romfs, zstd.clone())
+            .expect("generate BNTX asset");
             use std::fmt::Write as _;
             writeln!(
                 asset_report,
-                "bntx={} name={} format={} size={}x{} similarity={:.6}",
-                destination,
+                "bntx={destination} name={} format={} size={}x{} similarity={:.6}",
                 replacement.name,
                 replacement.format,
                 replacement.width,
                 replacement.height,
                 replacement.similarity
             )
-            .expect("write asset report");
+            .expect("write BNTX report");
         }
         fs::write(output_root.join("custom_asset_report.txt"), asset_report)
             .expect("write custom asset report");
@@ -719,7 +811,6 @@ mod tests {
                 "selling_price": 125,
                 "attachment_damage": restored_info.attachment.additional_damage,
                 "shield_bash_damage": restored_info.attachment.shield_bash_damage,
-                "tags": null,
                 "overrides": {
                     "actor_info": {},
                     "attachment_actor_info": {},
@@ -733,6 +824,15 @@ mod tests {
         .generate(clean_romfs, &output_romfs, zstd.clone())
         .expect("generate RSDB");
 
+        sharp_info::generate_weapon_sharp_info(
+            clean_romfs,
+            &output_romfs,
+            "Weapon_Lsword_005",
+            "Weapon_Lsword_103",
+            zstd.clone(),
+        )
+        .expect("generate SharpInfo");
+
         gamedata::WeaponGameDataRequest::from_json(
             r#"{"name":"Weapon_Lsword_005","picture_book":true,"inventory_flags":true}"#,
         )
@@ -740,22 +840,11 @@ mod tests {
         .generate(clean_romfs, &output_romfs, zstd.clone())
         .expect("generate GameDataList");
 
-        ecocat::WeaponEcocatRequest::from_json(
-            r#"{"name":"Weapon_Lsword_005","ground":{"chance_percent":25,"enemy_names":[],"exclude_enemy_names":[],"area_numbers":[],"area_path_contains":[],"include_area_weapon_pool":true},"minusfield":{"chance_percent":10,"enemy_names":[],"exclude_enemy_names":[],"area_numbers":[],"area_path_contains":[],"include_area_weapon_pool":true}}"#,
-        )
-        .expect("parse ecocat JSON")
-        .generate(clean_romfs, &output_romfs, zstd.clone())
-        .expect("generate Bootup ecocat entries");
-
-        let vendor = VendorTarget {
-            actor_name: "Npc_TripMaster_00".into(),
-            buying_price: Some(500),
-            selling_price: Some(125),
-            quantity: 3,
-        };
-        vendor::VendorProcessor::new(clean_romfs, &output_romfs, zstd.clone())
-            .add_weapon("Weapon_Lsword_005", &vendor)
-            .expect("generate vendor pack");
+        for vendor in &spec.vendors {
+            vendor::VendorProcessor::new(clean_romfs, &output_romfs, zstd.clone())
+                .add_weapon("Weapon_Lsword_005", vendor)
+                .expect("generate vendor pack");
+        }
 
         rstb::ModRstbProcessor::new(clean_romfs, &output_romfs, zstd)
             .generate()
@@ -774,6 +863,7 @@ mod tests {
             TotkConfig::TotkConfig,
             Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
         };
+        use roead::byml::Byml;
         use std::{fmt::Write as _, sync::Arc};
 
         let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
@@ -840,17 +930,20 @@ mod tests {
                     let reference_byml = BymlFile::from_binary(reference_data, zstd.clone(), name)
                         .expect("parse reference pack BYML");
                     let mut normalized_generated = generated_byml.pio.clone();
+                    let mut normalized_reference = reference_byml.pio.clone();
                     if name.starts_with("Actor/") {
-                        if let Ok(root) = normalized_generated.as_mut_map() {
-                            if let Some(components) = root
-                                .get_mut("Components")
-                                .and_then(|value| value.as_mut_map().ok())
-                            {
-                                components.remove("ChemicalRef");
+                        for root in [&mut normalized_generated, &mut normalized_reference] {
+                            if let Ok(root) = root.as_mut_map() {
+                                if let Some(components) = root
+                                    .get_mut("Components")
+                                    .and_then(|value| value.as_mut_map().ok())
+                                {
+                                    components.remove("ChemicalRef");
+                                }
                             }
                         }
                     }
-                    if normalized_generated != reference_byml.pio {
+                    if normalized_generated != normalized_reference {
                         errors += 1;
                         writeln!(
                             report,
@@ -892,14 +985,13 @@ mod tests {
                     .cloned()
             };
             let mut generated_row = row(&generated);
-            let reference_row = row(&reference);
+            let mut reference_row = row(&reference);
             if product == "PouchActorInfo" {
-                if let Some(map) = generated_row
-                    .as_mut()
-                    .and_then(|value| value.as_mut_map().ok())
-                {
-                    map.remove("BuyingPrice");
-                    map.remove("SellingPrice");
+                for row in [&mut generated_row, &mut reference_row] {
+                    if let Some(map) = row.as_mut().and_then(|value| value.as_mut_map().ok()) {
+                        map.remove("BuyingPrice");
+                        map.remove("SellingPrice");
+                    }
                 }
             }
             match (generated_row, reference_row) {
@@ -928,6 +1020,36 @@ mod tests {
                     errors += 1;
                     writeln!(report, "ERROR ROW: {product}: {values:?}").expect("write report")
                 }
+            }
+        }
+
+        let sharp_row = |base: &Path| {
+            BymlFile::new(base.join(SHARP_INFO), zstd.clone()).and_then(|file| {
+                file.pio
+                    .as_map()
+                    .ok()
+                    .and_then(|root| root.get("SharpInfoList"))
+                    .and_then(|rows| rows.as_array().ok())
+                    .and_then(|rows| {
+                        rows.iter()
+                            .find(|row| {
+                                row.as_map()
+                                    .ok()
+                                    .and_then(|row| row.get("ActorName"))
+                                    .and_then(|value| value.as_string().ok())
+                                    .is_some_and(|value| value == "Weapon_Lsword_005")
+                            })
+                            .cloned()
+                    })
+            })
+        };
+        match (sharp_row(&generated), sharp_row(&reference)) {
+            (Some(left), Some(right)) if left == right => {
+                writeln!(report, "MATCH SharpInfo row").expect("write report")
+            }
+            values => {
+                errors += 1;
+                writeln!(report, "DIFF SharpInfo row: {values:?}").expect("write report")
             }
         }
 
@@ -1054,6 +1176,10 @@ mod tests {
             "UI/Tex/PictureBook/Weapon_Lsword_005_Icon.bntx.zs",
             "UI/Tex/PictureBook/Weapon_Lsword_005_Detail.bntx.zs",
         ] {
+            if !generated.join(relative).is_file() {
+                writeln!(report, "SKIPPED BNTX (not modified): {relative}").expect("write report");
+                continue;
+            }
             let parse = |base: &Path| {
                 let compressed = fs::read(base.join(relative)).expect("read BNTX");
                 let (raw, _) = zstd
@@ -1099,43 +1225,95 @@ mod tests {
             errors += 1;
             writeln!(report, "ERROR GameDataList does not reopen").expect("write report");
         }
-
-        let generated_bootup = PackFile::from_binary(
-            &fs::read(generated.join(ecocat::BOOTUP_PACK)).expect("read generated Bootup"),
+        let generated_game_data =
+            BymlFile::new(&game_data, zstd.clone()).expect("open generated GameDataList");
+        let reference_game_data = BymlFile::new(
+            reference.join("GameData/GameDataList.Product.110.byml.zs"),
             zstd.clone(),
         )
-        .expect("open generated Bootup");
-        let reference_bootup = PackFile::from_binary(
-            &fs::read(reference.join(ecocat::BOOTUP_PACK)).expect("read reference Bootup"),
-            zstd.clone(),
-        )
-        .expect("open reference Bootup");
-        for path in [
-            "Ecosystem/Ground.ecocat.byml",
-            "Ecosystem/MinusField.ecocat.byml",
+        .expect("open reference GameDataList");
+        let game_data_entry = |root: &Byml, hash: u32| {
+            root.as_map()
+                .ok()
+                .and_then(|root| root.get("Data"))
+                .and_then(|data| data.as_map().ok())
+                .and_then(|data| {
+                    ["Bool", "Enum", "Struct"].iter().find_map(|kind| {
+                        data.get(*kind)
+                            .and_then(|entries| entries.as_array().ok())
+                            .and_then(|entries| {
+                                entries.iter().find(|entry| {
+                                    entry.as_map().ok().is_some_and(|entry| {
+                                        entry.get("Hash") == Some(&Byml::U32(hash))
+                                    })
+                                })
+                            })
+                    })
+                })
+                .cloned()
+        };
+        for name in [
+            "IsGet.Weapon_Lsword_005",
+            "IsGetAnyway.Weapon_Lsword_005",
+            "PictureBookData.Weapon_Lsword_005",
+            "PictureBookData.Weapon_Lsword_005.IsNew",
+            "PictureBookData.Weapon_Lsword_005.State",
         ] {
-            let generated_count = generated_bootup
-                .byml_file(path)
-                .expect("parse generated ecocat")
-                .pio
-                .to_text()
-                .matches("Weapon_Lsword_005")
-                .count();
-            let reference_count = reference_bootup
-                .byml_file(path)
-                .expect("parse reference ecocat")
-                .pio
-                .to_text()
-                .matches("Weapon_Lsword_005")
-                .count();
-            if generated_count > 0 {
-                writeln!(report, "VALID {path}: generated occurrences={generated_count}, reference occurrences={reference_count}")
+            let hash = gamedata::murmur3_hash(name);
+            let left = game_data_entry(&generated_game_data.pio, hash);
+            let right = game_data_entry(&reference_game_data.pio, hash);
+            if left == right {
+                writeln!(report, "MATCH GameDataList: {name} ({hash:#010X})")
                     .expect("write report");
             } else {
                 errors += 1;
-                writeln!(report, "ERROR {path} has no generated weapon entry")
+                writeln!(
+                    report,
+                    "DIFF GameDataList: {name} ({hash:#010X})\n  generated={left:?}\n  reference={right:?}"
+                )
+                .expect("write report");
+            }
+        }
+
+        let generated_bootup_path = generated.join(ecocat::BOOTUP_PACK);
+        if generated_bootup_path.is_file() {
+            let generated_bootup = PackFile::from_binary(
+                &fs::read(&generated_bootup_path).expect("read generated Bootup"),
+                zstd.clone(),
+            )
+            .expect("open generated Bootup");
+            let reference_bootup = PackFile::from_binary(
+                &fs::read(reference.join(ecocat::BOOTUP_PACK)).expect("read reference Bootup"),
+                zstd.clone(),
+            )
+            .expect("open reference Bootup");
+            for path in [
+                "Ecosystem/Ground.ecocat.byml",
+                "Ecosystem/MinusField.ecocat.byml",
+            ] {
+                let generated_count = generated_bootup
+                    .byml_file(path)
+                    .expect("parse generated ecocat")
+                    .pio
+                    .to_text()
+                    .matches("Weapon_Lsword_005")
+                    .count();
+                let reference_count = reference_bootup
+                    .byml_file(path)
+                    .expect("parse reference ecocat")
+                    .pio
+                    .to_text()
+                    .matches("Weapon_Lsword_005")
+                    .count();
+                writeln!(report, "VALID {path}: generated occurrences={generated_count}, reference occurrences={reference_count}")
                     .expect("write report");
             }
+        } else {
+            writeln!(
+                report,
+                "SKIPPED Ecocat: generated mod does not modify Bootup"
+            )
+            .expect("write report");
         }
 
         let vendor_pack = PackFile::from_binary(
@@ -1170,7 +1348,6 @@ mod tests {
         for path in [
             "Pack/Actor/Weapon_Lsword_005.pack",
             "Model/Weapon_Lsword_005.Weapon_Lsword_005.bfres",
-            "UI/Tex/Icon/Weapon_Lsword_005.bntx",
         ] {
             if rstb.get(path.to_owned()).is_some() {
                 writeln!(report, "VALID RSTB entry: {path}").expect("write report");
@@ -1286,6 +1463,66 @@ mod tests {
         }
     }
 
+    #[test]
+    #[ignore = "diagnostic SharpInfo row inspection"]
+    fn inspect_weapon_sharp_info_rows() {
+        use crate::{
+            file_format::BinTextFile::BymlFile,
+            TotkConfig::TotkConfig,
+            Zstd::{TotkZstd, TOTK_ZSTD_COMPRESSION_LEVEL},
+        };
+        use roead::byml::Byml;
+        use std::sync::Arc;
+
+        fn find_actor(value: &Byml, actor: &str, output: &mut Vec<Byml>) {
+            match value {
+                Byml::Map(map) => {
+                    if map
+                        .values()
+                        .any(|value| value.as_string().is_ok_and(|value| value.as_str() == actor))
+                    {
+                        output.push(value.clone());
+                    }
+                    for value in map.values() {
+                        find_actor(value, actor, output);
+                    }
+                }
+                Byml::Array(values) => {
+                    for value in values {
+                        find_actor(value, actor, output);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL).unwrap());
+        for (label, path, actor) in [
+            ("clean", clean_romfs.join(SHARP_INFO), "Weapon_Lsword_108"),
+            (
+                "reference",
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../tmp/BotW Weapon Restoration/romfs")
+                    .join(SHARP_INFO),
+                "Weapon_Lsword_005",
+            ),
+        ] {
+            let file = BymlFile::new(path, zstd.clone()).unwrap();
+            if let Ok(map) = file.pio.as_map() {
+                println!("SHARP ROOT KEYS: {:?}", map.keys().collect::<Vec<_>>());
+            }
+            let mut rows = Vec::new();
+            find_actor(&file.pio, actor, &mut rows);
+            println!("SHARP {label} {actor}: {}", rows.len());
+            for row in rows {
+                println!("{}", row.to_text());
+            }
+        }
+    }
+
     fn spec() -> WeaponSpec {
         WeaponSpec {
             actor_name: "Weapon_Lsword_900".into(),
@@ -1302,18 +1539,18 @@ mod tests {
             display_name: "Test Sword".into(),
             description: "A test weapon".into(),
             assets: WeaponAssets {
-                model: "model.mc".into(),
+                fbx: Some("model.fbx".into()),
                 textures: vec!["blade_Alb.txtg".into()],
-                icon: "icon.bntx.zs".into(),
-                picture_book_icon: "book_icon.bntx.zs".into(),
-                picture_book_detail: "book_detail.bntx.zs".into(),
+                icon_png: Some("icon.png".into()),
+                picture_book_icon_png: Some("book_icon.png".into()),
+                picture_book_detail_png: Some("book_detail.png".into()),
             },
-            vendor: Some(VendorTarget {
+            vendors: vec![VendorTarget {
                 actor_name: "Npc_TripMaster_00".into(),
                 buying_price: None,
                 selling_price: None,
                 quantity: 1,
-            }),
+            }],
         }
     }
 
@@ -1341,7 +1578,7 @@ mod tests {
     #[test]
     fn rejects_new_vendor_actor_names() {
         let mut value = spec();
-        value.vendor.as_mut().unwrap().actor_name = "Npc_CustomVendor".into();
+        value.vendors[0].actor_name = "Npc_CustomVendor".into();
         assert!(value.validate(Path::new("missing-assets")).is_err());
     }
 }

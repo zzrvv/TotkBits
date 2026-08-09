@@ -205,7 +205,7 @@ fn picture_book_state(hash: u32) -> Byml {
     let names = ["Unopened", "TakePhoto", "Buy"];
     let values: Vec<_> = names
         .iter()
-        .map(|name| Byml::U64(u64::from(murmur3_hash(name))))
+        .map(|name| Byml::U32(murmur3_hash(name)))
         .collect();
     let mut flag = roead::byml::Map::default();
     flag.insert("DefaultValue".into(), Byml::U32(murmur3_hash("Unopened")));
@@ -422,6 +422,19 @@ mod tests {
         let request = WeaponGameDataRequest::from_json(r#"{"name":"Weapon_Lsword_900"}"#).unwrap();
         assert!(request.picture_book);
         assert!(request.inventory_flags);
+    }
+
+    #[test]
+    fn picture_book_enum_hashes_are_u32() {
+        let state = picture_book_state(murmur3_hash("PictureBookData.Weapon_Lsword_005.State"));
+        let values = state
+            .as_map()
+            .unwrap()
+            .get("Values")
+            .unwrap()
+            .as_array()
+            .unwrap();
+        assert!(values.iter().all(|value| matches!(value, Byml::U32(_))));
     }
 
     #[test]

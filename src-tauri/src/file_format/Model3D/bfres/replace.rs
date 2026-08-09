@@ -1,9 +1,9 @@
 use super::{align_up, BfresError, BfresFile, BfresSection, Endian};
 use crate::parser::{
     binary::{BinaryReader, BinaryWriter, Endian as BinaryEndian},
-    fbx::import::{import_for_bfres, ImportedMesh},
+    fbx::import::{calculate_tangents, import_for_bfres, ImportedMesh},
 };
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 #[derive(Clone)]
 struct Attribute {
@@ -22,6 +22,7 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
         ));
     }
     let mut imported = import_for_bfres(fbx).map_err(|e| error(0, e.to_string()))?;
+    validate_compatible_skeleton(&parsed, &imported.bones, &imported.meshes)?;
     let mut shapes: Vec<_> = parsed.sections_with_signature(b"FSHP").cloned().collect();
     shapes.sort_by_key(|shape| shape.offset);
     if imported.meshes.len() > shapes.len() {
@@ -35,6 +36,15 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
         ));
     }
     orient_meshes_to_source_bind_space(&mut imported.meshes, &parsed.render.meshes)?;
+    for mesh in &mut imported.meshes {
+        weld_mesh_vertices(mesh)?;
+        calculate_tangents(mesh).map_err(|failure| {
+            error(
+                0,
+                format!("failed to rebuild welded tangent space: {failure}"),
+            )
+        })?;
+    }
     order_meshes_for_shapes(&mut imported.meshes, &shapes);
     if imported.meshes.is_empty() || shapes.is_empty() {
         return Err(error(0, "model contains no replaceable meshes"));
@@ -107,11 +117,62 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
             put_u32(&mut writer, mesh_entry + 44, 0);
             continue;
         }
-        let skin_offset = read_u64(&reader, shape_offset + 32)? as usize;
-        let skin_capacity = read_u16(&reader, shape_offset + 88)? as usize;
+        let mut skin_offset = read_u64(&reader, shape_offset + 32)? as usize;
+        let mut skin_capacity = read_u16(&reader, shape_offset + 88)? as usize;
         let mesh = &mut imported.meshes[shape_index];
+        let has_active_skin = mesh
+            .bone_weights
+            .iter()
+            .any(|weights| weights.iter().take(4).any(|weight| *weight > 0.0));
+        if skin_capacity == 0 && has_active_skin {
+            writer.align(2).map_err(|error| {
+                BfresError::new(
+                    shape_offset,
+                    format!("skin palette alignment failed: {error}"),
+                )
+            })?;
+            skin_offset = writer.position();
+            writer.write_u16(root);
+            skin_capacity = 1;
+            put_u64(&mut writer, shape_offset + 32, skin_offset as u64);
+        }
         constrain_skin_palette(mesh, skin_capacity, root);
         validate_mesh(mesh)?;
+        let (minimum, maximum) = bounds(&mesh.positions)?;
+        let mut center = [
+            (minimum[0] + maximum[0]) * 0.5,
+            (minimum[1] + maximum[1]) * 0.5,
+            (minimum[2] + maximum[2]) * 0.5,
+        ];
+        for value in &mut center {
+            if *value != 0.0 && value.abs() < 1.0e-6 {
+                *value = -value.abs();
+            }
+        }
+        let extent = [
+            (maximum[0] - minimum[0]) * 0.5,
+            (maximum[1] - minimum[1]) * 0.5,
+            (maximum[2] - minimum[2]) * 0.5,
+        ];
+        let length = |value: [f32; 3]| {
+            (f64::from(value[0]).powi(2)
+                + f64::from(value[1]).powi(2)
+                + f64::from(value[2]).powi(2))
+            .sqrt()
+        };
+        let radius = (length(center) + length(extent)) as f32;
+        let bounds_offset = read_u64(&reader, shape_offset + 56)? as usize;
+        let submesh_count = read_u16(&reader, mesh_entry + 52)? as usize;
+        for bound_index in 0..=submesh_count {
+            let target = bounds_offset + bound_index * 24;
+            for (component, value) in center.into_iter().chain(extent).enumerate() {
+                put_f32(&mut writer, target + component * 4, value);
+            }
+        }
+        let radius_offset = read_u64(&reader, shape_offset + 64)? as usize;
+        if radius_offset != 0 {
+            put_f32(&mut writer, radius_offset + 12, radius);
+        }
         let mut skin_bones = BTreeSet::new();
         let mut vertex_skin_count = 0usize;
         for (joints, weights) in mesh.bone_indices.iter().zip(&mesh.bone_weights) {
@@ -138,6 +199,15 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
             shape_offset + 90,
             vertex_skin_count.min(4) as u8,
         );
+        put_u16(
+            &mut writer,
+            stream_offset + 84,
+            vertex_skin_count.min(4) as u16,
+        );
+        // Replacing a shape in Toolbox replaces its complete LOD mesh list
+        // with the single mesh imported from the FBX. Do not leave stale lower
+        // detail meshes from the template attached to the new vertex stream.
+        put_u8(&mut writer, shape_offset + 91, 1);
         let attr_offset = read_u64(&reader, stream_offset + 8)? as usize;
         let sizes_offset = read_u64(&reader, stream_offset + 48)? as usize;
         let strides_offset = read_u64(&reader, stream_offset + 56)? as usize;
@@ -150,11 +220,9 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
                 Ok(Attribute {
                     name: super::read_string(data, read_u64(&reader, entry)?)
                         .unwrap_or_else(|| format!("attribute_{i}")),
-                    format: u16::from_be_bytes(
-                        reader
-                            .read_array_at(entry + 8)
-                            .map_err(io_error(entry + 8))?,
-                    ),
+                    format: BinaryReader::with_endian(data, BinaryEndian::Big)
+                        .read_u16_at(entry + 8)
+                        .map_err(io_error(entry + 8))?,
                     offset: read_u16(&reader, entry + 12)? as usize,
                     buffer: read_u8(&reader, entry + 14)? as usize,
                 })
@@ -177,6 +245,7 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
                         vertex * stride + attribute.offset,
                         attribute.format,
                         value,
+                        attribute_component_count(&attribute.name),
                     )
                     .map_err(|failure| {
                         error(
@@ -235,6 +304,9 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
         put_u32(&mut writer, mesh_entry + 40, if use_u32 { 2 } else { 1 });
         put_u32(&mut writer, mesh_entry + 44, mesh.indices.len() as u32);
         put_u32(&mut writer, mesh_entry + 48, 0);
+        let submesh_offset = read_u64(&reader, mesh_entry)? as usize;
+        put_u32(&mut writer, submesh_offset, 0);
+        put_u32(&mut writer, submesh_offset + 4, mesh.indices.len() as u32);
         put_u16(
             &mut writer,
             shape_offset + 82,
@@ -250,25 +322,244 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
         .map(|mesh| mesh.positions.len())
         .sum();
     let expected_indices: usize = imported.meshes.iter().map(|mesh| mesh.indices.len()).sum();
+    let actual_vertices = reparsed
+        .render
+        .meshes
+        .iter()
+        .map(|mesh| mesh.positions.len())
+        .sum::<usize>();
+    let actual_indices = reparsed
+        .render
+        .meshes
+        .iter()
+        .map(|mesh| mesh.indices.len())
+        .sum::<usize>();
     if reparsed.render.meshes.len() != shapes.len()
-        || reparsed
-            .render
-            .meshes
-            .iter()
-            .map(|mesh| mesh.positions.len())
-            .sum::<usize>()
-            != expected_vertices
-        || reparsed
-            .render
-            .meshes
-            .iter()
-            .map(|mesh| mesh.indices.len())
-            .sum::<usize>()
-            != expected_indices
+        || actual_vertices != expected_vertices
+        || actual_indices != expected_indices
     {
-        return Err(error(0, "rebuilt BFRES geometry failed validation"));
+        return Err(error(
+            0,
+            format!(
+                "rebuilt BFRES geometry failed validation (meshes {} != {}, vertices {actual_vertices} != {expected_vertices}, indices {actual_indices} != {expected_indices})",
+                reparsed.render.meshes.len(),
+                shapes.len()
+            ),
+        ));
     }
-    Ok(output)
+    let mut canonical = super::serializer::emit_v10_canonical_copy(&output)?;
+    super::serializer::rebase_v10_relocations(&output, &mut canonical)?;
+    BfresFile::from_bytes(&canonical.bytes)?;
+    Ok(canonical.bytes)
+}
+
+fn weld_mesh_vertices(mesh: &mut ImportedMesh) -> Result<(), BfresError> {
+    let original = mesh.clone();
+    let mut remap = HashMap::<Vec<u32>, Vec<u32>>::new();
+    let mut rebuilt = original.clone();
+    rebuilt.positions.clear();
+    rebuilt.normals.clear();
+    rebuilt.tangents.clear();
+    rebuilt.bitangents.clear();
+    rebuilt.uv_maps = vec![Vec::new(); original.uv_maps.len()];
+    rebuilt.colors = vec![Vec::new(); original.colors.len()];
+    rebuilt.bone_indices.clear();
+    rebuilt.bone_weights.clear();
+    rebuilt.source_vertices.clear();
+    rebuilt.indices.clear();
+
+    let mut old_to_new = vec![u32::MAX; original.positions.len()];
+    for index in 0..original.positions.len() {
+        let position = *original
+            .positions
+            .get(index)
+            .ok_or_else(|| error(0, format!("mesh {:?} has an invalid index", original.name)))?;
+        let mut key = Vec::new();
+        key.extend(position.map(f32::to_bits));
+        // Toolbox's Assimp import joins the FBX vertices before BFRES tangent
+        // generation. Our importer creates MikkTSpace tangents eagerly, so using
+        // those generated values as part of the identity would retain artificial
+        // per-corner splits which Toolbox has already removed.
+        for channel in &original.uv_maps {
+            if let Some(value) = channel.get(index) {
+                key.extend(value.map(f32::to_bits));
+            }
+        }
+        for channel in &original.colors {
+            if let Some(value) = channel.get(index) {
+                key.extend(value.map(f32::to_bits));
+            }
+        }
+        if let Some(value) = original.bone_indices.get(index) {
+            key.extend(value.map(u32::from));
+        }
+        if let Some(value) = original.bone_weights.get(index) {
+            key.extend(value.map(f32::to_bits));
+        }
+
+        let matching = remap.get(&key).and_then(|candidates| {
+            candidates.iter().copied().find(|candidate| {
+                match (
+                    original.normals.get(index),
+                    rebuilt.normals.get(*candidate as usize),
+                ) {
+                    (Some(left), Some(right)) => {
+                        left.iter()
+                            .zip(right)
+                            .map(|(left, right)| (left - right) * (left - right))
+                            .sum::<f32>()
+                            <= 1.0e-10
+                    }
+                    (None, None) => true,
+                    _ => false,
+                }
+            })
+        });
+        let new_index = if let Some(existing) = matching {
+            existing
+        } else {
+            let next = u32::try_from(rebuilt.positions.len())
+                .map_err(|_| error(0, "welded BFRES mesh has too many vertices"))?;
+            remap.entry(key).or_default().push(next);
+            rebuilt.positions.push(position);
+            if let Some(value) = original.normals.get(index) {
+                rebuilt.normals.push(*value);
+            }
+            if let Some(value) = original.tangents.get(index) {
+                rebuilt.tangents.push(*value);
+            }
+            if let Some(value) = original.bitangents.get(index) {
+                rebuilt.bitangents.push(*value);
+            }
+            for (target, source) in rebuilt.uv_maps.iter_mut().zip(&original.uv_maps) {
+                if let Some(value) = source.get(index) {
+                    target.push(*value);
+                }
+            }
+            for (target, source) in rebuilt.colors.iter_mut().zip(&original.colors) {
+                if let Some(value) = source.get(index) {
+                    target.push(*value);
+                }
+            }
+            if let Some(value) = original.bone_indices.get(index) {
+                rebuilt.bone_indices.push(*value);
+            }
+            if let Some(value) = original.bone_weights.get(index) {
+                rebuilt.bone_weights.push(*value);
+            }
+            rebuilt
+                .source_vertices
+                .push(*original.source_vertices.get(index).unwrap_or(&index));
+            next
+        };
+        old_to_new[index] = new_index;
+    }
+    rebuilt.indices = original
+        .indices
+        .iter()
+        .map(|index| old_to_new[*index as usize])
+        .collect();
+    *mesh = rebuilt;
+    Ok(())
+}
+
+fn validate_compatible_skeleton(
+    bfres: &BfresFile,
+    imported: &[(String, Option<String>)],
+    meshes: &[ImportedMesh],
+) -> Result<(), BfresError> {
+    let expected: Vec<_> = bfres
+        .render
+        .bones
+        .iter()
+        .enumerate()
+        .map(|(index, bone)| {
+            let parent = if bone.parent_index < 0 {
+                None
+            } else {
+                let parent_index = bone.parent_index as usize;
+                Some(
+                    bfres
+                        .render
+                        .bones
+                        .get(parent_index)
+                        .ok_or_else(|| {
+                            error(
+                                0,
+                                format!(
+                                    "BFRES bone {index} ({}) has invalid parent index {}",
+                                    bone.name, bone.parent_index
+                                ),
+                            )
+                        })?
+                        .name
+                        .clone(),
+                )
+            };
+            Ok((bone.name.clone(), parent))
+        })
+        .collect::<Result<_, BfresError>>()?;
+
+    if imported.len() < expected.len() {
+        return Err(error(
+            0,
+            format!(
+                "FBX skeleton is missing BFRES bones: expected at least {}, found {}",
+                expected.len(),
+                imported.len()
+            ),
+        ));
+    }
+    let expected_by_name: BTreeMap<_, _> = expected.iter().cloned().collect();
+    let imported_by_name: BTreeMap<_, _> = imported.iter().cloned().collect();
+    if expected_by_name.len() != expected.len() {
+        return Err(error(0, "BFRES skeleton contains duplicate bone names"));
+    }
+    if imported_by_name.len() != imported.len() {
+        return Err(error(0, "FBX skeleton contains duplicate bone names"));
+    }
+    for (name, required_parent) in &expected_by_name {
+        let Some(actual_parent) = imported_by_name.get(name) else {
+            return Err(error(
+                0,
+                format!("FBX skeleton is missing BFRES bone {name:?}"),
+            ));
+        };
+        if actual_parent != required_parent {
+            return Err(error(
+                0,
+                format!(
+                    "FBX skeleton parent mismatch for bone {name:?}: expected {required_parent:?}, found {actual_parent:?}"
+                ),
+            ));
+        }
+    }
+    let extra_indices: BTreeSet<u16> = imported
+        .iter()
+        .enumerate()
+        .filter(|(_, (name, _))| !expected_by_name.contains_key(name))
+        .filter_map(|(index, _)| u16::try_from(index).ok())
+        .collect();
+    for mesh in meshes {
+        for (joints, weights) in mesh.bone_indices.iter().zip(&mesh.bone_weights) {
+            for (&joint, &weight) in joints.iter().zip(weights) {
+                if weight > 0.0 && extra_indices.contains(&joint) {
+                    let name = imported
+                        .get(joint as usize)
+                        .map(|(name, _)| name.as_str())
+                        .unwrap_or("<invalid>");
+                    return Err(error(
+                        0,
+                        format!(
+                            "FBX mesh {:?} uses extra bone {name:?}, which is absent from the BFRES skeleton",
+                            mesh.name
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Aligns FBX meshes with BFRES shape slots by semantic role before falling
@@ -310,8 +601,11 @@ fn orient_meshes_to_source_bind_space(
             .ok_or_else(|| error(0, "FBX contains more meshes than the source BFRES"))?;
         remaining.remove(position);
         let source = &sources[source_index];
-        let (permutation, signs) =
+        let (permutation, mut signs) =
             best_signed_axis_orientation(&mesh.positions, &source.positions)?;
+        if wants_blade {
+            signs[1] = -signs[1];
+        }
         let convert =
             |value: [f32; 3]| [0, 1, 2].map(|axis| value[permutation[axis]] * signs[axis]);
         for position in &mut mesh.positions {
@@ -320,12 +614,8 @@ fn orient_meshes_to_source_bind_space(
         for normal in &mut mesh.normals {
             *normal = convert(*normal);
         }
-        for tangent in &mut mesh.tangents {
-            let converted = convert([tangent[0], tangent[1], tangent[2]]);
-            tangent[0] = converted[0];
-            tangent[1] = converted[1];
-            tangent[2] = converted[2];
-        }
+        calculate_tangents(mesh)
+            .map_err(|failure| error(0, format!("failed to rebuild tangent space: {failure}")))?;
     }
     Ok(())
 }
@@ -611,6 +901,10 @@ fn attribute_value(
     } else if a.name.starts_with("_n") {
         let x = mesh.normals[v];
         [x[0], x[1], x[2], 0.0]
+    } else if a.name.starts_with("_t") {
+        mesh.tangents[v]
+    } else if a.name.starts_with("_b") {
+        mesh.bitangents[v]
     } else if a.name.starts_with("_u") {
         let layer = a
             .name
@@ -643,46 +937,95 @@ fn attribute_value(
         let x = mesh.bone_weights[v];
         [x[0], x[1], x[2], x[3]]
     } else if a.name.starts_with("_c") {
-        [1.0; 4]
+        let layer = a
+            .name
+            .trim_start_matches("_c")
+            .chars()
+            .next()
+            .and_then(|c| c.to_digit(10))
+            .unwrap_or(0) as usize;
+        mesh.colors
+            .get(layer)
+            .or_else(|| mesh.colors.first())
+            .and_then(|values| values.get(v))
+            .copied()
+            .unwrap_or([1.0; 4])
     } else {
         [0.0; 4]
     })
 }
 
-fn encode(out: &mut [u8], o: usize, f: u16, v: [f32; 4]) -> Result<(), BfresError> {
+fn attribute_component_count(name: &str) -> usize {
+    if name.starts_with("_p") || name.starts_with("_n") {
+        3
+    } else if name.starts_with("_u") {
+        2
+    } else {
+        4
+    }
+}
+
+fn encode(
+    out: &mut [u8],
+    o: usize,
+    f: u16,
+    v: [f32; 4],
+    components: usize,
+) -> Result<(), BfresError> {
+    let floats = |values: &[f32]| {
+        let mut writer = BinaryWriter::new();
+        for value in values {
+            writer.write_f32(*value);
+        }
+        writer.into_inner()
+    };
+    let unsigned = |values: Vec<u16>| {
+        let mut writer = BinaryWriter::new();
+        for value in values {
+            writer.write_u16(value);
+        }
+        writer.into_inner()
+    };
+    let signed = |values: Vec<i16>| {
+        let mut writer = BinaryWriter::new();
+        for value in values {
+            writer.write_i16(value);
+        }
+        writer.into_inner()
+    };
     let bytes: Vec<u8> = match f {
-        0x0518 => v[..3].iter().flat_map(|x| x.to_le_bytes()).collect(),
-        0x0519 => v.iter().flat_map(|x| x.to_le_bytes()).collect(),
-        0x0517 => v[..2].iter().flat_map(|x| x.to_le_bytes()).collect(),
-        0x0516 => v[..1].iter().flat_map(|x| x.to_le_bytes()).collect(),
-        0x0512 => v[..2]
-            .iter()
-            .flat_map(|x| f32_to_half(*x).to_le_bytes())
-            .collect(),
-        0x0515 => v
-            .iter()
-            .flat_map(|x| f32_to_half(*x).to_le_bytes())
-            .collect(),
+        0x0518 => floats(&v[..3]),
+        0x0519 => floats(&v),
+        0x0517 => floats(&v[..2]),
+        0x0516 => floats(&v[..1]),
+        0x0512 => unsigned(v[..2].iter().map(|x| f32_to_half(*x)).collect()),
+        0x0515 => unsigned(
+            v[..components.min(4)]
+                .iter()
+                .map(|x| f32_to_half(*x))
+                .collect(),
+        ),
         0x010B => v
             .map(|x| (x.clamp(0.0, 1.0) * 255.0).round() as u8)
             .to_vec(),
-        0x020B => v
-            .map(|x| (x.clamp(-1.0, 1.0) * 127.0).round() as i8 as u8)
-            .to_vec(),
+        0x020B => v.map(|x| (x.clamp(-1.0, 1.0) * 127.0) as i8 as u8).to_vec(),
         0x030B => v.map(|x| x.round().clamp(0.0, 255.0) as u8).to_vec(),
         0x0302 => vec![v[0].round().clamp(0.0, 255.0) as u8],
-        0x0115 => v
-            .iter()
-            .flat_map(|x| ((x.clamp(0.0, 1.0) * 65535.0).round() as u16).to_le_bytes())
-            .collect(),
-        0x0215 => v
-            .iter()
-            .flat_map(|x| ((x.clamp(-1.0, 1.0) * 32767.0).round() as i16).to_le_bytes())
-            .collect(),
-        0x0315 => v
-            .iter()
-            .flat_map(|x| (x.round().clamp(0.0, 65535.0) as u16).to_le_bytes())
-            .collect(),
+        0x0115 => unsigned(
+            v.iter()
+                .map(|x| (x.clamp(0.0, 1.0) * 65535.0).round() as u16)
+                .collect(),
+        ),
+        0x0215 => signed(
+            v.iter()
+                .map(|x| (x.clamp(-1.0, 1.0) * 32767.0).round() as i16)
+                .collect(),
+        ),
+        0x0315 => unsigned(
+            v.iter()
+                .map(|x| x.round().clamp(0.0, 65535.0) as u16)
+                .collect(),
+        ),
         0x0109 => v[..2]
             .iter()
             .map(|x| (x.clamp(0.0, 1.0) * 255.0).round() as u8)
@@ -691,19 +1034,24 @@ fn encode(out: &mut [u8], o: usize, f: u16, v: [f32; 4]) -> Result<(), BfresErro
             .iter()
             .map(|x| x.round().clamp(0.0, 255.0) as u8)
             .collect(),
-        0x0112 => v[..2]
-            .iter()
-            .flat_map(|x| ((x.clamp(0.0, 1.0) * 65535.0).round() as u16).to_le_bytes())
-            .collect(),
-        0x0212 => v[..2]
-            .iter()
-            .flat_map(|x| ((x.clamp(-1.0, 1.0) * 32767.0).round() as i16).to_le_bytes())
-            .collect(),
+        0x0112 => unsigned(
+            v[..2]
+                .iter()
+                .map(|x| (x.clamp(0.0, 1.0) * 65535.0).round() as u16)
+                .collect(),
+        ),
+        0x0212 => signed(
+            v[..2]
+                .iter()
+                .map(|x| (x.clamp(-1.0, 1.0) * 32767.0).round() as i16)
+                .collect(),
+        ),
         0x020E => {
-            let p = |x: f32| ((x.clamp(-1.0, 1.0) * 511.0).round() as i32 as u32) & 0x3ff;
-            (p(v[0]) | (p(v[1]) << 10) | (p(v[2]) << 20))
-                .to_le_bytes()
-                .to_vec()
+            let p = |x: f32| ((x.clamp(-1.0, 1.0) * 511.0) as i32 as u32) & 0x3ff;
+            let w = ((v[3].clamp(0.0, 1.0) as i32 as u32) & 0x3) << 30;
+            let mut writer = BinaryWriter::new();
+            writer.write_u32(p(v[0]) | (p(v[1]) << 10) | (p(v[2]) << 20) | w);
+            writer.into_inner()
         }
         _ => {
             return Err(error(
@@ -767,6 +1115,16 @@ fn put_u32(w: &mut BinaryWriter, o: usize, v: u32) {
     w.write_u32(v);
     w.seek(p)
 }
+
+fn put_f32(w: &mut BinaryWriter, o: usize, v: f32) {
+    put_u32(w, o, v.to_bits());
+}
+fn put_u64(w: &mut BinaryWriter, o: usize, v: u64) {
+    let p = w.position();
+    w.seek(o);
+    w.write_u64(v);
+    w.seek(p)
+}
 fn relative(p: usize, b: usize) -> Result<u32, BfresError> {
     u32::try_from(
         p.checked_sub(b)
@@ -793,6 +1151,7 @@ mod tests {
             positions: Vec::new(),
             normals: Vec::new(),
             tangents: Vec::new(),
+            bitangents: Vec::new(),
             uv_maps: Vec::new(),
             colors: Vec::new(),
             bone_indices: Vec::new(),

@@ -54,6 +54,46 @@ pub struct BntxReplacementReport {
 }
 
 impl ImageDocument {
+    /// Clone a single-texture BNTX and rename its internal texture without
+    /// decoding or replacing the existing image payload.
+    pub fn clone_single_bntx_with_name(
+        source: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+        new_name: &str,
+        zstd: &crate::Zstd::TotkZstd<'_>,
+    ) -> io::Result<BntxReplacementReport> {
+        let source = source.as_ref();
+        let source_bytes = std::fs::read(source)?;
+        let (data, _) = decode_compressed_bntx(&source_bytes, Some(zstd))?;
+        let bntx = crate::parser::bntx::BntxFile::parse(&data).map_err(invalid)?;
+        if bntx.textures.len() != 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "weapon BNTX must contain exactly one texture, found {}",
+                    bntx.textures.len()
+                ),
+            ));
+        }
+        let texture = &bntx.textures[0];
+        let format = super::switch_texture::format_from_bntx(texture.format)
+            .map(|value| format!("{value:?}"))
+            .unwrap_or_else(|_| format!("0x{:08X}", texture.format));
+        let destination = destination.as_ref();
+        if let Some(parent) = destination.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(source, destination)?;
+        Self::rename_bntx_texture(destination, 0, new_name, zstd)?;
+        Ok(BntxReplacementReport {
+            name: new_name.to_owned(),
+            width: texture.width,
+            height: texture.height,
+            format,
+            similarity: 1.0,
+        })
+    }
+
     /// Replace the sole texture in a weapon BNTX, preserving its format and layout.
     /// The PNG is resized to the original dimensions and every mip is regenerated.
     pub fn replace_single_bntx_from_png(
@@ -81,17 +121,31 @@ impl ImageDocument {
                 ),
             ));
         }
-        let texture = &bntx.textures[0];
-        if texture.array_length.max(1) != 1 {
+        let source_texture = &bntx.textures[0];
+        if source_texture.array_length.max(1) != 1 {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "array BNTX replacement is not supported for weapon images",
             ));
         }
-        if super::switch_texture::astc_block_from_bntx(texture.format).is_some() {
+        if super::switch_texture::astc_block_from_bntx(source_texture.format).is_some() {
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "ASTC BNTX replacement is not supported",
+            ));
+        }
+        data = rename_single_bntx_texture_bytes(data, source_texture, new_name)?;
+        let renamed_bntx = crate::parser::bntx::BntxFile::parse(&data).map_err(invalid)?;
+        let texture = renamed_bntx.textures.first().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                "renamed BNTX has no texture metadata",
+            )
+        })?;
+        if texture.name != new_name {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "renamed BNTX failed validation",
             ));
         }
         let format = super::switch_texture::format_from_bntx(texture.format)?;
@@ -188,14 +242,6 @@ impl ImageDocument {
             ));
         }
 
-        let data = rename_single_bntx_texture_bytes(data, texture, new_name)?;
-        let reparsed = crate::parser::bntx::BntxFile::parse(&data).map_err(invalid)?;
-        if reparsed.textures.len() != 1 || reparsed.textures[0].name != new_name {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "renamed BNTX failed validation",
-            ));
-        }
         let output = match dictionary {
             Some(dictionary) => zstd.compress_with_dictionary(&data, dictionary)?,
             None => data,

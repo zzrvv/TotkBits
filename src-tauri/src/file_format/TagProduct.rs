@@ -366,10 +366,7 @@ impl<'a> TagProduct<'a> {
 
         // Get Rank Table
         println!("Parsing RankTable");
-        self.rank_table = pio
-            .get("RankTable")
-            .ok_or_else(|| roead::Error::Any("TagProduct has no RankTable".into()))?
-            .clone();
+        self.rank_table = normalize_rank_table(pio.get("RankTable"));
         let rank_table = self.rank_table.as_binary_data()?;
         let bit_table_bits = bit_table_bytes.view_bits::<Lsb0>().to_bitvec();
         //bit_table_bits.reverse();
@@ -442,6 +439,13 @@ fn rank_table_sha256(rank_table: &[u8]) -> String {
     format!("{:x}", Sha256::digest(rank_table))
 }
 
+fn normalize_rank_table(rank_table: Option<&Byml>) -> Byml {
+    match rank_table {
+        Some(Byml::BinaryData(bytes)) => Byml::BinaryData(bytes.clone()),
+        _ => Byml::BinaryData(Vec::new()),
+    }
+}
+
 #[allow(dead_code)]
 pub fn sort_hashmap(h: &HashMap<String, Vec<String>>) -> HashMap<String, Vec<String>> {
     let mut map: HashMap<String, Vec<String>> = HashMap::new();
@@ -506,5 +510,22 @@ mod tests {
 
         let unknown_tag = r#"{"PathList":{"a|b|c":["missing"]},"TagList":[],"RankTable":""}"#;
         assert!(TagProduct::to_binary(unknown_tag, &[]).is_err());
+    }
+
+    #[test]
+    fn invalid_or_missing_rank_table_is_treated_as_empty_binary_data() {
+        assert_eq!(
+            normalize_rank_table(Some(&Byml::BinaryData(vec![1, 2, 3]))),
+            Byml::BinaryData(vec![1, 2, 3])
+        );
+        assert_eq!(
+            normalize_rank_table(Some(&Byml::String(String::new().into()))),
+            Byml::BinaryData(Vec::new())
+        );
+        assert_eq!(
+            normalize_rank_table(Some(&Byml::I32(42))),
+            Byml::BinaryData(Vec::new())
+        );
+        assert_eq!(normalize_rank_table(None), Byml::BinaryData(Vec::new()));
     }
 }

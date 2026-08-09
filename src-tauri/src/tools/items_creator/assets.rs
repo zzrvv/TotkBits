@@ -2,6 +2,7 @@
 
 use crate::{
     file_format::{
+        BinTextFile::BymlFile,
         Image::{BntxReplacementReport, ImageDocument},
         Model3D::bfres::BfresFile,
     },
@@ -23,8 +24,10 @@ pub struct WeaponModelAssetsRequest {
     /// New model/texture substring and BFRES model name.
     #[serde(alias = "name")]
     pub new_name: String,
-    /// BFRES or BFRES.MC source, relative to clean ROMFS unless absolute.
-    pub model_source: PathBuf,
+    /// Optional BFRES or BFRES.MC source. When omitted, the source is resolved from
+    /// the vanilla ActorInfo row for `base_name`.
+    #[serde(default)]
+    pub model_source: Option<PathBuf>,
     /// Destination relative to the mod ROMFS. Defaults to the source path with
     /// every occurrence of `base_name` replaced by `new_name`.
     #[serde(default)]
@@ -39,8 +42,10 @@ pub struct WeaponModelAssetsRequest {
 pub struct WeaponBntxAssetRequest {
     /// BNTX or BNTX.ZS source, relative to clean ROMFS unless absolute.
     pub texture_source: PathBuf,
-    /// Custom PNG supplied by the user.
-    pub png_source: PathBuf,
+    /// Optional custom PNG supplied by the user. When omitted, the source image
+    /// payload is preserved and only the texture name/container path changes.
+    #[serde(default)]
+    pub png_source: Option<PathBuf>,
     /// New internal name for the sole BNTX texture.
     #[serde(alias = "name")]
     pub new_name: String,
@@ -52,6 +57,8 @@ pub struct WeaponBntxAssetRequest {
 pub struct GeneratedWeaponAssets {
     pub model: PathBuf,
     pub textures: Vec<PathBuf>,
+    /// Deduplicated final texture names referenced by all BFRES material slots.
+    pub texture_names: Vec<String>,
 }
 
 impl WeaponModelAssetsRequest {
@@ -69,7 +76,10 @@ impl WeaponModelAssetsRequest {
         validate_name(&self.base_name, "base_name")?;
         validate_name(&self.new_name, "new_name")?;
         ensure_output_outside_romfs(clean_romfs, output_romfs)?;
-        let source = resolve_source(clean_romfs, &self.model_source)?;
+        let source = match &self.model_source {
+            Some(source) => resolve_source(clean_romfs, source)?,
+            None => resolve_vanilla_model_source(clean_romfs, &self.base_name, zstd.clone())?,
+        };
         let source_bytes = fs::read(&source)?;
         let raw = if crate::Settings::Magic::is_bfres(&source_bytes) {
             source_bytes
@@ -118,12 +128,9 @@ impl WeaponModelAssetsRequest {
                 .strip_suffix(".txtg")
                 .unwrap_or(&old_name)
                 .to_ascii_lowercase();
-            let source_texture = texture_sources.get(&logical).ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("BFRES texture is missing from clean TexToGo: {old_name}"),
-                )
-            })?;
+            let Some(source_texture) = texture_sources.get(&logical) else {
+                continue;
+            };
             let file_name = source_texture
                 .file_name()
                 .and_then(|value| value.to_str())
@@ -157,6 +164,7 @@ impl WeaponModelAssetsRequest {
                 .map_err(io::Error::other)?;
         }
         let verified = BfresFile::from_bytes(&renamed).map_err(io::Error::other)?;
+        validate_bfres_geometry(&verified)?;
         if verified.materials.iter().any(|material| {
             material
                 .texture_slots
@@ -167,12 +175,31 @@ impl WeaponModelAssetsRequest {
                 "generated BFRES still references a base texture name",
             ));
         }
+        let required_texture_names: BTreeSet<String> = verified
+            .materials
+            .iter()
+            .flat_map(|material| &material.texture_slots)
+            .map(|slot| slot.name.clone())
+            .collect();
+        let placeholder = Path::new(env!("CARGO_MANIFEST_DIR")).join("misc/placeholder_tex.txtg");
+        if !placeholder.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "placeholder TexToGo texture is missing: {}",
+                    placeholder.display()
+                ),
+            ));
+        }
+        ensure_material_textures(
+            &texture_output,
+            &required_texture_names,
+            &placeholder,
+            &mut copied,
+        )?;
 
-        let relative_destination = weapon_model_destination(
-            self.model_destination.as_deref(),
-            &self.model_source,
-            &self.new_name,
-        );
+        let relative_destination =
+            weapon_model_destination(self.model_destination.as_deref(), &source, &self.new_name);
         validate_relative_path(&relative_destination)?;
         let destination = output_romfs.join(relative_destination);
         if let Some(parent) = destination.parent() {
@@ -182,12 +209,125 @@ impl WeaponModelAssetsRequest {
         let compressed = zstd
             .compress_mcpk(&renamed)
             .map_err(|error| invalid_data(format!("failed to MCPK-compress BFRES: {error}")))?;
+        let roundtrip = zstd.decompress_mcpk(&compressed).map_err(|error| {
+            invalid_data(format!("generated MCPK does not decompress: {error}"))
+        })?;
+        let roundtrip_bfres = BfresFile::from_bytes(&roundtrip).map_err(|error| {
+            invalid_data(format!("round-tripped BFRES cannot be parsed: {error}"))
+        })?;
+        validate_bfres_geometry(&roundtrip_bfres)?;
         fs::write(&destination, compressed)?;
         Ok(GeneratedWeaponAssets {
             model: destination,
             textures: copied,
+            texture_names: required_texture_names.into_iter().collect(),
         })
     }
+}
+
+fn resolve_vanilla_model_source(
+    clean_romfs: &Path,
+    actor_name: &str,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<PathBuf> {
+    let (_, actor_info_path) = super::version::discover_product_file(
+        &clean_romfs.join("RSDB"),
+        "ActorInfo.Product.",
+        ".rstbl.byml.zs",
+    )?;
+    let actor_info = BymlFile::new(&actor_info_path, zstd).ok_or_else(|| {
+        invalid_data(format!(
+            "failed to parse vanilla ActorInfo: {}",
+            actor_info_path.display()
+        ))
+    })?;
+    let rows = actor_info
+        .pio
+        .as_array()
+        .map_err(|_| invalid_data("vanilla ActorInfo root is not an array"))?;
+    let row = rows
+        .iter()
+        .find_map(|row| {
+            let map = row.as_map().ok()?;
+            (map.get("__RowId")?.as_string().ok()?.as_str() == actor_name).then_some(map)
+        })
+        .ok_or_else(|| invalid_data(format!("ActorInfo row is missing: {actor_name}")))?;
+    let string_field = |name: &str| {
+        row.get(name)
+            .ok_or_else(|| invalid_data(format!("ActorInfo {actor_name} has no {name}")))?
+            .as_string()
+            .map(|value| value.to_string())
+            .map_err(|_| invalid_data(format!("ActorInfo {actor_name}.{name} is not a string")))
+    };
+    let model_project_name = string_field("ModelProjectName")?;
+    let fmdb_name = string_field("FmdbName")?;
+    resolve_source(
+        clean_romfs,
+        &Path::new("Model").join(format!("{model_project_name}.{fmdb_name}.bfres.mc")),
+    )
+}
+
+fn validate_bfres_geometry(file: &BfresFile) -> io::Result<()> {
+    if file.render.meshes.is_empty() {
+        return Err(invalid_data("generated BFRES contains no meshes"));
+    }
+    for mesh in &file.render.meshes {
+        let vertex_count = mesh.positions.len();
+        if vertex_count == 0 || mesh.indices.is_empty() || mesh.indices.len() % 3 != 0 {
+            return Err(invalid_data(format!(
+                "generated BFRES mesh {} has invalid triangles",
+                mesh.name
+            )));
+        }
+        if mesh.normals.len() != vertex_count
+            || mesh
+                .uv_maps
+                .first()
+                .is_none_or(|uv| uv.len() != vertex_count)
+        {
+            return Err(invalid_data(format!(
+                "generated BFRES mesh {} has incomplete vertex attributes",
+                mesh.name
+            )));
+        }
+        if mesh
+            .indices
+            .iter()
+            .any(|&index| index as usize >= vertex_count)
+        {
+            return Err(invalid_data(format!(
+                "generated BFRES mesh {} has an out-of-range index",
+                mesh.name
+            )));
+        }
+        let finite = mesh
+            .positions
+            .iter()
+            .flatten()
+            .chain(mesh.normals.iter().flatten())
+            .chain(mesh.uv_maps.iter().flatten().flatten())
+            .chain(mesh.bone_weights.iter().flatten())
+            .all(|value| value.is_finite());
+        if !finite {
+            return Err(invalid_data(format!(
+                "generated BFRES mesh {} contains non-finite geometry",
+                mesh.name
+            )));
+        }
+        if usize::from(mesh.material_index) >= file.materials.len()
+            || usize::from(mesh.bone_index) >= file.render.bones.len()
+            || mesh
+                .skin_bones
+                .iter()
+                .any(|&bone| usize::from(bone) >= file.render.bones.len())
+        {
+            return Err(invalid_data(format!(
+                "generated BFRES mesh {} has an invalid material or bone reference",
+                mesh.name
+            )));
+        }
+    }
+    Ok(())
 }
 
 impl WeaponBntxAssetRequest {
@@ -207,20 +347,30 @@ impl WeaponBntxAssetRequest {
         ensure_output_outside_romfs(clean_romfs, output_romfs)?;
 
         let source = resolve_source(clean_romfs, &self.texture_source)?;
-        if !self.png_source.is_file() {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                format!("custom PNG is missing: {}", self.png_source.display()),
-            ));
-        }
         let destination = output_romfs.join(&self.texture_destination);
-        ImageDocument::replace_single_bntx_from_png(
-            source,
-            destination,
-            &self.png_source,
-            &self.new_name,
-            &zstd,
-        )
+        match &self.png_source {
+            Some(png) => {
+                if !png.is_file() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        format!("custom PNG is missing: {}", png.display()),
+                    ));
+                }
+                ImageDocument::replace_single_bntx_from_png(
+                    source,
+                    destination,
+                    png,
+                    &self.new_name,
+                    &zstd,
+                )
+            }
+            None => ImageDocument::clone_single_bntx_with_name(
+                source,
+                destination,
+                &self.new_name,
+                &zstd,
+            ),
+        }
     }
 }
 
@@ -243,6 +393,28 @@ fn index_textures(root: &Path) -> io::Result<BTreeMap<String, PathBuf>> {
         }
     }
     Ok(textures)
+}
+
+pub(super) fn ensure_material_textures(
+    texture_output: &Path,
+    required_texture_names: &BTreeSet<String>,
+    placeholder: &Path,
+    copied: &mut Vec<PathBuf>,
+) -> io::Result<()> {
+    let mut available = index_textures(texture_output)?;
+    for texture_name in required_texture_names {
+        validate_name(texture_name, "BFRES material texture name")?;
+        let stem = texture_name.strip_suffix(".txtg").unwrap_or(texture_name);
+        let logical = stem.to_ascii_lowercase();
+        if available.contains_key(&logical) {
+            continue;
+        }
+        let destination = texture_output.join(format!("{stem}.txtg"));
+        fs::copy(placeholder, &destination)?;
+        available.insert(logical, destination.clone());
+        copied.push(destination);
+    }
+    Ok(())
 }
 
 fn replace_file_stem(file_name: &str, base: &str, new_name: &str) -> io::Result<String> {
@@ -354,6 +526,38 @@ mod tests {
     use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
 
     #[test]
+    fn fills_each_missing_material_texture_once() {
+        let root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("target/assets_placeholder_safeguard_test");
+        if root.is_dir() {
+            fs::remove_dir_all(&root).unwrap();
+        }
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("Existing_Alb.txtg"), b"existing").unwrap();
+        let required = BTreeSet::from([
+            "Existing_Alb".to_owned(),
+            "Missing_Nrm".to_owned(),
+            "Missing_Spm".to_owned(),
+        ]);
+        let placeholder = Path::new(env!("CARGO_MANIFEST_DIR")).join("misc/placeholder_tex.txtg");
+        let mut copied = Vec::new();
+        ensure_material_textures(&root, &required, &placeholder, &mut copied).unwrap();
+
+        assert_eq!(copied.len(), 2);
+        assert_eq!(
+            fs::read(root.join("Existing_Alb.txtg")).unwrap(),
+            b"existing"
+        );
+        for name in ["Missing_Nrm.txtg", "Missing_Spm.txtg"] {
+            assert_eq!(
+                fs::read(root.join(name)).unwrap(),
+                fs::read(&placeholder).unwrap()
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn replaces_only_the_texture_file_stem() {
         assert_eq!(
             replace_file_stem(
@@ -398,7 +602,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(request.new_name, "Weapon_Sword_900");
+        assert_eq!(request.png_source, Some(PathBuf::from("custom.png")));
         assert!(request.texture_destination.is_relative());
+
+        let without_png = WeaponBntxAssetRequest::from_json(
+            r#"{
+                "texture_source": "UI/Tex/Icon/Weapon_Sword_019.bntx.zs",
+                "name": "Weapon_Sword_900",
+                "texture_destination": "UI/Tex/Icon/Weapon_Sword_900.bntx.zs"
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(without_png.png_source, None);
     }
 
     #[test]
@@ -420,7 +635,7 @@ mod tests {
         let request = WeaponModelAssetsRequest {
             base_name: "Weapon_Sword_019".into(),
             new_name: "Weapon_Sword_900".into(),
-            model_source: model,
+            model_source: Some(model),
             model_destination: Some("Model/Weapon_Sword_900.Weapon_Sword_900.bfres.mc".into()),
             fbx_path: None,
         };
@@ -460,7 +675,7 @@ mod tests {
         let request = WeaponModelAssetsRequest {
             base_name: "Weapon_Sword_022".into(),
             new_name: "Weapon_Lsword_005".into(),
-            model_source: model,
+            model_source: Some(model),
             model_destination: Some("Model/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc".into()),
             fbx_path: Some(fbx.clone()),
         };
@@ -472,7 +687,7 @@ mod tests {
         let compressed = fs::read(&generated.model).unwrap();
         assert!(crate::Settings::Magic::is_mcpk(&compressed));
         let raw = zstd.decompress_mcpk(&compressed).unwrap();
-        let source_flags = fs::read(&request.model_source).unwrap();
+        let source_flags = fs::read(request.model_source.as_ref().unwrap()).unwrap();
         assert_eq!(&raw[0xEE..0xF0], &source_flags[0xEE..0xF0]);
         let saved = BfresFile::from_bytes(&raw).unwrap();
         assert_eq!(

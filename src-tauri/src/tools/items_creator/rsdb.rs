@@ -51,9 +51,6 @@ pub struct WeaponRsdbRequest {
     pub attachment_damage: Option<i32>,
     #[serde(default)]
     pub shield_bash_damage: Option<i32>,
-    /// Overrides cloned template tags. Omit to inherit the template's tags.
-    #[serde(default)]
-    pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub overrides: WeaponRsdbOverrides,
 }
@@ -119,6 +116,13 @@ impl<'a> WeaponRsdbProcessor<'a> {
         let game_actor_info = Self::versioned_rsdb_name("GameActorInfo", &version)?;
         let pouch_actor_info = Self::versioned_rsdb_name("PouchActorInfo", &version)?;
         let tag_product = Self::versioned_rsdb_name("Tag", &version)?;
+        let template_is_shield = Self::pouch_category(
+            &clean_rsdb.join(&pouch_actor_info),
+            &request.template_actor,
+            self.zstd.clone(),
+        )?
+        .as_deref()
+            == Some("Shield");
 
         let model_name = request.model_name.as_deref().unwrap_or(&request.actor_name);
         let mut actor = request.overrides.actor_info.clone();
@@ -136,8 +140,10 @@ impl<'a> WeaponRsdbProcessor<'a> {
         if let Some(value) = request.attachment_damage {
             attachment.insert("AttachmentAdditionalDamage".into(), value.into());
         }
-        if let Some(value) = request.shield_bash_damage {
-            attachment.insert("AttachmentShieldBashDamage".into(), value.into());
+        if !template_is_shield {
+            if let Some(value) = request.shield_bash_damage {
+                attachment.insert("AttachmentShieldBashDamage".into(), value.into());
+            }
         }
 
         let mut game = request.overrides.game_actor_info.clone();
@@ -180,7 +186,6 @@ impl<'a> WeaponRsdbProcessor<'a> {
             &tag_output,
             &request.template_actor,
             &request.actor_name,
-            request.tags.as_deref(),
             self.zstd.clone(),
         )?;
         outputs.push(tag_output);
@@ -263,7 +268,6 @@ impl<'a> WeaponRsdbProcessor<'a> {
         destination: &Path,
         template_actor: &str,
         actor_name: &str,
-        tags: Option<&[String]>,
         zstd: Arc<TotkZstd<'_>>,
     ) -> io::Result<()> {
         let compressed = fs::read(source)?;
@@ -278,7 +282,7 @@ impl<'a> WeaponRsdbProcessor<'a> {
             .ok_or_else(|| {
                 Self::invalid_data(format!("template tag entry is missing: {template_path}"))
             })?;
-        let mut selected = tags.map(<[String]>::to_vec).unwrap_or(inherited);
+        let mut selected = inherited;
         selected.sort();
         selected.dedup();
         tag.actor_tag_data.insert(new_path.clone(), selected);
@@ -304,6 +308,31 @@ impl<'a> WeaponRsdbProcessor<'a> {
             .as_string()
             .ok()
             .map(ToString::to_string)
+    }
+
+    fn pouch_category(
+        source: &Path,
+        actor_name: &str,
+        zstd: Arc<TotkZstd<'_>>,
+    ) -> io::Result<Option<String>> {
+        let file = BymlFile::new(source, zstd)
+            .ok_or_else(|| Self::invalid_data(format!("failed to parse {}", source.display())))?;
+        let rows = file
+            .pio
+            .as_array()
+            .map_err(|_| Self::invalid_data("PouchActorInfo root is not an array"))?;
+        let row = rows
+            .iter()
+            .find(|row| Self::row_id(row).as_deref() == Some(actor_name))
+            .ok_or_else(|| {
+                Self::invalid_data(format!("PouchActorInfo row is missing: {actor_name}"))
+            })?;
+        Ok(row
+            .as_map()
+            .ok()
+            .and_then(|row| row.get("PouchCategory"))
+            .and_then(|value| value.as_string().ok())
+            .map(ToString::to_string))
     }
 
     fn json_to_matching_byml(value: &JsonValue, template: &Byml, path: &str) -> io::Result<Byml> {
@@ -409,6 +438,21 @@ impl<'a> WeaponRsdbProcessor<'a> {
     }
 }
 
+pub(super) fn template_is_shield(
+    clean_romfs: &Path,
+    actor_name: &str,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<bool> {
+    let clean_rsdb = clean_romfs.join("RSDB");
+    let (version, _) =
+        super::version::discover_product_file(&clean_rsdb, ACTOR_INFO_PREFIX, PRODUCT_SUFFIX)?;
+    let pouch = clean_rsdb.join(WeaponRsdbProcessor::versioned_rsdb_name(
+        "PouchActorInfo",
+        &version,
+    )?);
+    Ok(WeaponRsdbProcessor::pouch_category(&pouch, actor_name, zstd)?.as_deref() == Some("Shield"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -476,7 +520,6 @@ mod tests {
             selling_price: Some(250),
             attachment_damage: Some(42),
             shield_bash_damage: Some(42),
-            tags: None,
             overrides: WeaponRsdbOverrides::default(),
         };
         let output = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/rsdb_generated_romfs");

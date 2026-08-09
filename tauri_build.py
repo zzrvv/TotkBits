@@ -91,7 +91,10 @@ def tauri_build():
     os.chdir(cwd_str)
     print(f"[+] Building tauri project")
     # run(["cargo", "tauri", "build",  "-- --release"])
-    run(["cargo", "tauri", "build"])
+    # The release workflow installs the NSIS executable below; building WiX as
+    # well can fail independently and prevents the requested portable archives
+    # from being produced even when the application itself compiled correctly.
+    run(["cargo", "tauri", "build", "--bundles", "nsis"])
     print(f"[+] Restoring main.rs")
     restore_main_rs(cwd)
     os.chdir(str(cwd / "res"))

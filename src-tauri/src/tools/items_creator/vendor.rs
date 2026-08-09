@@ -24,7 +24,7 @@ pub struct VendorPackReport {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VendorGenerationReport {
-    pub vendor_pack: VendorPackReport,
+    pub vendor_packs: Vec<VendorPackReport>,
     pub rsdb_outputs: Vec<PathBuf>,
 }
 

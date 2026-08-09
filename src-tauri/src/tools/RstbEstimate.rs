@@ -139,34 +139,39 @@ impl<'a> RstbEstimator<'a> {
                 })?;
             insert_estimate(&mut estimated, resource_path, value);
 
-            if let Some(sarc_data) = sarc_payload(&effective_data).map_err(|error| {
-                RstbEstimateError::new(format!(
-                    "failed to read archive '{}': {error}",
-                    disk_path.display()
-                ))
-            })? {
-                if let Some(vanilla_hashes) = self.vanilla_archive_hashes(relative)? {
-                    self.estimate_sarc_entries(
-                        relative,
-                        &sarc_data,
-                        &vanilla_hashes,
-                        &mut estimated,
-                        &mut modified_sarc_entries,
-                    )?;
-                } else {
-                    if self.vanilla_sarc_hashes.is_none() {
-                        self.vanilla_sarc_hashes = Some(get_sarc_entries_data());
+            if !normalized_path.starts_with("mals/") {
+                if let Some(sarc_data) = sarc_payload(&effective_data).map_err(|error| {
+                    RstbEstimateError::new(format!(
+                        "failed to read archive '{}': {error}",
+                        disk_path.display()
+                    ))
+                })? {
+                    if let Some(vanilla_hashes) = self.vanilla_archive_hashes(relative)? {
+                        self.estimate_sarc_entries(
+                            relative,
+                            &sarc_data,
+                            &vanilla_hashes,
+                            &mut estimated,
+                            &mut modified_sarc_entries,
+                        )?;
+                    } else {
+                        if self.vanilla_sarc_hashes.is_none() {
+                            self.vanilla_sarc_hashes = Some(get_sarc_entries_data());
+                        }
+                        let vanilla_hashes =
+                            self.vanilla_sarc_hashes.as_ref().ok_or_else(|| {
+                                RstbEstimateError::new(
+                                    "failed to initialize the vanilla SARC hash cache",
+                                )
+                            })?;
+                        self.estimate_sarc_entries(
+                            relative,
+                            &sarc_data,
+                            vanilla_hashes,
+                            &mut estimated,
+                            &mut modified_sarc_entries,
+                        )?;
                     }
-                    let vanilla_hashes = self.vanilla_sarc_hashes.as_ref().ok_or_else(|| {
-                        RstbEstimateError::new("failed to initialize the vanilla SARC hash cache")
-                    })?;
-                    self.estimate_sarc_entries(
-                        relative,
-                        &sarc_data,
-                        vanilla_hashes,
-                        &mut estimated,
-                        &mut modified_sarc_entries,
-                    )?;
                 }
             }
         }
@@ -339,7 +344,21 @@ impl<'a> RstbEstimator<'a> {
         data: &'b [u8],
     ) -> Result<Cow<'b, [u8]>, RstbEstimateError> {
         let path = normalize_path(resource_path);
-        if !path.ends_with(".ta.zs") && Magic::is_zstd(data) {
+        if Magic::is_mcpk(data) {
+            let decompressed = self.zstd.decompress_mcpk(data).map_err(|error| {
+                RstbEstimateError::new(format!(
+                    "failed to MCPK-decompress '{}': {error}",
+                    resource_path.display()
+                ))
+            })?;
+            if !decompressed.starts_with(b"FRES") {
+                return Err(RstbEstimateError::new(format!(
+                    "MCPK payload is not a raw FRES resource: '{}'",
+                    resource_path.display()
+                )));
+            }
+            Ok(Cow::Owned(decompressed))
+        } else if !path.ends_with(".ta.zs") && Magic::is_zstd(data) {
             let (decompressed, _) = self
                 .zstd
                 .try_decompress_for_path(resource_path, data)
@@ -416,13 +435,11 @@ impl<'a> RstbEstimator<'a> {
             return self.finish(value);
         }
 
-        let mut effective_path = strip_zstd_suffix(resource_path);
-        let effective_size = if effective_path.ends_with(".mc") {
-            effective_path.truncate(effective_path.len() - ".mc".len());
-            mesh_codec_estimated_size(data)?
-        } else {
-            data.len() as u64
-        };
+        let effective_path = strip_zstd_suffix(resource_path);
+        let effective_path = effective_path
+            .strip_suffix(".mc")
+            .unwrap_or(&effective_path);
+        let effective_size = data.len() as u64;
         let aligned_size = align_32(effective_size)?;
         let rule = SizeRule::for_resource(file_type, &effective_path)?;
         let mut value = rule.calculate(aligned_size, data)?;
@@ -461,6 +478,7 @@ enum SizeRule {
     Ainb,
     Asb,
     Bgyml,
+    Bfres,
     Bstar,
     Generic,
 }
@@ -495,7 +513,7 @@ impl SizeRule {
             | TotkFileType::Xlink
             | TotkFileType::Text => Self::Fixed(256),
             TotkFileType::Evfl => Self::Fixed(288),
-            TotkFileType::Bfres => Self::Generic,
+            TotkFileType::Bfres => Self::Bfres,
             TotkFileType::Restbl => {
                 return Err(RstbEstimateError::new(
                     "RESTBL files do not receive RESTBL allocation entries",
@@ -528,6 +546,11 @@ impl SizeRule {
                 checked_add(aligned_size, 2000, "BGYML base overhead")?,
                 8,
                 "BGYML multiplier",
+            ),
+            Self::Bfres => checked_add(
+                checked_mul(aligned_size, 20, "BFRES allocation")?,
+                20_000,
+                "BFRES safety overhead",
             ),
             Self::Generic => checked_mul(
                 checked_add(aligned_size, 1500, "generic base overhead")?,
@@ -666,21 +689,6 @@ fn exb_allocation(
     )
 }
 
-fn mesh_codec_estimated_size(data: &[u8]) -> Result<u64, RstbEstimateError> {
-    let flags = read_i32_le(data, 0x08, "mesh-codec flags")?;
-    if flags < 0 {
-        return Err(RstbEstimateError::new(
-            "mesh-codec flags produce a negative size",
-        ));
-    }
-    let shift = (flags & 0x0f) as u32;
-    let mantissa = (flags >> 5) as u64;
-    let decompressed_size = mantissa
-        .checked_shl(shift)
-        .ok_or_else(|| RstbEstimateError::new("mesh-codec size shift overflow"))?;
-    checked_mul(decompressed_size, 2, "mesh-codec RESTBL size estimate")
-}
-
 fn read_u32_le(data: &[u8], offset: usize, field: &str) -> Result<u32, RstbEstimateError> {
     let end = checked_usize_add(offset, 4, field)?;
     let bytes = data
@@ -690,10 +698,6 @@ fn read_u32_le(data: &[u8], offset: usize, field: &str) -> Result<u32, RstbEstim
         .try_into()
         .map_err(|_| RstbEstimateError::new(format!("{field} must contain four bytes")))?;
     Ok(u32::from_le_bytes(bytes))
-}
-
-fn read_i32_le(data: &[u8], offset: usize, field: &str) -> Result<i32, RstbEstimateError> {
-    read_u32_le(data, offset, field).map(|value| i32::from_le_bytes(value.to_le_bytes()))
 }
 
 fn align_32(value: u64) -> Result<u64, RstbEstimateError> {
@@ -989,7 +993,7 @@ mod tests {
         );
         assert_eq!(
             estimator.estimate(TotkFileType::Bfres, "Model/Test.bfres", &data)?,
-            6256
+            21_280
         );
         Ok(())
     }
@@ -1153,13 +1157,14 @@ mod tests {
     }
 
     #[test]
-    fn mesh_codec_uses_header_size_then_underlying_rule() -> TestResult {
+    fn mesh_codec_bfres_uses_decompressed_fres_payload() -> TestResult {
         let estimator = test_estimator();
-        let mut data = vec![0; 12];
-        data[0x08..0x0c].copy_from_slice(&(100_i32 << 5).to_le_bytes());
+        let mut raw = vec![0; 33];
+        raw[..4].copy_from_slice(b"FRES");
+        let data = test_zstd().compress_mcpk(&raw)?;
         assert_eq!(
             estimator.estimate(TotkFileType::Bfres, "Model/Test.bfres.mc", &data)?,
-            6896
+            6128
         );
         Ok(())
     }
@@ -1173,8 +1178,9 @@ mod tests {
         let compressed_bphcl = zstd::stream::encode_all(&vec![0; 33][..], 1)?;
         fs::write(root.join("Physics/Test.bphcl.zs"), compressed_bphcl)?;
 
-        let mut mesh_codec = vec![0; 12];
-        mesh_codec[0x08..0x0c].copy_from_slice(&(100_i32 << 5).to_le_bytes());
+        let mut raw_bfres = vec![0; 33];
+        raw_bfres[..4].copy_from_slice(b"FRES");
+        let mesh_codec = test_zstd().compress_mcpk(&raw_bfres)?;
         fs::write(root.join("Model/Test.bfres.mc"), mesh_codec)?;
         fs::write(
             root.join("System/Resource/ResourceSizeTable.Product.121.rsizetable"),
@@ -1185,7 +1191,7 @@ mod tests {
         estimator.estimate_folder(&root)?;
 
         assert_eq!(estimator.entries["Physics/Test.bphcl"], 320);
-        assert_eq!(estimator.entries["Model/Test.bfres"], 6896);
+        assert_eq!(estimator.entries["Model/Test.bfres"], 22384);
         assert_eq!(estimator.entries.len(), 2);
         assert!(estimator.entries.keys().all(|path| !path.contains('\\')));
 
@@ -1260,7 +1266,7 @@ mod tests {
     }
 
     #[test]
-    fn matching_vanilla_archive_skips_unchanged_members_before_estimation() -> TestResult {
+    fn mals_archive_does_not_emit_member_entries() -> TestResult {
         let parent = unique_temp_directory()?;
         let clean = parent.join("clean");
         let output = parent.join("mod");
@@ -1282,11 +1288,12 @@ mod tests {
         estimator.set_vanilla_romfs(&clean);
         estimator.estimate_folder(&output)?;
 
+        assert!(estimator.entries.contains_key("Mals/Test.sarc"));
         assert!(!estimator
             .entries
             .contains_key("ChallengeMsg/Unchanged.msbt"));
-        assert!(estimator.entries.contains_key("ChallengeMsg/Changed.msbt"));
-        assert!(estimator.entries.contains_key("ChallengeMsg/Custom.msbt"));
+        assert!(!estimator.entries.contains_key("ChallengeMsg/Changed.msbt"));
+        assert!(!estimator.entries.contains_key("ChallengeMsg/Custom.msbt"));
 
         fs::remove_dir_all(parent)?;
         Ok(())

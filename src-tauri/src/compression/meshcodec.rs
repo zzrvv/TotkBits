@@ -1,4 +1,6 @@
 use std::ffi::c_int;
+#[cfg(windows)]
+use std::ffi::{c_void, CStr};
 use std::io;
 
 const MCPK_MAGIC: &[u8; 4] = b"MCPK";
@@ -53,7 +55,13 @@ impl MeshCodec {
         // as a fully self-contained Toolbox resave makes readers skip the
         // required external tables and interpret those references as invalid
         // stream offsets.
-        let source = data.to_vec();
+        let mut source = data.to_vec();
+        if source.get(..4) == Some(b"FRES") && source.len() >= 0x20 {
+            let logical_size = u32::from_le_bytes(source[0x1c..0x20].try_into().unwrap()) as usize;
+            if logical_size <= source.len() {
+                source.truncate(logical_size);
+            }
+        }
 
         let aligned_size = source
             .len()
@@ -70,14 +78,7 @@ impl MeshCodec {
         })?;
         let flags = ((aligned_size >> 12) << 5) + 12;
 
-        let mut compressor = zstd::bulk::Compressor::new(MCPK_ZSTD_LEVEL)?;
-        compressor.set_parameter(zstd::zstd_safe::CParameter::ContentSizeFlag(false))?;
-        compressor.set_parameter(zstd::zstd_safe::CParameter::ChecksumFlag(false))?;
-        compressor.set_parameter(zstd::zstd_safe::CParameter::DictIdFlag(false))?;
-        compressor.set_parameter(zstd::zstd_safe::CParameter::Format(
-            zstd::zstd_safe::FrameFormat::Magicless,
-        ))?;
-        let compressed = compressor.compress(&source)?;
+        let compressed = BfresZstd155::compress(&source)?;
 
         let mut output = Vec::with_capacity(12 + compressed.len());
         output.extend_from_slice(MCPK_MAGIC);
@@ -110,6 +111,154 @@ impl MeshCodec {
             ));
         }
         output.resize(size, 0);
+        Ok(output)
+    }
+}
+
+/// Isolated Toolbox-compatible Zstandard 1.5.5 backend. Only MCPK/BFRES
+/// serialization calls this type; all other formats keep the application's
+/// normal `zstd` dependency and settings.
+struct BfresZstd155;
+
+impl BfresZstd155 {
+    #[cfg(windows)]
+    fn compress(source: &[u8]) -> io::Result<Vec<u8>> {
+        type Bound = unsafe extern "C" fn(usize) -> usize;
+        type Compress = unsafe extern "C" fn(*const u8, usize, *mut u8, usize) -> isize;
+
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("bin/cpp/toolbox_zstd155.dll");
+        let library = unsafe { libloading::Library::new(path) }
+            .map_err(|error| io::Error::new(io::ErrorKind::NotFound, error))?;
+        unsafe {
+            let bound: libloading::Symbol<Bound> = library
+                .get(b"toolbox_zstd155_bound\0")
+                .map_err(io::Error::other)?;
+            let compress: libloading::Symbol<Compress> = library
+                .get(b"toolbox_zstd155_compress\0")
+                .map_err(io::Error::other)?;
+            let mut output = vec![0; bound(source.len())];
+            let size = compress(
+                source.as_ptr(),
+                source.len(),
+                output.as_mut_ptr(),
+                output.len(),
+            );
+            if size < 0 {
+                return Err(io::Error::other("BFRES Zstandard 1.5.5 compression failed"));
+            }
+            output.truncate(size as usize);
+            Ok(output)
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn compress(_source: &[u8]) -> io::Result<Vec<u8>> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "BFRES Zstandard 1.5.5 backend is only bundled on Windows",
+        ))
+    }
+}
+
+#[cfg(windows)]
+fn compress_toolbox_zstd(source: &[u8]) -> io::Result<Vec<u8>> {
+    type Create = unsafe extern "C" fn() -> *mut c_void;
+    type Free = unsafe extern "C" fn(*mut c_void) -> usize;
+    type Bound = unsafe extern "C" fn(usize) -> usize;
+    type SetParameter = unsafe extern "C" fn(*mut c_void, i32, i32) -> usize;
+    #[repr(C)]
+    struct InBuffer {
+        src: *const c_void,
+        size: usize,
+        pos: usize,
+    }
+    #[repr(C)]
+    struct OutBuffer {
+        dst: *mut c_void,
+        size: usize,
+        pos: usize,
+    }
+    type Compress = unsafe extern "C" fn(*mut c_void, *mut OutBuffer, *mut InBuffer, i32) -> usize;
+    type IsError = unsafe extern "C" fn(usize) -> u32;
+    type ErrorName = unsafe extern "C" fn(usize) -> *const std::ffi::c_char;
+
+    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let bundled = manifest.join("bin/cpp/libzstd_toolbox.dll");
+    let library = unsafe { libloading::Library::new(&bundled) }
+        .map_err(|error| io::Error::new(io::ErrorKind::NotFound, error))?;
+    unsafe {
+        let create: libloading::Symbol<Create> = library
+            .get(b"ZSTD_createCCtx\0")
+            .map_err(io::Error::other)?;
+        let free: libloading::Symbol<Free> =
+            library.get(b"ZSTD_freeCCtx\0").map_err(io::Error::other)?;
+        let bound: libloading::Symbol<Bound> = library
+            .get(b"ZSTD_compressBound\0")
+            .map_err(io::Error::other)?;
+        let set: libloading::Symbol<SetParameter> = library
+            .get(b"ZSTD_CCtx_setParameter\0")
+            .map_err(io::Error::other)?;
+        let compress: libloading::Symbol<Compress> = library
+            .get(b"ZSTD_compress_generic\0")
+            .map_err(io::Error::other)?;
+        let is_error: libloading::Symbol<IsError> =
+            library.get(b"ZSTD_isError\0").map_err(io::Error::other)?;
+        let error_name: libloading::Symbol<ErrorName> = library
+            .get(b"ZSTD_getErrorName\0")
+            .map_err(io::Error::other)?;
+        let context = create();
+        if context.is_null() {
+            return Err(io::Error::other("Toolbox ZSTD context allocation failed"));
+        }
+        struct Guard(*mut c_void, Free);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                unsafe {
+                    (self.1)(self.0);
+                }
+            }
+        }
+        let _guard = Guard(context, *free);
+        for (parameter, value) in [
+            (100, MCPK_ZSTD_LEVEL),
+            (200, 0),
+            (201, 0),
+            (202, 0),
+            (10, 1),
+        ] {
+            let result = set(context, parameter, value);
+            if is_error(result) != 0 {
+                return Err(io::Error::other(
+                    CStr::from_ptr(error_name(result))
+                        .to_string_lossy()
+                        .into_owned(),
+                ));
+            }
+        }
+        let mut output = vec![0u8; bound(source.len())];
+        let mut input = InBuffer {
+            src: source.as_ptr().cast(),
+            size: source.len(),
+            pos: 0,
+        };
+        let mut target = OutBuffer {
+            dst: output.as_mut_ptr().cast(),
+            size: output.len(),
+            pos: 0,
+        };
+        let remaining = compress(context, &mut target, &mut input, 2);
+        if is_error(remaining) != 0 {
+            return Err(io::Error::other(
+                CStr::from_ptr(error_name(remaining))
+                    .to_string_lossy()
+                    .into_owned(),
+            ));
+        }
+        if remaining != 0 || input.pos != input.size {
+            return Err(io::Error::other("Toolbox ZSTD did not finish the frame"));
+        }
+        output.truncate(target.pos);
         Ok(output)
     }
 }
@@ -163,5 +312,23 @@ mod tests {
         let decompressed = MeshCodec::decompress(&compressed).unwrap();
         assert_eq!(&decompressed[..input.len()], input);
         assert!(decompressed[input.len()..].iter().all(|byte| *byte == 0));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "diagnostic until the bundled Toolbox libzstd revision is matched"]
+    fn recompresses_working_toolbox_weapon_byte_exactly() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../tmp/BotW Weapon Restoration/romfs/_model/toolbox/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc",
+        );
+        if !path.is_file() {
+            return;
+        }
+        let expected = std::fs::read(path).unwrap();
+        let mut raw = MeshCodec::decompress(&expected).unwrap();
+        let file_size = u32::from_le_bytes(raw[0x1c..0x20].try_into().unwrap()) as usize;
+        raw.truncate(file_size);
+        let actual = MeshCodec::compress(&raw).unwrap();
+        assert_eq!(actual, expected);
     }
 }

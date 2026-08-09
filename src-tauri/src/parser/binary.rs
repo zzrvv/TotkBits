@@ -318,6 +318,36 @@ impl BinaryWriter {
         self.write_bytes(value.as_bytes());
         self.write_u8(0);
     }
+    pub fn write_u8_at(&mut self, offset: usize, value: u8) {
+        let position = self.position;
+        self.seek(offset);
+        self.write_u8(value);
+        self.seek(position);
+    }
+    pub fn write_u16_at(&mut self, offset: usize, value: u16) {
+        let position = self.position;
+        self.seek(offset);
+        self.write_u16(value);
+        self.seek(position);
+    }
+    pub fn write_u32_at(&mut self, offset: usize, value: u32) {
+        let position = self.position;
+        self.seek(offset);
+        self.write_u32(value);
+        self.seek(position);
+    }
+    pub fn write_u64_at(&mut self, offset: usize, value: u64) {
+        let position = self.position;
+        self.seek(offset);
+        self.write_u64(value);
+        self.seek(position);
+    }
+    pub fn write_f32_at(&mut self, offset: usize, value: f32) {
+        let position = self.position;
+        self.seek(offset);
+        self.write_f32(value);
+        self.seek(position);
+    }
 }
 
 #[cfg(test)]

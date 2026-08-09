@@ -6,13 +6,22 @@
 
 mod material;
 mod replace;
+mod serializer;
 mod skeleton;
 
 use rfd::{FileDialog, MessageDialog};
 use serde::Serialize;
 use std::{fmt, fs, io, path::Path, sync::Arc};
 
+use crate::parser::binary::{BinaryReader, BinaryWriter, Endian as BinaryEndian};
 use crate::Zstd::{TotkZstd, ZstdDictionary};
+
+fn binary_endian(endian: Endian) -> BinaryEndian {
+    match endian {
+        Endian::Little => BinaryEndian::Little,
+        Endian::Big => BinaryEndian::Big,
+    }
+}
 
 const SECTION_SIGNATURES: &[&[u8; 4]] = &[
     b"FMDL", b"FSKL", b"FVTX", b"FSHP", b"FMAT", b"FSKA", b"FSHU", b"FSHA", b"FSCN", b"FTXP",
@@ -780,12 +789,9 @@ fn parse_vertex_stream(
         attributes.push(VertexAttribute {
             name: read_string(data, u64_at(data, entry, endian)?)
                 .unwrap_or_else(|| format!("attribute_{index}")),
-            format: {
-                let bytes = data
-                    .get(entry + 8..entry + 10)
-                    .ok_or_else(|| BfresError::new(entry, "truncated vertex attribute"))?;
-                u16::from_be_bytes([bytes[0], bytes[1]])
-            },
+            format: BinaryReader::with_endian(data, BinaryEndian::Big)
+                .read_u16_at(entry + 8)
+                .map_err(|error| BfresError::new(entry + 8, error.to_string()))?,
             offset: u16_at(data, entry + 12, endian)? as usize,
             buffer_index: byte_at(data, entry + 14)? as usize,
         });
@@ -1010,12 +1016,22 @@ fn decode_attribute(
         .ok_or_else(|| BfresError::new(0, "vertex attribute buffer index is invalid"))?;
     (0..stream.vertex_count)
         .map(|index| {
-            decode_vertex_value(bytes, index * *stride + attribute.offset, attribute.format)
+            decode_vertex_value(
+                bytes,
+                index * *stride + attribute.offset,
+                attribute.format,
+                prefix,
+            )
         })
         .collect()
 }
 
-fn decode_vertex_value(data: &[u8], offset: usize, format: u16) -> Result<[f32; 4], BfresError> {
+fn decode_vertex_value(
+    data: &[u8],
+    offset: usize,
+    format: u16,
+    semantic: &str,
+) -> Result<[f32; 4], BfresError> {
     let b = |i| byte_at(data, offset + i);
     let u = |i| u16_at(data, offset + i, Endian::Little);
     let s = |i| i16_at(data, offset + i, Endian::Little);
@@ -1036,6 +1052,9 @@ fn decode_vertex_value(data: &[u8], offset: usize, format: u16) -> Result<[f32; 
         0x0517 => [f(0)?, f(4)?, 0.0, 1.0],
         0x0516 => [f(0)?, 0.0, 0.0, 1.0],
         0x0512 => [half(u(0)?), half(u(2)?), 0.0, 1.0],
+        0x0515 if semantic.starts_with("_p") || semantic.starts_with("_n") => {
+            [half(u(0)?), half(u(2)?), half(u(4)?), 1.0]
+        }
         0x0515 => [half(u(0)?), half(u(2)?), half(u(4)?), half(u(6)?)],
         0x010B => [
             b(0)? as f32 / 255.0,
@@ -1162,9 +1181,9 @@ fn half(value: u16) -> f32 {
 }
 
 fn byte_at(data: &[u8], offset: usize) -> Result<u8, BfresError> {
-    data.get(offset)
-        .copied()
-        .ok_or_else(|| BfresError::new(offset, "truncated byte"))
+    BinaryReader::new(data)
+        .read_u8_at(offset)
+        .map_err(|error| BfresError::new(offset, error.to_string()))
 }
 pub(super) fn i16_at(data: &[u8], offset: usize, endian: Endian) -> Result<i16, BfresError> {
     Ok(u16_at(data, offset, endian)? as i16)
@@ -1174,47 +1193,21 @@ pub(super) fn f32_at(data: &[u8], offset: usize, endian: Endian) -> Result<f32, 
 }
 
 pub(super) fn u16_at(data: &[u8], offset: usize, endian: Endian) -> Result<u16, BfresError> {
-    let end = offset
-        .checked_add(2)
-        .ok_or_else(|| BfresError::new(offset, "u16 offset overflow"))?;
-    let source = data
-        .get(offset..end)
-        .ok_or_else(|| BfresError::new(offset, "truncated u16"))?;
-    let bytes = [source[0], source[1]];
-    Ok(match endian {
-        Endian::Little => u16::from_le_bytes(bytes),
-        Endian::Big => u16::from_be_bytes(bytes),
-    })
+    BinaryReader::with_endian(data, binary_endian(endian))
+        .read_u16_at(offset)
+        .map_err(|error| BfresError::new(offset, error.to_string()))
 }
 
 pub(super) fn u32_at(data: &[u8], offset: usize, endian: Endian) -> Result<u32, BfresError> {
-    let end = offset
-        .checked_add(4)
-        .ok_or_else(|| BfresError::new(offset, "u32 offset overflow"))?;
-    let source = data
-        .get(offset..end)
-        .ok_or_else(|| BfresError::new(offset, "truncated u32"))?;
-    let bytes = [source[0], source[1], source[2], source[3]];
-    Ok(match endian {
-        Endian::Little => u32::from_le_bytes(bytes),
-        Endian::Big => u32::from_be_bytes(bytes),
-    })
+    BinaryReader::with_endian(data, binary_endian(endian))
+        .read_u32_at(offset)
+        .map_err(|error| BfresError::new(offset, error.to_string()))
 }
 
 pub(super) fn u64_at(data: &[u8], offset: usize, endian: Endian) -> Result<u64, BfresError> {
-    let end = offset
-        .checked_add(8)
-        .ok_or_else(|| BfresError::new(offset, "u64 offset overflow"))?;
-    let source = data
-        .get(offset..end)
-        .ok_or_else(|| BfresError::new(offset, "truncated u64"))?;
-    let bytes = [
-        source[0], source[1], source[2], source[3], source[4], source[5], source[6], source[7],
-    ];
-    Ok(match endian {
-        Endian::Little => u64::from_le_bytes(bytes),
-        Endian::Big => u64::from_be_bytes(bytes),
-    })
+    BinaryReader::with_endian(data, binary_endian(endian))
+        .read_u64_at(offset)
+        .map_err(|error| BfresError::new(offset, error.to_string()))
 }
 
 pub(super) fn read_string(data: &[u8], offset: u64) -> Option<String> {
@@ -1223,7 +1216,7 @@ pub(super) fn read_string(data: &[u8], offset: u64) -> Option<String> {
         return None;
     }
     if let Some(length_bytes) = data.get(offset..offset + 2) {
-        let length = u16::from_le_bytes(length_bytes.try_into().ok()?) as usize;
+        let length = BinaryReader::new(length_bytes).read_u16().ok()? as usize;
         if length > 0 && length <= 0x1000 {
             let bytes = data.get(offset + 2..offset + 2 + length)?;
             if !bytes.iter().any(|byte| *byte < 0x20 && *byte != b'\t') {
@@ -1247,10 +1240,7 @@ pub(super) fn read_string(data: &[u8], offset: u64) -> Option<String> {
 
 fn res_string_slot(data: &[u8], pointer: usize, expected: &str) -> Result<usize, BfresError> {
     let matches = |prefix: usize, characters: usize| {
-        data.get(prefix..prefix + 2)
-            .and_then(|bytes| bytes.try_into().ok())
-            .map(u16::from_le_bytes)
-            == Some(expected.len() as u16)
+        BinaryReader::new(data).read_u16_at(prefix).ok() == Some(expected.len() as u16)
             && data.get(characters..characters + expected.len()) == Some(expected.as_bytes())
     };
     if matches(pointer, pointer.saturating_add(2)) {
@@ -1286,7 +1276,9 @@ fn write_res_string_in_place(
         .get_mut(offset..end)
         .ok_or_else(|| BfresError::new(offset, "truncated ResString destination"))?;
     destination.fill(0);
-    destination[..2].copy_from_slice(&(value.len() as u16).to_le_bytes());
+    let mut writer = BinaryWriter::from_vec(destination.to_vec(), BinaryEndian::Little);
+    writer.write_u16_at(0, value.len() as u16);
+    destination.copy_from_slice(&writer.into_inner());
     destination[2..2 + value.len()].copy_from_slice(value.as_bytes());
     Ok(())
 }
@@ -1303,10 +1295,11 @@ fn append_res_string_before_relocation(
             "BFRES relocation table is missing",
         ));
     }
-    let mut encoded = Vec::with_capacity(value.len() + 9);
-    encoded.extend_from_slice(&(value.len() as u16).to_le_bytes());
-    encoded.extend_from_slice(value.as_bytes());
-    encoded.push(0);
+    let mut encoded_writer = BinaryWriter::new();
+    encoded_writer.write_u16(value.len() as u16);
+    encoded_writer.write_bytes(value.as_bytes());
+    encoded_writer.write_u8(0);
+    let mut encoded = encoded_writer.into_inner();
     while encoded.len() % 8 != 0 {
         encoded.push(0);
     }
@@ -1435,9 +1428,10 @@ fn replace_res_string(
         }
     }
 
-    let mut replacement = Vec::with_capacity(replacement_len);
-    replacement.extend_from_slice(&(new_value.len() as u16).to_le_bytes());
-    replacement.extend_from_slice(new_value.as_bytes());
+    let mut replacement_writer = BinaryWriter::new();
+    replacement_writer.write_u16(new_value.len() as u16);
+    replacement_writer.write_bytes(new_value.as_bytes());
+    let replacement = replacement_writer.into_inner();
     let mut output = Vec::with_capacity((data.len() as i64 + delta) as usize);
     output.extend_from_slice(&data[..slot]);
     output.extend_from_slice(&replacement);
@@ -1669,24 +1663,22 @@ fn shifted_u32(value: u32, delta: i64, offset: usize) -> Result<u32, BfresError>
 }
 
 fn write_u32(data: &mut [u8], offset: usize, value: u32, endian: Endian) -> Result<(), BfresError> {
-    let bytes = match endian {
-        Endian::Little => value.to_le_bytes(),
-        Endian::Big => value.to_be_bytes(),
-    };
-    data.get_mut(offset..offset + 4)
-        .ok_or_else(|| BfresError::new(offset, "truncated u32 destination"))?
-        .copy_from_slice(&bytes);
+    if offset.checked_add(4).is_none_or(|end| end > data.len()) {
+        return Err(BfresError::new(offset, "truncated u32 destination"));
+    }
+    let mut writer = BinaryWriter::from_vec(data.to_vec(), binary_endian(endian));
+    writer.write_u32_at(offset, value);
+    data.copy_from_slice(&writer.into_inner());
     Ok(())
 }
 
 fn write_u64(data: &mut [u8], offset: usize, value: u64, endian: Endian) -> Result<(), BfresError> {
-    let bytes = match endian {
-        Endian::Little => value.to_le_bytes(),
-        Endian::Big => value.to_be_bytes(),
-    };
-    data.get_mut(offset..offset + 8)
-        .ok_or_else(|| BfresError::new(offset, "truncated u64 destination"))?
-        .copy_from_slice(&bytes);
+    if offset.checked_add(8).is_none_or(|end| end > data.len()) {
+        return Err(BfresError::new(offset, "truncated u64 destination"));
+    }
+    let mut writer = BinaryWriter::from_vec(data.to_vec(), binary_endian(endian));
+    writer.write_u64_at(offset, value);
+    data.copy_from_slice(&writer.into_inner());
     Ok(())
 }
 
@@ -1723,6 +1715,303 @@ mod tests {
             crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
         ));
         assert!(BfresFile::open(&path, zstd).is_some());
+    }
+
+    #[test]
+    #[ignore = "diagnostic comparison of TotkBits and Toolbox BFRES outputs"]
+    fn compare_invisible_and_toolbox_bfres_layouts() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tmp/BotW Weapon Restoration/romfs/_model");
+        let imported = crate::parser::fbx::import::import_for_bfres(
+            &fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/untitled.fbx")).unwrap(),
+        )
+        .unwrap();
+        println!(
+            "FBX MESHES={:?}",
+            imported
+                .meshes
+                .iter()
+                .map(|mesh| (
+                    &mesh.name,
+                    mesh.positions.len(),
+                    mesh.indices.len(),
+                    &mesh.palette_bones,
+                ))
+                .collect::<Vec<_>>()
+        );
+        for mesh in &imported.meshes {
+            let (minimum, maximum) = mesh.positions.iter().fold(
+                ([f32::INFINITY; 3], [f32::NEG_INFINITY; 3]),
+                |(mut minimum, mut maximum), value| {
+                    for axis in 0..3 {
+                        minimum[axis] = minimum[axis].min(value[axis]);
+                        maximum[axis] = maximum[axis].max(value[axis]);
+                    }
+                    (minimum, maximum)
+                },
+            );
+            println!(
+                "FBX EXTENT {:?}: {:?}",
+                mesh.name,
+                std::array::from_fn::<_, 3, _>(|axis| maximum[axis] - minimum[axis])
+            );
+            let unique_positions: std::collections::HashSet<_> = mesh
+                .positions
+                .iter()
+                .map(|value| value.map(f32::to_bits))
+                .collect();
+            let unique_position_uv: std::collections::HashSet<_> = mesh
+                .positions
+                .iter()
+                .enumerate()
+                .map(|(index, position)| {
+                    (
+                        position.map(f32::to_bits),
+                        mesh.uv_maps
+                            .first()
+                            .and_then(|uv| uv.get(index))
+                            .copied()
+                            .unwrap_or_default()
+                            .map(f32::to_bits),
+                    )
+                })
+                .collect();
+            let unique_position_normal_uv: std::collections::HashSet<_> = mesh
+                .positions
+                .iter()
+                .enumerate()
+                .map(|(index, position)| {
+                    (
+                        position.map(f32::to_bits),
+                        mesh.normals
+                            .get(index)
+                            .copied()
+                            .unwrap_or_default()
+                            .map(f32::to_bits),
+                        mesh.uv_maps
+                            .first()
+                            .and_then(|uv| uv.get(index))
+                            .copied()
+                            .unwrap_or_default()
+                            .map(f32::to_bits),
+                    )
+                })
+                .collect();
+            println!(
+                "FBX UNIQUE {:?}: position={} position_uv={} position_normal_uv={} referenced={}",
+                mesh.name,
+                unique_positions.len(),
+                unique_position_uv.len(),
+                unique_position_normal_uv.len(),
+                mesh.indices
+                    .iter()
+                    .copied()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len()
+            );
+            for scale in [
+                100_000.0_f32,
+                80_000.0,
+                60_000.0,
+                50_000.0,
+                40_000.0,
+                30_000.0,
+                20_000.0,
+                10_000.0,
+            ] {
+                let quantized: std::collections::HashSet<_> = mesh
+                    .positions
+                    .iter()
+                    .enumerate()
+                    .map(|(index, position)| {
+                        let q = |value: f32| (value * scale).round() as i32;
+                        (
+                            position.map(q),
+                            mesh.normals.get(index).copied().unwrap_or_default().map(q),
+                            mesh.uv_maps
+                                .first()
+                                .and_then(|uv| uv.get(index))
+                                .copied()
+                                .unwrap_or_default()
+                                .map(q),
+                        )
+                    })
+                    .collect();
+                println!("  quantized {scale}: {}", quantized.len());
+            }
+            for epsilon in [7.5e-6_f32, 8e-6, 8.05e-6, 8.1e-6, 8.15e-6, 8.2e-6, 8.25e-6] {
+                let mut representatives: Vec<([f32; 3], [f32; 2], [f32; 3])> = Vec::new();
+                for (index, position) in mesh.positions.iter().copied().enumerate() {
+                    let uv = mesh
+                        .uv_maps
+                        .first()
+                        .and_then(|values| values.get(index))
+                        .copied()
+                        .unwrap_or_default();
+                    let mut normal = mesh.normals.get(index).copied().unwrap_or_default();
+                    let length = normal.iter().map(|value| value * value).sum::<f32>().sqrt();
+                    if length > 0.0 {
+                        normal = normal.map(|value| value / length);
+                    }
+                    if !representatives
+                        .iter()
+                        .any(|(other_position, other_uv, other_normal)| {
+                            position.map(f32::to_bits) == other_position.map(f32::to_bits)
+                                && uv.map(f32::to_bits) == other_uv.map(f32::to_bits)
+                                && normal
+                                    .iter()
+                                    .zip(other_normal)
+                                    .all(|(left, right)| (*left - right).abs() <= epsilon)
+                        })
+                    {
+                        representatives.push((position, uv, normal));
+                    }
+                }
+                println!("  epsilon {epsilon}: {}", representatives.len());
+            }
+            for normal_scale in [45_000.0_f32, 50_000.0, 55_000.0, 60_000.0, 65_535.0] {
+                let packed: std::collections::HashSet<_> = mesh
+                    .positions
+                    .iter()
+                    .enumerate()
+                    .map(|(index, position)| {
+                        let normal = mesh.normals.get(index).copied().unwrap_or_default();
+                        let uv = mesh
+                            .uv_maps
+                            .first()
+                            .and_then(|values| values.get(index))
+                            .copied()
+                            .unwrap_or_default();
+                        (
+                            position.map(f32::to_bits),
+                            uv.map(f32::to_bits),
+                            normal.map(|value| (value * normal_scale).round() as i32),
+                        )
+                    })
+                    .collect();
+                println!("  packed normal {normal_scale}: {}", packed.len());
+            }
+            for epsilon in [8e-6_f32, 9e-6, 1e-5, 1.1e-5, 1.2e-5, 1.3e-5, 1.4e-5] {
+                let mut representatives: Vec<([f32; 3], [f32; 2], [f32; 3])> = Vec::new();
+                for (index, position) in mesh.positions.iter().copied().enumerate() {
+                    let uv = mesh
+                        .uv_maps
+                        .first()
+                        .and_then(|values| values.get(index))
+                        .copied()
+                        .unwrap_or_default();
+                    let normal = mesh.normals.get(index).copied().unwrap_or_default();
+                    if !representatives
+                        .iter()
+                        .any(|(other_position, other_uv, other_normal)| {
+                            position.map(f32::to_bits) == other_position.map(f32::to_bits)
+                                && uv.map(f32::to_bits) == other_uv.map(f32::to_bits)
+                                && normal
+                                    .iter()
+                                    .zip(other_normal)
+                                    .map(|(left, right)| (*left - right) * (*left - right))
+                                    .sum::<f32>()
+                                    <= epsilon * epsilon
+                        })
+                    {
+                        representatives.push((position, uv, normal));
+                    }
+                }
+                println!("  euclidean {epsilon}: {}", representatives.len());
+            }
+        }
+        for label in ["totkbits", "toolbox"] {
+            let path = root
+                .join(label)
+                .join("Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc");
+            let parsed = BfresFile::from_path(&path).unwrap();
+            println!("{label} HEADER={:?}", parsed.header);
+            println!(
+                "{label} SECTIONS={:?}",
+                parsed
+                    .sections
+                    .iter()
+                    .map(|section| (section.signature_str(), section.offset, &section.name))
+                    .collect::<Vec<_>>()
+            );
+            println!(
+                "{label} MESHES={:?}",
+                parsed
+                    .render
+                    .meshes
+                    .iter()
+                    .map(|mesh| (
+                        &mesh.name,
+                        mesh.material_index,
+                        mesh.bone_index,
+                        mesh.vertex_skin_count,
+                        mesh.positions.len(),
+                        mesh.indices.len(),
+                        &mesh.skin_bones,
+                    ))
+                    .collect::<Vec<_>>()
+            );
+            if label == "toolbox" {
+                let compressed = fs::read(&path).unwrap();
+                let zstd = crate::Zstd::TotkZstd::dictionaryless(
+                    std::sync::Arc::new(crate::TotkConfig::TotkConfig::default()),
+                    crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+                );
+                let raw = zstd.decompress_mcpk(&compressed).unwrap();
+                let recompressed = zstd.compress_mcpk(&raw).unwrap();
+                println!(
+                    "TOOLBOX_MCPK_RECOMPRESS_MATCH={}",
+                    recompressed == compressed
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "regenerates the TotkBits BFRES comparison fixture"]
+    fn regenerates_totkbits_bfres_comparison_fixture() {
+        let tmp = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
+        let source = tmp.join("works/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc");
+        let fbx = tmp.join("untitled.fbx");
+        let output = tmp.join(
+            "BotW Weapon Restoration/romfs/_model/totkbits/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc",
+        );
+        let zstd = crate::Zstd::TotkZstd::dictionaryless(
+            std::sync::Arc::new(crate::TotkConfig::TotkConfig::default()),
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+        );
+        let raw = zstd.decompress_mcpk(&fs::read(source).unwrap()).unwrap();
+        let replaced = BfresFile::replace_geometry_from_fbx(&raw, &fs::read(fbx).unwrap()).unwrap();
+        let compressed = zstd.compress_mcpk(&replaced).unwrap();
+        fs::write(&output, compressed).unwrap();
+        let regenerated = BfresFile::from_path(output).unwrap();
+        assert_eq!(regenerated.render.meshes.len(), 2);
+        assert_eq!(
+            regenerated
+                .render
+                .meshes
+                .iter()
+                .map(|mesh| (mesh.positions.len(), mesh.indices.len()))
+                .collect::<Vec<_>>(),
+            [(119, 186), (1633, 2211)]
+        );
+    }
+
+    #[test]
+    #[ignore = "regenerates only the test_sic custom-weapon BFRES"]
+    fn regenerates_test_sic_custom_weapon_bfres_only() {
+        let tmp = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
+        let source = tmp.join("works/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc");
+        let fbx = tmp.join("untitled.fbx");
+        let output = tmp.join("test_sic/romfs/Model/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc");
+        fs::create_dir_all(output.parent().unwrap()).unwrap();
+        let raw = crate::compression::meshcodec::MeshCodec::decompress(&fs::read(source).unwrap())
+            .unwrap();
+        let replaced = BfresFile::replace_geometry_from_fbx(&raw, &fs::read(fbx).unwrap()).unwrap();
+        let compressed = crate::compression::meshcodec::MeshCodec::compress(&replaced).unwrap();
+        fs::write(&output, compressed).unwrap();
+        let regenerated = BfresFile::from_path(&output).unwrap();
+        assert_eq!(regenerated.render.meshes.len(), 2);
     }
 
     #[test]
