@@ -54,6 +54,10 @@ impl<'a> ModRstbProcessor<'a> {
         let clean_resource = self.clean_romfs.join("System/Resource");
         let (product_version, source) =
             super::version::discover_product_file(&clean_resource, PRODUCT_PREFIX, PRODUCT_SUFFIX)?;
+        let file_name = source
+            .file_name()
+            .ok_or_else(|| invalid_data("ResourceSizeTable filename is missing"))?;
+        let output = self.output_romfs.join("System/Resource").join(file_name);
 
         let mut estimator = RstbEstimator::new(self.zstd.clone());
         estimator.set_vanilla_romfs(&self.clean_romfs);
@@ -67,17 +71,35 @@ impl<'a> ModRstbProcessor<'a> {
             .collect();
         let source_bytes = fs::read(&source)?;
         let (raw, dictionary) = self.zstd.try_decompress_for_path(&source, &source_bytes)?;
-        let mut table = ResourceSizeTable::from_bytes(&raw).map_err(io::Error::other)?;
+        let clean_table = ResourceSizeTable::from_bytes(&raw).map_err(io::Error::other)?;
+        let existing_table = if output.is_file() {
+            let bytes = fs::read(&output)?;
+            let (raw, _) = self.zstd.try_decompress_for_path(&output, &bytes)?;
+            Some(ResourceSizeTable::from_bytes(&raw).map_err(io::Error::other)?)
+        } else {
+            None
+        };
+        let mut table = existing_table
+            .clone()
+            .unwrap_or_else(|| clean_table.clone());
+        let mut needs_rebuild = existing_table.is_none();
         let mut entries = BTreeMap::new();
         let mut modified_matching_vanilla = BTreeMap::new();
         for (path, estimated) in estimated_entries {
-            let vanilla = table.get(path.clone()).copied();
+            let vanilla = clean_table.get(path.clone()).copied();
+            let existing = existing_table
+                .as_ref()
+                .and_then(|table| table.get(path.clone()).copied());
+            if existing_table.is_some() && existing.is_none() {
+                needs_rebuild = true;
+            }
             if vanilla == Some(estimated) {
                 modified_matching_vanilla.insert(path, estimated);
                 continue;
             }
-            table.set(path.clone(), estimated);
-            entries.insert(path, estimated);
+            let value = existing.unwrap_or(estimated);
+            table.set(path.clone(), value);
+            entries.insert(path, value);
         }
         estimator.entries = entries
             .iter()
@@ -85,18 +107,16 @@ impl<'a> ModRstbProcessor<'a> {
             .collect();
         let yaml = self.output_romfs.join("rstb.yaml");
         estimator.save_yaml(&yaml).map_err(io::Error::other)?;
-        let rebuilt = table.to_bytes().map_err(io::Error::other)?;
-        let file_name = source
-            .file_name()
-            .ok_or_else(|| invalid_data("ResourceSizeTable filename is missing"))?;
-        let output = self.output_romfs.join("System/Resource").join(file_name);
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(
-            &output,
-            self.zstd.compress_with_dictionary(&rebuilt, dictionary)?,
-        )?;
+        if needs_rebuild {
+            let rebuilt = table.to_bytes().map_err(io::Error::other)?;
+            fs::write(
+                &output,
+                self.zstd.compress_with_dictionary(&rebuilt, dictionary)?,
+            )?;
+        }
 
         let (verified, _) = self
             .zstd
@@ -195,16 +215,12 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "recalculates the existing tmp/test_sic - Copy mod"]
+    #[ignore = "recalculates only the existing tmp/test_sic RSTB outputs"]
     fn recalculate_test_sic_rstb() {
         let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
-        let output_romfs =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/test_sic - Copy/romfs");
+        let output_romfs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/test_sic/romfs");
         assert!(clean_romfs.is_dir(), "clean ROMFS is missing");
-        assert!(
-            output_romfs.is_dir(),
-            "tmp/test_sic - Copy/romfs is missing"
-        );
+        assert!(output_romfs.is_dir(), "tmp/test_sic/romfs is missing");
 
         let mut config = TotkConfig::default();
         config.romfs = clean_romfs.to_string_lossy().into_owned();
@@ -231,9 +247,7 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
         let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
         let mod_romfs = root.join("test_sic/romfs");
-        let correct_path = root.join(
-            "BotW Weapon Restoration/romfs/System/Resource/ResourceSizeTable.Product.121.rsizetable.zs",
-        );
+        let correct_path = root.join("works/ResourceSizeTable.Product.121.rsizetable.zs");
         let wrong_path =
             mod_romfs.join("System/Resource/ResourceSizeTable.Product.121.rsizetable.zs");
 
@@ -247,6 +261,44 @@ mod tests {
         };
         let correct = read_table(&correct_path);
         let wrong = read_table(&wrong_path);
+        let (_, vanilla_path) = super::super::version::discover_product_file(
+            &clean_romfs.join("System/Resource"),
+            PRODUCT_PREFIX,
+            PRODUCT_SUFFIX,
+        )
+        .unwrap();
+        let vanilla = read_table(&vanilla_path);
+        let hash_differences = correct
+            .hash_table
+            .iter()
+            .filter(|(hash, value)| wrong.hash_table.get(hash) != Some(value))
+            .count()
+            + wrong
+                .hash_table
+                .keys()
+                .filter(|hash| !correct.hash_table.contains_key(hash))
+                .count();
+        println!(
+            "TABLE correct_version={:?} generated_version={:?} correct_hashes={} generated_hashes={} correct_overflow={} generated_overflow={} hash_differences={}",
+            correct.version,
+            wrong.version,
+            correct.hash_table.len(),
+            wrong.hash_table.len(),
+            correct.overflow_table.len(),
+            wrong.overflow_table.len(),
+            hash_differences
+        );
+        let model =
+            fs::read(mod_romfs.join("Model/Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc")).unwrap();
+        let model_raw = zstd.decompress_mcpk(&model).unwrap();
+        let model_parsed =
+            crate::file_format::Model3D::bfres::BfresFile::from_bytes(&model_raw).unwrap();
+        println!(
+            "MODEL compressed={} decompressed={} header_file_size={}",
+            model.len(),
+            model_raw.len(),
+            model_parsed.header.file_size
+        );
         let generated_yaml: BTreeMap<String, u32> =
             serde_yaml::from_slice(&fs::read(mod_romfs.join("rstb.yaml")).unwrap()).unwrap();
         let mut paths: Vec<_> = generated_yaml.keys().cloned().collect();
@@ -260,7 +312,8 @@ mod tests {
             if correct_value != wrong_value {
                 differences += 1;
                 println!(
-                    "DIFF {path}\testimate={estimated}\tcorrect={correct_value:?}\tgenerated={wrong_value:?}"
+                    "DIFF {path}\testimate={estimated}\tcorrect={correct_value:?}\tgenerated={wrong_value:?}\tvanilla={:?}",
+                    vanilla.get(path.clone()).copied()
                 );
             }
         }

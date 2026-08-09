@@ -238,6 +238,145 @@ impl Msbt {
         self.header.write(&mut w, size, sections.len() as u16);
         Ok(w.into_inner())
     }
+
+    /// Rewrites text for existing messages without rebuilding LBL1 or any
+    /// unchanged TXT2 body. This is the safe path for large game message files
+    /// whose labels and metadata are not being added, removed, or reordered.
+    pub fn to_bytes_preserving_layout(&self) -> io::Result<Vec<u8>> {
+        let original_txt = self
+            .sections
+            .iter()
+            .find(|section| &section.magic == b"TXT2")
+            .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "missing TXT2"))?;
+        let mut reader = BinaryReader::with_endian(&original_txt.data, self.header.endian);
+        let count = reader.read_u32()? as usize;
+        if count > self.messages.len() {
+            return Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "layout-preserving MSBT save cannot remove messages",
+            ));
+        }
+        let mut offsets = Vec::with_capacity(count);
+        for _ in 0..count {
+            offsets.push(reader.read_u32()? as usize);
+        }
+        let labels = self
+            .sections
+            .iter()
+            .find(|section| &section.magic == b"LBL1")
+            .map(|section| LabelSection::read(&section.data, self.header.endian))
+            .transpose()?;
+        for (index, message) in self.messages.iter().take(count).enumerate() {
+            let original = labels
+                .as_ref()
+                .and_then(|labels| {
+                    labels
+                        .labels
+                        .iter()
+                        .find(|label| label.index as usize == index)
+                })
+                .map(|label| label.name.as_str());
+            if original != message.label.as_deref() {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidInput,
+                    "layout-preserving MSBT save cannot change labels",
+                ));
+            }
+        }
+
+        let mut bodies = Vec::with_capacity(self.messages.len());
+        for (index, message) in self.messages.iter().enumerate() {
+            if index >= count {
+                bodies.push(text::encode(
+                    &message.parts,
+                    self.header.encoding,
+                    self.header.endian,
+                )?);
+                continue;
+            }
+            let start = offsets[index];
+            let end = offsets
+                .get(index + 1)
+                .copied()
+                .unwrap_or(original_txt.data.len());
+            if start > end || end > original_txt.data.len() {
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "TXT2 offset out of bounds",
+                ));
+            }
+            let original = &original_txt.data[start..end];
+            let original_parts = text::decode(original, self.header.encoding, self.header.endian)?;
+            if original_parts == message.parts {
+                bodies.push(original.to_vec());
+            } else {
+                bodies.push(text::encode(
+                    &message.parts,
+                    self.header.encoding,
+                    self.header.endian,
+                )?);
+            }
+        }
+
+        let mut txt_writer = BinaryWriter::with_endian(self.header.endian);
+        txt_writer.write_u32(self.messages.len() as u32);
+        let mut offset = 4 + self.messages.len() * 4;
+        for body in &bodies {
+            txt_writer.write_u32(offset as u32);
+            offset += body.len();
+        }
+        for body in bodies {
+            txt_writer.write_bytes(&body);
+        }
+        let mut sections = self.sections.clone();
+        if self.messages.len() != count {
+            let labels = self
+                .messages
+                .iter()
+                .enumerate()
+                .filter_map(|(index, message)| {
+                    message.label.as_ref().map(|name| Label {
+                        name: name.clone(),
+                        index: index as u32,
+                    })
+                })
+                .collect();
+            sections
+                .iter_mut()
+                .find(|section| &section.magic == b"LBL1")
+                .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "missing LBL1"))?
+                .data = LabelSection {
+                group_count: self.label_groups.max(1),
+                labels,
+            }
+            .write(self.header.endian)?;
+        }
+        sections
+            .iter_mut()
+            .find(|section| &section.magic == b"TXT2")
+            .expect("TXT2 was checked above")
+            .data = txt_writer.into_inner();
+
+        let mut writer = BinaryWriter::with_endian(self.header.endian);
+        self.header.write(&mut writer, 0, sections.len() as u16);
+        for section in &sections {
+            writer.align(16)?;
+            writer.write_bytes(&section.magic);
+            writer.write_u32(section.data.len() as u32);
+            writer.write_bytes(&section.reserved);
+            writer.write_bytes(&section.data);
+            let required = (16 - writer.position() % 16) % 16;
+            if section.padding.len() == required {
+                writer.write_bytes(&section.padding);
+            } else {
+                writer.write_bytes(&vec![0xab; required]);
+            }
+        }
+        let size = writer.position() as u32;
+        writer.seek(0);
+        self.header.write(&mut writer, size, sections.len() as u16);
+        Ok(writer.into_inner())
+    }
 }
 
 #[cfg(test)]

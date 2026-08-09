@@ -489,6 +489,29 @@ impl<'a> PackFile<'a> {
         }
     }
 
+    /// Rebuilds the current archive while replacing only the named members.
+    /// This retains the source SARC writer's hash multiplier and layout policy,
+    /// which format-specific archives such as MALS rely on.
+    pub fn rebuild_replacing_entries(
+        &self,
+        replacements: impl IntoIterator<Item = (String, Vec<u8>)>,
+    ) -> io::Result<Vec<u8>> {
+        let mut writer = self.writer.clone();
+        for (path, data) in replacements {
+            writer.add_file(&path, data);
+        }
+        let raw = writer.to_binary();
+        Sarc::new(raw.clone())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        match self.compression {
+            Some(ZstdDictionary::Yaz0) => {
+                TotkZstd::compress_yaz0_with_alignment(&raw, self.yaz0_alignment)
+            }
+            Some(dictionary) => self.zstd.compress_with_dictionary(&raw, dictionary),
+            None => Ok(raw),
+        }
+    }
+
     /// Parses one internal BYML entry through TotkBits' BYML document wrapper.
     pub fn byml_file(&self, path: &str) -> io::Result<BymlFile<'a>> {
         let data = self.sarc.get_data(path).ok_or_else(|| {

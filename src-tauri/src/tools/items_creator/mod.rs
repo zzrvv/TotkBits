@@ -25,24 +25,65 @@ mod version;
 const SHARP_INFO: &str = "GameParameter/SharpInfo/Default.game__weapon__SharpInfoTable.bgyml";
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
 pub enum WeaponKind {
-    Sword,
+    #[serde(rename = "SmallSword", alias = "small_sword")]
+    SmallSword,
+    #[serde(rename = "LargeSword", alias = "large_sword")]
     LargeSword,
+    #[serde(rename = "Spear", alias = "spear")]
     Spear,
+    #[serde(rename = "Bow", alias = "bow")]
     Bow,
+    #[serde(rename = "Shield", alias = "shield")]
     Shield,
 }
 
 impl WeaponKind {
-    fn actor_prefix(self) -> &'static str {
+    pub(crate) fn actor_prefix(self) -> &'static str {
         match self {
-            Self::Sword => "Weapon_Sword_",
+            Self::SmallSword => "Weapon_Sword_",
             Self::LargeSword => "Weapon_Lsword_",
             Self::Spear => "Weapon_Spear_",
             Self::Bow => "Weapon_Bow_",
             Self::Shield => "Weapon_Shield_",
         }
+    }
+
+    pub(crate) fn actor_category(self) -> &'static str {
+        match self {
+            Self::SmallSword | Self::LargeSword | Self::Spear => "Weapon",
+            Self::Shield => "Shield",
+            Self::Bow => "Bow",
+        }
+    }
+
+    pub(crate) fn parameter_component(self) -> (&'static str, &'static str) {
+        match self {
+            Self::SmallSword | Self::LargeSword | Self::Spear => ("WeaponRef", "WeaponParam"),
+            Self::Shield => ("ShieldRef", "ShieldParam"),
+            Self::Bow => ("BowRef", "BowParam"),
+        }
+    }
+
+    pub(crate) fn melee_weapon_type(self) -> Option<&'static str> {
+        match self {
+            Self::SmallSword => Some("SmallSword"),
+            Self::LargeSword => Some("LargeSword"),
+            Self::Spear => Some("Spear"),
+            Self::Shield | Self::Bow => None,
+        }
+    }
+
+    pub(crate) fn from_actor_name(actor: &str) -> Option<Self> {
+        [
+            Self::SmallSword,
+            Self::LargeSword,
+            Self::Spear,
+            Self::Shield,
+            Self::Bow,
+        ]
+        .into_iter()
+        .find(|kind| actor.starts_with(kind.actor_prefix()))
     }
 }
 
@@ -85,7 +126,8 @@ pub struct WeaponAssets {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct WeaponSpec {
     pub actor_name: String,
-    pub kind: WeaponKind,
+    #[serde(default)]
+    pub kind: Option<WeaponKind>,
     /// Existing actor pack used as the structural template.
     pub template_actor: String,
     /// Model project/FMDB name. This normally equals `actor_name`.
@@ -122,6 +164,17 @@ pub struct WeaponSpec {
 }
 
 impl WeaponSpec {
+    fn effective_kind(&self) -> io::Result<WeaponKind> {
+        self.kind
+            .or_else(|| WeaponKind::from_actor_name(&self.template_actor))
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "kind must be LargeSword, SmallSword, Spear, Shield, or Bow, or inferable from template_actor",
+                )
+            })
+    }
+
     pub fn from_json(text: &str) -> io::Result<Self> {
         serde_json::from_str(text)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
@@ -146,9 +199,11 @@ impl WeaponSpec {
         output_romfs: &Path,
         zstd: std::sync::Arc<crate::Zstd::TotkZstd<'_>>,
     ) -> io::Result<PathBuf> {
-        actor_pack::validate_weapon_template_category(
+        let kind = self.effective_kind()?;
+        actor_pack::validate_item_template_category(
             clean_romfs,
             &self.template_actor,
+            kind,
             zstd.clone(),
         )?;
         let output = output_romfs
@@ -161,11 +216,21 @@ impl WeaponSpec {
             if rsdb::template_is_shield(clean_romfs, &self.template_actor, zstd.clone())? {
                 parameters.shield_bash_damage = None;
             }
-            generated_policy = actor_pack::ActorPackPolicy::standard_weapon_clone(
-                &self.template_actor,
-                &self.actor_name,
-                parameters,
-            )?;
+            generated_policy = if self.kind.is_some() {
+                actor_pack::ActorPackPolicy::standard_item_clone(
+                    &self.template_actor,
+                    &self.actor_name,
+                    kind,
+                    parameters,
+                )?
+            } else {
+                actor_pack::ActorPackPolicy::standard_item_clone_preserving_kind(
+                    &self.template_actor,
+                    &self.actor_name,
+                    kind,
+                    parameters,
+                )?
+            };
             &generated_policy
         } else {
             &self.actor_pack
@@ -273,14 +338,15 @@ impl WeaponSpec {
     }
 
     pub fn validate(&self, asset_root: &Path) -> io::Result<()> {
-        if !self.actor_name.starts_with(self.kind.actor_prefix()) {
+        let kind = self.effective_kind()?;
+        if !self.actor_name.starts_with(kind.actor_prefix()) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
                     "actor {} does not match {:?} prefix {}",
                     self.actor_name,
-                    self.kind,
-                    self.kind.actor_prefix()
+                    kind,
+                    kind.actor_prefix()
                 ),
             ));
         }
@@ -555,6 +621,38 @@ fn collect_files(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_item_kind_json_accepts_only_supported_kinds() {
+        for (json, expected) in [
+            (r#""LargeSword""#, WeaponKind::LargeSword),
+            (r#""SmallSword""#, WeaponKind::SmallSword),
+            (r#""Spear""#, WeaponKind::Spear),
+            (r#""Shield""#, WeaponKind::Shield),
+            (r#""Bow""#, WeaponKind::Bow),
+        ] {
+            assert_eq!(serde_json::from_str::<WeaponKind>(json).unwrap(), expected);
+        }
+        for unsupported in [r#""Sword""#, r#""Axe""#, r#""LargeSword2""#] {
+            assert!(serde_json::from_str::<WeaponKind>(unsupported).is_err());
+        }
+    }
+
+    #[test]
+    fn omitted_kind_is_inferred_from_the_base_actor() {
+        let spec = WeaponSpec::from_json(
+            r#"{
+                "actor_name":"Weapon_Sword_900",
+                "template_actor":"Weapon_Sword_025",
+                "display_name":"Test Sword",
+                "description":"Test",
+                "assets":{}
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(spec.kind, None);
+        assert_eq!(spec.effective_kind().unwrap(), WeaponKind::SmallSword);
+    }
 
     #[test]
     #[ignore = "writes the complete real Weapon_Lsword_005 integration fixture"]
@@ -1091,6 +1189,13 @@ mod tests {
         };
         let generated_mals = open_mals(&generated);
         let reference_mals = open_mals(&reference);
+        writeln!(
+            report,
+            "MALS RAW SIZE: generated={}, reference={}",
+            generated_mals.data.len(),
+            reference_mals.data.len()
+        )
+        .expect("write report");
         for file in generated_mals.sarc.files() {
             let Some(name) = file.name() else { continue };
             if !name.ends_with(".msbt") {
@@ -1100,6 +1205,15 @@ mod tests {
             let Some(reference_data) = reference_mals.sarc.get_data(name) else {
                 continue;
             };
+            if file.data() != reference_data {
+                writeln!(
+                    report,
+                    "MALS ENTRY BYTES DIFFER: {name}: generated={}, reference={}",
+                    file.data().len(),
+                    reference_data.len()
+                )
+                .expect("write report");
+            }
             let reference_msbt = Msbt::from_bytes(reference_data).expect("parse reference MSBT");
             for message in generated_msbt.messages.iter().filter(|message| {
                 message
@@ -1526,7 +1640,7 @@ mod tests {
     fn spec() -> WeaponSpec {
         WeaponSpec {
             actor_name: "Weapon_Lsword_900".into(),
-            kind: WeaponKind::LargeSword,
+            kind: Some(WeaponKind::LargeSword),
             template_actor: "Weapon_Lsword_060".into(),
             model_name: String::new(),
             weapon_parameters: actor_pack::WeaponParameterOverrides::default(),

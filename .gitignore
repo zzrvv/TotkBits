@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules/*
 res/asdf/*
 res/*
+ext_projects/*/target/*
+ext_projects/*/Cargo.lock
 tmp/*
 /bin/*
 # /bin/ainb/

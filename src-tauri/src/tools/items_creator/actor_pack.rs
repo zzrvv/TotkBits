@@ -149,6 +149,8 @@ pub struct WeaponPackRequest {
     #[serde(alias = "base")]
     pub template_actor: String,
     #[serde(default)]
+    pub kind: Option<super::WeaponKind>,
+    #[serde(default)]
     pub model_name: Option<String>,
     #[serde(default, alias = "attack")]
     pub base_attack: Option<i32>,
@@ -229,25 +231,47 @@ impl WeaponPackRequest {
         if self.chemical.is_some() && self.chemical_ref.is_some() {
             return Err(invalid("chemical and chemical_ref cannot both be provided"));
         }
-        validate_weapon_template_category(clean_romfs, &self.template_actor, zstd.clone())?;
+        let explicit_kind = self.kind;
+        let kind = explicit_kind
+            .or_else(|| super::WeaponKind::from_actor_name(&self.template_actor))
+            .ok_or_else(|| invalid("kind must be LargeSword, SmallSword, Spear, Shield, or Bow"))?;
+        if !self.actor_name.starts_with(kind.actor_prefix()) {
+            return Err(invalid(format!(
+                "actor {} does not match {kind:?} prefix {}",
+                self.actor_name,
+                kind.actor_prefix()
+            )));
+        }
+        validate_item_template_category(clean_romfs, &self.template_actor, kind, zstd.clone())?;
         let shield_bash_damage =
             if super::rsdb::template_is_shield(clean_romfs, &self.template_actor, zstd.clone())? {
                 None
             } else {
                 self.shield_bash_damage
             };
-        let mut policy = ActorPackPolicy::standard_weapon_clone(
-            &self.template_actor,
-            &self.actor_name,
-            WeaponParameterOverrides {
-                model_name: self.model_name.clone(),
-                base_attack: self.base_attack,
-                max_life: self.durability,
-                additional_damage: self.attachment_damage,
-                shield_bash_damage,
-                chemical_ref: self.chemical_ref.clone(),
-            },
-        )?;
+        let overrides = WeaponParameterOverrides {
+            model_name: self.model_name.clone(),
+            base_attack: self.base_attack,
+            max_life: self.durability,
+            additional_damage: self.attachment_damage,
+            shield_bash_damage,
+            chemical_ref: self.chemical_ref.clone(),
+        };
+        let mut policy = if explicit_kind.is_some() {
+            ActorPackPolicy::standard_item_clone(
+                &self.template_actor,
+                &self.actor_name,
+                kind,
+                overrides,
+            )?
+        } else {
+            ActorPackPolicy::standard_item_clone_preserving_kind(
+                &self.template_actor,
+                &self.actor_name,
+                kind,
+                overrides,
+            )?
+        };
         policy.parameter_edits.extend(self.extra_edits.clone());
         clone_vanilla_actor_pack_with_links(
             clean_romfs,
@@ -380,6 +404,17 @@ pub(super) fn validate_weapon_template_category(
     template_actor: &str,
     zstd: Arc<TotkZstd<'_>>,
 ) -> io::Result<()> {
+    let kind = super::WeaponKind::from_actor_name(template_actor)
+        .ok_or_else(|| invalid("unsupported template item kind"))?;
+    validate_item_template_category(clean_romfs, template_actor, kind, zstd)
+}
+
+pub(super) fn validate_item_template_category(
+    clean_romfs: &Path,
+    template_actor: &str,
+    kind: super::WeaponKind,
+    zstd: Arc<TotkZstd<'_>>,
+) -> io::Result<()> {
     validate_actor_name(template_actor)?;
     let pack_path = clean_romfs
         .join("Pack/Actor")
@@ -406,9 +441,10 @@ pub(super) fn validate_weapon_template_category(
                 "base ActorParam has no string Category: {actor_path}"
             ))
         })?;
-    if category.as_str() != "Weapon" {
+    let expected = kind.actor_category();
+    if category.as_str() != expected {
         return Err(invalid(format!(
-            "base actor {template_actor} is not a weapon: ActorParam Category is {category:?}, expected \"Weapon\""
+            "base actor {template_actor} has ActorParam Category {category:?}, expected {expected:?} for {kind:?}"
         )));
     }
     Ok(())
@@ -714,6 +750,37 @@ impl ActorPackPolicy {
         new_actor: &str,
         overrides: WeaponParameterOverrides,
     ) -> io::Result<Self> {
+        let kind = super::WeaponKind::from_actor_name(new_actor)
+            .or_else(|| super::WeaponKind::from_actor_name(template_actor))
+            .ok_or_else(|| invalid("unsupported custom item kind"))?;
+        Self::standard_item_clone_preserving_kind(template_actor, new_actor, kind, overrides)
+    }
+
+    pub fn standard_item_clone(
+        template_actor: &str,
+        new_actor: &str,
+        kind: super::WeaponKind,
+        overrides: WeaponParameterOverrides,
+    ) -> io::Result<Self> {
+        Self::standard_item_clone_impl(template_actor, new_actor, kind, overrides, true)
+    }
+
+    pub fn standard_item_clone_preserving_kind(
+        template_actor: &str,
+        new_actor: &str,
+        kind: super::WeaponKind,
+        overrides: WeaponParameterOverrides,
+    ) -> io::Result<Self> {
+        Self::standard_item_clone_impl(template_actor, new_actor, kind, overrides, false)
+    }
+
+    fn standard_item_clone_impl(
+        template_actor: &str,
+        new_actor: &str,
+        kind: super::WeaponKind,
+        overrides: WeaponParameterOverrides,
+        write_kind: bool,
+    ) -> io::Result<Self> {
         validate_actor_name(template_actor)?;
         validate_actor_name(new_actor)?;
         if template_actor == new_actor {
@@ -730,8 +797,10 @@ impl ActorPackPolicy {
             format!("Component/LifeParam/{new_actor}.game__component__LifeParam.bgyml");
         let model_file =
             format!("Component/ModelInfo/{new_model_path}.engine__component__ModelInfo.bgyml");
-        let weapon_file =
-            format!("Component/WeaponParam/{new_actor}.game__component__WeaponParam.bgyml");
+        let (parameter_ref, parameter_component) = kind.parameter_component();
+        let parameter_file = format!(
+            "Component/{parameter_component}/{new_actor}.game__component__{parameter_component}.bgyml"
+        );
         let life_file = format!("Life/LifeParameters/{new_actor}.game__life__LifeParameters.bgyml");
 
         let renames = vec![
@@ -752,8 +821,8 @@ impl ActorPackPolicy {
                 &model_file,
             ),
             rename(
-                format!("Component/WeaponParam/{template_actor}.game__component__WeaponParam.bgyml"),
-                &weapon_file,
+                format!("Component/{parameter_component}/{template_actor}.game__component__{parameter_component}.bgyml"),
+                &parameter_file,
             ),
             rename(
                 format!("Life/LifeParameters/{template_actor}.game__life__LifeParameters.bgyml"),
@@ -779,9 +848,10 @@ impl ActorPackPolicy {
             ),
             string_edit(
                 &actor_file,
-                &["Components", "WeaponRef"],
-                format!("?{weapon_file}"),
+                &["Components", parameter_ref],
+                format!("?{parameter_file}"),
             ),
+            string_edit(&actor_file, &["Category"], kind.actor_category().to_owned()),
             string_edit(
                 &life_param_file,
                 &["LifeParameters"],
@@ -792,8 +862,22 @@ impl ActorPackPolicy {
             parameter_edits.push(string_edit(&model_file, &["FmdbName"], model_name.clone()));
             parameter_edits.push(string_edit(&model_file, &["ModelProjectName"], model_name));
         }
+        if write_kind {
+            if let Some(weapon_type) = kind.melee_weapon_type() {
+                parameter_edits.push(string_edit(
+                    &parameter_file,
+                    &["WeaponType"],
+                    weapon_type.to_owned(),
+                ));
+            }
+        }
         if let Some(value) = overrides.base_attack {
-            parameter_edits.push(i32_edit(&weapon_file, &["BaseAttack"], value));
+            let strength_key = if kind == super::WeaponKind::Shield {
+                "GuardPower"
+            } else {
+                "BaseAttack"
+            };
+            parameter_edits.push(i32_edit(&parameter_file, &[strength_key], value));
         }
         if let Some(value) = overrides.max_life {
             parameter_edits.push(i32_edit(&life_file, &["MaxLife"], value));
@@ -942,6 +1026,8 @@ pub fn load_weapon_actor_info(
     }
     for key in [
         "WeaponRef",
+        "ShieldRef",
+        "BowRef",
         "LifeRef",
         "AttachmentRef",
         "ModelInfoRef",
@@ -953,7 +1039,17 @@ pub fn load_weapon_actor_info(
     }
     let chemical_ref = component_refs.get("ChemicalRef").cloned();
 
-    let weapon_path = required_component_path(&component_refs, "WeaponRef")?;
+    let parameter_ref = match category.as_deref() {
+        Some("Weapon") => "WeaponRef",
+        Some("Shield") => "ShieldRef",
+        Some("Bow") => "BowRef",
+        value => {
+            return Err(invalid(format!(
+                "unsupported ActorParam Category for custom item: {value:?}"
+            )))
+        }
+    };
+    let weapon_path = required_component_path(&component_refs, parameter_ref)?;
     let life_param_path = required_component_path(&component_refs, "LifeRef")?;
     let attachment_path = required_component_path(&component_refs, "AttachmentRef")?;
     let model_path = required_component_path(&component_refs, "ModelInfoRef")?;
@@ -986,11 +1082,19 @@ pub fn load_weapon_actor_info(
         None
     };
 
+    let strength = map_i32(
+        weapon_map,
+        if category.as_deref() == Some("Shield") {
+            "GuardPower"
+        } else {
+            "BaseAttack"
+        },
+    );
     Ok(WeaponActorInfo {
         actor_name: actor_name.to_owned(),
         parent,
         category,
-        base_attack: map_i32(weapon_map, "BaseAttack"),
+        base_attack: strength,
         durability: map_i32(life_map, "MaxLife"),
         weapon_type: map_string(weapon_map, "WeaponType"),
         weapon_subtypes: map_string_array(weapon_map, "SubType"),
@@ -1635,6 +1739,7 @@ mod tests {
                     if matches!(
                         key.as_str(),
                         "BaseAttack"
+                            | "WeaponType"
                             | "MaxLife"
                             | "AdditionalDamage"
                             | "ShieldBashDamage"
@@ -1644,7 +1749,7 @@ mod tests {
                 )
             )
         }));
-        assert_eq!(policy.parameter_edits.len(), 5);
+        assert_eq!(policy.parameter_edits.len(), 6);
     }
 
     #[test]
@@ -1681,6 +1786,163 @@ mod tests {
             .chemical_material
             .as_deref()
             .is_some_and(|path| path.contains("weapon_wood")));
+    }
+
+    #[test]
+    #[ignore = "diagnostic dump of tmp/packtest item component layouts"]
+    fn inspects_packtest_item_layouts() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/packtest");
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let mut config = crate::TotkConfig::TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(
+            TotkZstd::new(Arc::new(config), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL).unwrap(),
+        );
+        for actor in [
+            "Weapon_Sword_025",
+            "Weapon_Spear_163",
+            "Weapon_Shield_006",
+            "Weapon_Bow_033",
+        ] {
+            let path = root.join(format!("{actor}.pack.zs"));
+            let pack = PackFile::from_binary(&fs::read(path).unwrap(), zstd.clone()).unwrap();
+            println!("ACTOR {actor}");
+            for file in pack.sarc.files() {
+                let Some(name) = file.name() else { continue };
+                if name.contains(actor) && (name.starts_with("Actor/") || name.contains("Param/")) {
+                    let byml = BymlFile::from_binary(file.data(), zstd.clone(), name).unwrap();
+                    println!("PATH {name}\n{}", byml.pio.to_text());
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "generates all supported custom item kinds from tmp/packtest"]
+    fn generates_supported_kinds_from_packtest() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/packtest");
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let mut config = crate::TotkConfig::TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(
+            TotkZstd::new(Arc::new(config), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL).unwrap(),
+        );
+        for (template, custom, kind, category, component_ref, component, key, expected) in [
+            (
+                "Weapon_Sword_025",
+                "Weapon_Sword_925",
+                super::super::WeaponKind::SmallSword,
+                "Weapon",
+                "WeaponRef",
+                "WeaponParam",
+                "WeaponType",
+                Byml::String("SmallSword".into()),
+            ),
+            (
+                "Weapon_Spear_163",
+                "Weapon_Lsword_963",
+                super::super::WeaponKind::LargeSword,
+                "Weapon",
+                "WeaponRef",
+                "WeaponParam",
+                "WeaponType",
+                Byml::String("LargeSword".into()),
+            ),
+            (
+                "Weapon_Spear_163",
+                "Weapon_Spear_963",
+                super::super::WeaponKind::Spear,
+                "Weapon",
+                "WeaponRef",
+                "WeaponParam",
+                "WeaponType",
+                Byml::String("Spear".into()),
+            ),
+            (
+                "Weapon_Shield_006",
+                "Weapon_Shield_906",
+                super::super::WeaponKind::Shield,
+                "Shield",
+                "ShieldRef",
+                "ShieldParam",
+                "GuardPower",
+                Byml::I32(77),
+            ),
+            (
+                "Weapon_Bow_033",
+                "Weapon_Bow_933",
+                super::super::WeaponKind::Bow,
+                "Bow",
+                "BowRef",
+                "BowParam",
+                "BaseAttack",
+                Byml::I32(77),
+            ),
+        ] {
+            let source = fs::read(root.join(format!("{template}.pack.zs"))).unwrap();
+            let policy = ActorPackPolicy::standard_item_clone(
+                template,
+                custom,
+                kind,
+                WeaponParameterOverrides {
+                    base_attack: Some(77),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let generated = specialize_actor_pack(&source, &policy, zstd.clone()).unwrap();
+            let pack = PackFile::from_binary(&generated, zstd.clone()).unwrap();
+            let actor_path = format!("Actor/{custom}.engine__actor__ActorParam.bgyml");
+            let actor = parse_pack_byml(&pack, &actor_path).unwrap();
+            let actor = actor.as_map().unwrap();
+            assert_eq!(actor.get("Category"), Some(&Byml::String(category.into())));
+            let expected_ref =
+                format!("?Component/{component}/{custom}.game__component__{component}.bgyml");
+            assert_eq!(
+                actor
+                    .get("Components")
+                    .and_then(|value| value.as_map().ok())
+                    .and_then(|components| components.get(component_ref)),
+                Some(&Byml::String(expected_ref.into()))
+            );
+            let parameter_path =
+                format!("Component/{component}/{custom}.game__component__{component}.bgyml");
+            let parameter = parse_pack_byml(&pack, &parameter_path).unwrap();
+            assert_eq!(parameter.as_map().unwrap().get(key), Some(&expected));
+            if kind.melee_weapon_type().is_some() {
+                assert_eq!(
+                    parameter.as_map().unwrap().get("BaseAttack"),
+                    Some(&Byml::I32(77))
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "loads melee, shield, and bow values from tmp/packtest"]
+    fn loads_all_packtest_item_parameter_kinds() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/packtest");
+        let mut config = crate::TotkConfig::TotkConfig::default();
+        config.romfs = "E:/TOTK_modding/0100F2C0115B6000/romfs".into();
+        let zstd = Arc::new(
+            TotkZstd::new(Arc::new(config), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL).unwrap(),
+        );
+        for (actor, category, strength, weapon_type) in [
+            ("Weapon_Sword_025", "Weapon", 16, Some("SmallSword")),
+            ("Weapon_Spear_163", "Weapon", 4, Some("Spear")),
+            ("Weapon_Shield_006", "Shield", 25, None),
+            ("Weapon_Bow_033", "Bow", 50, None),
+        ] {
+            let info = load_weapon_actor_info(
+                &fs::read(root.join(format!("{actor}.pack.zs"))).unwrap(),
+                actor,
+                zstd.clone(),
+            )
+            .unwrap();
+            assert_eq!(info.category.as_deref(), Some(category));
+            assert_eq!(info.base_attack, Some(strength));
+            assert_eq!(info.weapon_type.as_deref(), weapon_type);
+        }
     }
 
     #[test]
@@ -1825,6 +2087,7 @@ mod tests {
         let request = WeaponPackRequest {
             actor_name: custom_actor.into(),
             template_actor: "Weapon_Lsword_108".into(),
+            kind: None,
             model_name: None,
             base_attack: None,
             durability: None,
@@ -1940,6 +2203,7 @@ mod tests {
         let request = WeaponPackRequest {
             actor_name: "Weapon_Lsword_941".into(),
             template_actor: "Weapon_Lsword_041".into(),
+            kind: None,
             model_name: None,
             base_attack: None,
             durability: None,

@@ -75,9 +75,6 @@ impl WeaponMessageRequest {
 
         let display_name = self.text_or_placeholder(&self.display_name, "weapon");
         let description = self.text_or_placeholder(&self.description, "description");
-        let base_name = self.optional_text_or_placeholder(&self.base_name, "weapon");
-        let attachment_adjective =
-            self.optional_text_or_placeholder(&self.attachment_adjective, "attachment");
         let picture_name = self
             .picture_book_name
             .as_deref()
@@ -101,7 +98,7 @@ impl WeaponMessageRequest {
         let pouch_entries = [
             ("Name", Some(display_name.as_str())),
             ("Caption", Some(description.as_str())),
-            ("BaseName", Some(base_name.as_str())),
+            ("BaseName", self.base_name.as_deref()),
         ];
         edit_msbt(
             &pack,
@@ -111,7 +108,7 @@ impl WeaponMessageRequest {
             &pouch_entries,
         )?;
 
-        let attachment_entries = [("Adjective", Some(attachment_adjective.as_str()))];
+        let attachment_entries = [("Adjective", self.attachment_adjective.as_deref())];
         edit_msbt(
             &pack,
             &mut replacements,
@@ -132,14 +129,17 @@ impl WeaponMessageRequest {
             &picture_entries,
         )?;
 
-        let entries = pack.sarc.files().map(|file| {
-            let name = file.name().unwrap_or_default().to_owned();
-            let data = replacements
-                .remove(&name)
-                .unwrap_or_else(|| file.data().to_vec());
-            (name, data)
-        });
-        let output_bytes = pack.rebuild_binary(entries)?;
+        if replacements.is_empty() {
+            if source != output {
+                if let Some(parent) = output.parent().filter(|path| !path.as_os_str().is_empty()) {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(source, output)?;
+            }
+            return Ok(());
+        }
+
+        let output_bytes = pack.rebuild_replacing_entries(replacements)?;
         let verification = PackFile::from_binary(&output_bytes, zstd)?;
         validate_generated_mals(&verification, self)?;
         if let Some(parent) = output.parent().filter(|path| !path.as_os_str().is_empty()) {
@@ -177,14 +177,25 @@ fn edit_msbt(
         .ok_or_else(|| invalid_data(format!("required MALS entry is missing: {path}")))?;
     let mut msbt = Msbt::from_bytes(data)
         .map_err(|error| invalid_data(format!("failed to parse {path}: {error}")))?;
+    let original_message_count = msbt.messages.len();
+    let mut changed = false;
     for (suffix, value) in entries {
         if let Some(value) = value {
             require_text(value, suffix)?;
-            upsert_plain_message(&mut msbt, &format!("{actor_name}_{suffix}"), value, suffix);
+            changed |=
+                upsert_plain_message(&mut msbt, &format!("{actor_name}_{suffix}"), value, suffix);
         }
     }
+    if !changed {
+        return Ok(());
+    }
+    if msbt.messages.len() != original_message_count {
+        // Match the game-valid working MALS layout. A single LBL1 bucket avoids
+        // relying on bucket hashes for labels newly appended to ROMFS MSBTs.
+        msbt.label_groups = 1;
+    }
     let rebuilt = msbt
-        .to_bytes()
+        .to_bytes_preserving_layout()
         .map_err(|error| invalid_data(format!("failed to rebuild {path}: {error}")))?;
     Msbt::from_bytes(&rebuilt)
         .map_err(|error| invalid_data(format!("rebuilt {path} is invalid: {error}")))?;
@@ -192,14 +203,18 @@ fn edit_msbt(
     Ok(())
 }
 
-fn upsert_plain_message(msbt: &mut Msbt, label: &str, value: &str, suffix: &str) {
+fn upsert_plain_message(msbt: &mut Msbt, label: &str, value: &str, suffix: &str) -> bool {
     if let Some(message) = msbt
         .messages
         .iter_mut()
         .find(|message| message.label.as_deref() == Some(label))
     {
-        message.parts = vec![TextPart::Text(value.to_owned())];
-        return;
+        let parts = vec![TextPart::Text(value.to_owned())];
+        if message.parts == parts {
+            return false;
+        }
+        message.parts = parts;
+        return true;
     }
 
     // Match an existing entry of the same semantic kind so ATR1/TSY1 metadata is retained.
@@ -224,6 +239,7 @@ fn upsert_plain_message(msbt: &mut Msbt, label: &str, value: &str, suffix: &str)
     message.id = None;
     message.parts = vec![TextPart::Text(value.to_owned())];
     msbt.messages.push(message);
+    true
 }
 
 fn validate_generated_mals(pack: &PackFile<'_>, request: &WeaponMessageRequest) -> io::Result<()> {
@@ -470,5 +486,120 @@ mod tests {
             }
         }
         fs::remove_file(output).unwrap();
+    }
+
+    #[test]
+    #[ignore = "regenerates only tmp/test_sic's US English MALS archive"]
+    fn regenerates_test_sic_us_english_mals() {
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
+        let input = fs::read_to_string(root.join("test_sic_items_creator_input.json")).unwrap();
+        let request = WeaponMessageRequest::from_json(&input).unwrap();
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(
+            TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL)
+                .expect("load ROMFS dictionaries"),
+        );
+        request
+            .generate_to_mod_romfs(clean_romfs, &root.join("test_sic/romfs"), zstd)
+            .unwrap();
+    }
+
+    #[test]
+    #[ignore = "diagnostic comparison with tmp/works MALS"]
+    fn compares_generated_and_working_mals_layout() {
+        let clean_romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
+        let mut config = TotkConfig::default();
+        config.romfs = clean_romfs.to_string_lossy().into_owned();
+        let zstd = Arc::new(
+            TotkZstd::new(Arc::new(config), TOTK_ZSTD_COMPRESSION_LEVEL)
+                .expect("load ROMFS dictionaries"),
+        );
+        let open =
+            |path: &Path| PackFile::from_binary(&fs::read(path).unwrap(), zstd.clone()).unwrap();
+        let generated = open(&root.join("test_sic/romfs/Mals/USen.Product.121.sarc.zs"));
+        let working = open(&root.join("works/USen.Product.121.sarc.zs"));
+        println!(
+            "RAW generated={} working={} endian={:?}/{:?} compression={:?}/{:?} files={}/{}",
+            generated.data.len(),
+            working.data.len(),
+            generated.endian,
+            working.endian,
+            generated.compression,
+            working.compression,
+            generated.sarc.files().count(),
+            working.sarc.files().count()
+        );
+        let generated_names = generated
+            .sarc
+            .files()
+            .filter_map(|file| file.name().map(str::to_owned))
+            .collect::<std::collections::BTreeSet<_>>();
+        let working_names = working
+            .sarc
+            .files()
+            .filter_map(|file| file.name().map(str::to_owned))
+            .collect::<std::collections::BTreeSet<_>>();
+        println!(
+            "ONLY GENERATED={:?}\nONLY WORKING={:?}",
+            generated_names
+                .difference(&working_names)
+                .collect::<Vec<_>>(),
+            working_names
+                .difference(&generated_names)
+                .collect::<Vec<_>>()
+        );
+        for path in [POUCH_CONTENT, ATTACHMENT, PICTURE_BOOK] {
+            let generated_data = generated.sarc.get_data(path).unwrap();
+            let working_data = working.sarc.get_data(path).unwrap();
+            let generated_msbt = Msbt::from_bytes(generated_data).unwrap();
+            let working_msbt = Msbt::from_bytes(working_data).unwrap();
+            let generated_labels = generated_msbt
+                .messages
+                .iter()
+                .filter_map(|message| message.label.clone())
+                .collect::<std::collections::BTreeSet<_>>();
+            let working_labels = working_msbt
+                .messages
+                .iter()
+                .filter_map(|message| message.label.clone())
+                .collect::<std::collections::BTreeSet<_>>();
+            println!(
+                "{path}: bytes={}/{} messages={}/{} groups={}/{} sections={:?}/{:?}",
+                generated_data.len(),
+                working_data.len(),
+                generated_msbt.messages.len(),
+                working_msbt.messages.len(),
+                generated_msbt.label_groups,
+                working_msbt.label_groups,
+                generated_msbt
+                    .sections
+                    .iter()
+                    .map(|section| (section.name(), section.data.len(), section.padding.len()))
+                    .collect::<Vec<_>>(),
+                working_msbt
+                    .sections
+                    .iter()
+                    .map(|section| (section.name(), section.data.len(), section.padding.len()))
+                    .collect::<Vec<_>>()
+            );
+            println!(
+                "{path} ONLY WORKING LABELS={:?}",
+                working_labels
+                    .difference(&generated_labels)
+                    .take(120)
+                    .collect::<Vec<_>>()
+            );
+            for message in working_msbt.messages.iter().filter(|message| {
+                message
+                    .label
+                    .as_deref()
+                    .is_some_and(|label| label.starts_with("Weapon_Lsword_005_"))
+            }) {
+                println!("{path} WORKING {:?}={:?}", message.label, message.parts);
+            }
+        }
     }
 }

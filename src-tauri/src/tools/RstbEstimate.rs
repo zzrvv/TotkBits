@@ -411,7 +411,7 @@ impl<'a> RstbEstimator<'a> {
                 continue;
             }
             let value = self
-                .estimate_maybe_compressed(file_type, Path::new(file_name), file_data)
+                .estimate_maybe_compressed(file_type, &resource_path, file_data)
                 .map_err(|error| {
                     RstbEstimateError::new(format!(
                         "failed to estimate internal file '{}' from '{}': {error}",
@@ -439,7 +439,7 @@ impl<'a> RstbEstimator<'a> {
         let effective_path = effective_path
             .strip_suffix(".mc")
             .unwrap_or(&effective_path);
-        let effective_size = data.len() as u64;
+        let effective_size = sarc_declared_size(data).unwrap_or(data.len() as u64);
         let aligned_size = align_32(effective_size)?;
         let rule = SizeRule::for_resource(file_type, &effective_path)?;
         let mut value = rule.calculate(aligned_size, data)?;
@@ -470,6 +470,19 @@ impl<'a> RstbEstimator<'a> {
         u32::try_from(value)
             .map_err(|_| RstbEstimateError::new("estimated RESTBL value exceeds u32"))
     }
+}
+
+fn sarc_declared_size(data: &[u8]) -> Option<u64> {
+    if data.len() < 0x0c || &data[..4] != b"SARC" {
+        return None;
+    }
+    let bytes: [u8; 4] = data[8..12].try_into().ok()?;
+    let size = match &data[6..8] {
+        [0xfe, 0xff] => u32::from_be_bytes(bytes),
+        [0xff, 0xfe] => u32::from_le_bytes(bytes),
+        _ => return None,
+    };
+    (size != 0 && size as usize <= data.len()).then_some(u64::from(size))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -543,7 +556,7 @@ impl SizeRule {
         match self {
             Self::Fixed(overhead) => checked_add(aligned_size, overhead, "format overhead"),
             Self::Bgyml => checked_mul(
-                checked_add(aligned_size, 2000, "BGYML base overhead")?,
+                checked_add(aligned_size, 1000, "BGYML base overhead")?,
                 8,
                 "BGYML multiplier",
             ),
@@ -1061,7 +1074,7 @@ mod tests {
         );
         assert_eq!(
             estimator.estimate(TotkFileType::Byml, "RSDB/Test.bgyml", &data)?,
-            16_512
+            8_512
         );
         assert_eq!(
             estimator.estimate(TotkFileType::Byml, "RSDB/Test.casset.byml", &data)?,
@@ -1157,14 +1170,13 @@ mod tests {
     }
 
     #[test]
-    fn mesh_codec_bfres_uses_decompressed_fres_payload() -> TestResult {
+    fn bfres_uses_effective_fres_payload_size() -> TestResult {
         let estimator = test_estimator();
         let mut raw = vec![0; 33];
         raw[..4].copy_from_slice(b"FRES");
-        let data = test_zstd().compress_mcpk(&raw)?;
         assert_eq!(
-            estimator.estimate(TotkFileType::Bfres, "Model/Test.bfres.mc", &data)?,
-            6128
+            estimator.estimate(TotkFileType::Bfres, "Model/Test.bfres", &raw)?,
+            21_280
         );
         Ok(())
     }
@@ -1180,8 +1192,7 @@ mod tests {
 
         let mut raw_bfres = vec![0; 33];
         raw_bfres[..4].copy_from_slice(b"FRES");
-        let mesh_codec = test_zstd().compress_mcpk(&raw_bfres)?;
-        fs::write(root.join("Model/Test.bfres.mc"), mesh_codec)?;
+        fs::write(root.join("Model/Test.bfres"), raw_bfres)?;
         fs::write(
             root.join("System/Resource/ResourceSizeTable.Product.121.rsizetable"),
             b"RESTBL",
@@ -1191,7 +1202,7 @@ mod tests {
         estimator.estimate_folder(&root)?;
 
         assert_eq!(estimator.entries["Physics/Test.bphcl"], 320);
-        assert_eq!(estimator.entries["Model/Test.bfres"], 22384);
+        assert_eq!(estimator.entries["Model/Test.bfres"], 21_280);
         assert_eq!(estimator.entries.len(), 2);
         assert!(estimator.entries.keys().all(|path| !path.contains('\\')));
 
