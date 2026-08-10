@@ -1,4 +1,9 @@
-use std::{ffi::CStr, io, path::Path, sync::Arc};
+use std::{
+    ffi::{c_char, c_void, CStr, CString},
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use roead::Endian;
 use xlink2_bindings as xlink_bindings;
@@ -15,6 +20,131 @@ use crate::{
 /// A lazily-created handle to the native XLink converter.
 pub struct Xlink_rs<'a> {
     pub zstd: Arc<TotkZstd<'a>>,
+}
+
+/// Runtime-loaded converter for the legacy XLink representation.
+#[allow(non_camel_case_types)]
+#[cfg(windows)]
+pub struct xlink_legacy<'a> {
+    zstd: Arc<TotkZstd<'a>>,
+    library: libloading::Library,
+}
+
+#[cfg(windows)]
+impl<'a> xlink_legacy<'a> {
+    pub fn new(zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
+        let path = Self::dll_path().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "legacy XLink converter not found (expected bin/dlls/xlink_tool.dll)",
+            )
+        })?;
+        let library = unsafe { libloading::Library::new(&path) }.map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!(
+                    "unable to load legacy XLink converter {}: {error}",
+                    path.display()
+                ),
+            )
+        })?;
+        Ok(Self { zstd, library })
+    }
+
+    fn dll_path() -> Option<PathBuf> {
+        let relative = Path::new("bin/dlls/xlink_tool.dll");
+        let mut candidates = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join(relative)];
+        if let Ok(exe_dir) = crate::utils::running_exe_dir() {
+            candidates.push(exe_dir.join(relative));
+            candidates.push(exe_dir.join("dlls/xlink_tool.dll"));
+        }
+        candidates.into_iter().find(|path| path.is_file())
+    }
+
+    pub fn binary_to_yaml(&self, data: &[u8]) -> io::Result<String> {
+        type Convert = unsafe extern "C" fn(*const u8, usize) -> *mut c_char;
+        type Free = unsafe extern "C" fn(*mut c_void);
+
+        let rawdata = xlink_data(&self.zstd, data)?;
+        unsafe {
+            let convert: libloading::Symbol<Convert> = self
+                .library
+                .get(b"xlink_binary_to_yaml\0")
+                .map_err(io::Error::other)?;
+            let free: libloading::Symbol<Free> = self
+                .library
+                .get(b"free_xlink_string\0")
+                .map_err(io::Error::other)?;
+            let yaml_ptr = convert(rawdata.as_ptr(), rawdata.len());
+            if yaml_ptr.is_null() {
+                return Err(io::Error::other(
+                    "legacy XLink converter failed to convert binary to YAML",
+                ));
+            }
+            let yaml_bytes = CStr::from_ptr(yaml_ptr).to_bytes().to_vec();
+            free(yaml_ptr.cast());
+            String::from_utf8(yaml_bytes).map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("legacy XLink converter returned invalid UTF-8 text: {error}"),
+                )
+            })
+        }
+    }
+
+    pub fn yaml_to_binary(&self, data: &str) -> io::Result<Vec<u8>> {
+        type Convert = unsafe extern "C" fn(*const c_char, usize, *mut usize) -> *mut u8;
+        type Free = unsafe extern "C" fn(*mut c_void);
+
+        let yaml = CString::new(data).map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "XLink YAML contains a NUL byte",
+            )
+        })?;
+        unsafe {
+            let convert: libloading::Symbol<Convert> = self
+                .library
+                .get(b"xlink_yaml_to_binary\0")
+                .map_err(io::Error::other)?;
+            let free: libloading::Symbol<Free> = self
+                .library
+                .get(b"free_xlink_binary\0")
+                .map_err(io::Error::other)?;
+            let mut out_size = 0;
+            let binary_ptr = convert(yaml.as_ptr(), data.len(), &mut out_size);
+            if binary_ptr.is_null() {
+                return Err(io::Error::other(
+                    "legacy XLink converter failed to convert YAML to binary",
+                ));
+            }
+            let binary = std::slice::from_raw_parts(binary_ptr, out_size).to_vec();
+            free(binary_ptr.cast());
+            if !Magic::is_xlink(&binary) {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "legacy XLink converter returned data without XLNK magic",
+                ));
+            }
+            Ok(binary)
+        }
+    }
+}
+
+fn xlink_data(zstd: &TotkZstd<'_>, data: &[u8]) -> io::Result<Vec<u8>> {
+    let rawdata = if Magic::is_xlink(data) {
+        data.to_vec()
+    } else {
+        zstd.try_decompress(data)
+            .map_err(|err| io::Error::other(err.to_string()))?
+    };
+    if !Magic::is_xlink(&rawdata) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "not a valid XLink binary (missing XLNK magic)",
+        ));
+    }
+    Ok(rawdata)
 }
 
 #[cfg(windows)]
@@ -35,19 +165,10 @@ impl<'a> Xlink_rs<'a> {
     }
 
     pub fn binary_to_yaml(&self, data: &[u8]) -> io::Result<String> {
-        let rawdata = if Magic::is_xlink(data) {
-            data.to_vec()
-        } else {
-            self.zstd
-                .try_decompress(data)
-                .map_err(|err| io::Error::other(err.to_string()))?
-        };
-        if !Magic::is_xlink(&rawdata) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "not a valid XLink binary (missing XLNK magic)",
-            ));
+        if self.zstd.totk_config.xlink_format == "legacy" {
+            return xlink_legacy::new(self.zstd.clone())?.binary_to_yaml(data);
         }
+        let rawdata = xlink_data(&self.zstd, data)?;
 
         unsafe {
             let yaml_ptr = xlink_bindings::binary_to_yaml(&rawdata).cast::<i8>();
@@ -68,6 +189,9 @@ impl<'a> Xlink_rs<'a> {
     }
 
     pub fn yaml_to_binary(&self, data: &str) -> io::Result<Vec<u8>> {
+        if self.zstd.totk_config.xlink_format == "legacy" {
+            return xlink_legacy::new(self.zstd.clone())?.yaml_to_binary(data);
+        }
         unsafe {
             let (binary_ptr, out_size) = xlink_bindings::yaml_to_binary(data.as_bytes());
             if binary_ptr.is_null() {
@@ -221,11 +345,10 @@ mod tests {
     #[test]
     #[cfg(windows)]
     fn compressed_elink_fixture_decompresses_and_converts() {
-        let romfs = Path::new("E:/TOTK_modding/0100F2C0115B6000/romfs");
         let fixture =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/elink2.Product.110.belnk.zs");
-        let mut config = TotkConfig::default();
-        config.romfs = romfs.to_string_lossy().into_owned();
+        let mut config = TotkConfig::safe_new(false).unwrap_or_default();
+        config.xlink_format = "legacy".into();
         let zstd = Arc::new(
             TotkZstd::new(Arc::new(config), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL)
                 .expect("load ZSTD dictionaries"),
@@ -234,8 +357,12 @@ mod tests {
         let converter = Xlink_rs::new(zstd).expect("construct XLink converter");
         let yaml = converter
             .binary_to_yaml(&input)
-            .expect("decompress and convert compressed ELink fixture");
+            .expect("decompress and convert compressed ELink fixture with legacy DLL");
         assert!(!yaml.is_empty(), "compressed XLink returned empty text");
+        let rebuilt = converter
+            .yaml_to_binary(&yaml)
+            .expect("convert legacy XLink YAML back to binary");
+        assert!(crate::Settings::Magic::is_xlink(&rebuilt));
     }
 }
 

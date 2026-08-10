@@ -19,6 +19,7 @@ const fields = [
     { key: "Rotation in degrees", label: "Display rotations in degrees", type: "boolean" },
     { key: "ask for compression", label: "Ask for compression", type: "boolean" },
     { key: "rstb", label: "RSTB view", type: "select", options: ["editor", "json"] },
+    { key: "xlink_format", label: "XLink format", type: "select", options: ["legacy", "modern"] },
 ];
 
 function OptionsEditor() {

@@ -479,9 +479,9 @@ function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, animation, re
     const skinMatrices = useMemo(() => bones.map(() => new THREE.Matrix4()), [bones]);
     const skinPosition = useMemo(() => new THREE.Vector3(), []);
     useFrame(() => {
-        if (!animation || applyRigidTransform) return;
+        if (applyRigidTransform) return;
         const position = geometry.getAttribute('position');
-        const posedWorlds = animationWorlds.current;
+        const posedWorlds = animation ? animationWorlds.current : restWorlds;
         if (!position || !posedWorlds?.length) return;
         for (let bone = 0; bone < skinMatrices.length; bone += 1) {
             skinMatrices[bone].multiplyMatrices(posedWorlds[bone], restInverse[bone]);
@@ -573,6 +573,11 @@ function Skeleton({ bones, scaleMode, animation, animationWorlds }) {
         return new Float32Array(values);
     }, [bones, scaleMode]);
     const attributeRef = useRef();
+    useEffect(() => {
+        if (animation || !attributeRef.current) return;
+        attributeRef.current.array.set(points);
+        attributeRef.current.needsUpdate = true;
+    }, [animation, points]);
     useFrame(() => {
         if (!animation || !attributeRef.current) return;
         const worlds = animationWorlds.current;
@@ -888,6 +893,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [modelVisible, setModelVisible] = useState(true);
     const [hiddenMeshes, setHiddenMeshes] = useState([]);
     const [viewResetKey, setViewResetKey] = useState(0);
+    const [animationResetKey, setAnimationResetKey] = useState(0);
     const [fbxTextureFormat, setFbxTextureFormat] = useState('png');
     const [exportingModel, setExportingModel] = useState(false);
     const [replacingModel, setReplacingModel] = useState(false);
@@ -917,6 +923,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
     const [g1aPlaying, setG1aPlaying] = useState(true);
     const [g1aPosition, setG1aPosition] = useState(0);
     const [g1aSeekRevision, setG1aSeekRevision] = useState(0);
+    const hasActiveG1aPose = Boolean(loadedG1a);
     const [importingAllG1a, setImportingAllG1a] = useState(false);
     const [loadingG1aPath, setLoadingG1aPath] = useState('');
     const signalBatchCameraReady = useCallback(() => {
@@ -1278,9 +1285,20 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         setLoadedG1a(animation);
         setG1aPlaying(true);
         setG1aPosition(0);
+        setG1aSeekRevision((revision) => revision + 1);
         setDetail({ type: 'G1A', value: { header: animation.value.header, ...animation.bound } });
         setYaml(JSON.stringify({ header: animation.value.header, ...animation.bound }, null, 2));
         setStatusText(`Playing ${animation.name}`);
+    };
+
+    const resetAnimation = () => {
+        if (!loadedG1a) return;
+        setG1aPlaying(false);
+        setG1aPosition(0);
+        setG1aSeekRevision((revision) => revision + 1);
+        setLoadedG1a(null);
+        setAnimationResetKey((value) => value + 1);
+        setStatusText(`Stopped ${loadedG1a.name} and returned to rest pose`);
     };
 
     const choose = (section) => {
@@ -1510,7 +1528,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
             <section className="bfres-viewport" aria-label="BFRES 3D viewport">
                 <Canvas key={viewResetKey} dpr={[1, 2]} gl={{ antialias: true, alpha: true, preserveDrawingBuffer: true }} onPointerMissed={() => { setSelectedMesh(''); setSelectedMaterial(null); }}>
                     <ViewportCapture captureRef={captureViewportRef} />
-                    {bfres?.render && <ResourceScene bfres={bfres} render={bfres.render} animation={loadedG1a?.bound} animationPlaying={g1aPlaying} animationSeek={{ time: g1aPosition, revision: g1aSeekRevision }} onAnimationTime={setG1aPosition} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} weightPreviewColors={weightPreviewColors} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
+                    {bfres?.render && <ResourceScene key={`animation-scene-${animationResetKey}`} bfres={bfres} render={bfres.render} animation={loadedG1a?.bound} animationPlaying={g1aPlaying} animationSeek={{ time: g1aPosition, revision: g1aSeekRevision }} onAnimationTime={setG1aPosition} viewMode={viewMode} uvIndex={uvIndex} brightness={brightness} celShading={celShading} glow={glow} culling={culling} showSkeleton={showSkeleton} showNormals={showNormals} weightBone={weightBone} weightPreviewColors={weightPreviewColors} selectedMesh={selectedMesh} selectedMaterial={selectedMaterial} modelVisible={modelVisible} hiddenMeshes={hiddenMeshes} onSelectMesh={(mesh) => {
                         setSelectedMesh(mesh.name);
                         setSelectedMaterial(null);
                         setWeightBone(-2);
@@ -1539,7 +1557,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                         {replacingModel ? 'Replacing…' : 'Replace meshes'}
                     </button>
                     
-                        <select value={fbxTextureFormat} onChange={(event) => setFbxTextureFormat(event.target.value)} disabled={exportingModel}>
+                    <select value={fbxTextureFormat} onChange={(event) => setFbxTextureFormat(event.target.value)} disabled={exportingModel}>
                             <option value="none">None</option>
                             <option value="png">PNG</option>
                             <option value="dds">DDS</option>
@@ -1569,6 +1587,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                         <button type="button" onClick={importSelectedG1a} disabled={!selectedG1aPath || Boolean(loadingG1aPath)}>{loadingG1aPath ? 'Importing…' : 'Import'}</button>
                         <button type="button" onClick={importAllG1a} disabled={importingAllG1a || Boolean(loadingG1aPath)}>{importingAllG1a ? 'Importing All…' : 'Import All'}</button>
                         {loadedG1a && <button type="button" onClick={() => setG1aPlaying((playing) => !playing)} className={g1aPlaying ? 'active' : ''}>{g1aPlaying ? 'Pause' : 'Play'}</button>}
+                        {hasActiveG1aPose && <button type="button" onClick={resetAnimation} style={{ marginLeft: 'auto' }}>Reset</button>}
                         {selectedG1aPath && g1aFailures[selectedG1aPath] && <p role="alert" style={{ color: '#ff5c5c' }}>{g1aFailures[selectedG1aPath]}</p>}
                     </section>}
                     {embeddedAnimations.length === 0 && parsedG1aAnimations.length === 0 && <p>No animations have been imported.</p>}
@@ -1597,3 +1616,4 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         </main>
     </>;
 }
+

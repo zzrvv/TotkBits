@@ -36,6 +36,7 @@ pub struct TotkConfig {
     pub rotation_deg: bool,
     pub ask_for_compression: bool,
     pub rstb_view: String,
+    pub xlink_format: String,
     #[serde(skip)]
     pub game_version: String,
     #[serde(skip)]
@@ -67,6 +68,7 @@ impl Default for TotkConfig {
             rotation_deg: false,
             ask_for_compression: false,
             rstb_view: "editor".into(),
+            xlink_format: "modern".into(),
             game_version: String::new(),
             game_versions: (100..130).rev().map(|e| e.to_string()).collect(),
             available_themes: vec![
@@ -199,6 +201,10 @@ impl TotkConfig {
         } else if matches!(rstb_view.as_str(), "editor" | "json") {
             self.rstb_view = rstb_view;
         }
+        let xlink_format = get_string(&json_data, "xlink_format").to_ascii_lowercase();
+        if matches!(xlink_format.as_str(), "legacy" | "modern") {
+            self.xlink_format = xlink_format;
+        }
         self.romfs = get_string(&json_data, "romfs");
         self.botw_romfs_path = get_string(&json_data, "BOTW WIIU path (optional)");
         self.aoc_path = get_string(&json_data, "AOC path (optional)");
@@ -251,6 +257,7 @@ impl TotkConfig {
             "Rotation in degrees": self.rotation_deg,
             "ask for compression": self.ask_for_compression,
             "rstb": self.rstb_view,
+            "xlink_format": self.xlink_format,
             "BOTW WIIU path (optional)": self.botw_romfs_path,
             "AOC path (optional)": self.aoc_path,
             "3D viewport brightness": self.viewport_brightness,

@@ -147,7 +147,15 @@ impl CliCommand {
     }
 
     fn zstd(&self) -> Result<Arc<crate::Zstd::TotkZstd<'static>>, String> {
-        let config = Arc::new(TotkConfig::safe_new(false).map_err(|e| e.to_string())?);
+        let mut config = TotkConfig::safe_new(false).map_err(|e| e.to_string())?;
+        if let Ok(format) = env::var("TOTKBITS_XLINK_FORMAT") {
+            let format = format.to_ascii_lowercase();
+            if !matches!(format.as_str(), "legacy" | "modern") {
+                return Err("TOTKBITS_XLINK_FORMAT must be legacy or modern".into());
+            }
+            config.xlink_format = format;
+        }
+        let config = Arc::new(config);
         let codec =
             crate::Zstd::TotkZstd::new(config.clone(), crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL)
                 .unwrap_or_else(|_| {

@@ -1,7 +1,7 @@
 use crate::parser::binary::{BinaryReader, Endian};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     io::{self, ErrorKind},
     path::{Path, PathBuf},
     sync::LazyLock,
@@ -656,6 +656,8 @@ impl Ord for OrderedFloat {
 #[derive(Debug, Clone, Deserialize)]
 struct AnimationPairing {
     #[serde(default)]
+    parent: Option<String>,
+    #[serde(default)]
     anims: Vec<String>,
     #[serde(default)]
     root_model: String,
@@ -668,6 +670,24 @@ static ANIMATION_PAIRINGS: LazyLock<HashMap<String, AnimationPairing>> = LazyLoc
     .unwrap_or_default()
 });
 
+fn resolve_pairing<'a>(
+    model_hash: &'a str,
+    visiting: &mut HashSet<String>,
+) -> Option<AnimationPairing> {
+    let pairing = ANIMATION_PAIRINGS.get(model_hash)?;
+    if !pairing.anims.is_empty() {
+        return Some(pairing.clone());
+    }
+    let parent = pairing.parent.as_deref()?;
+    if !visiting.insert(model_hash.to_owned()) {
+        return None;
+    }
+    if visiting.contains(parent) {
+        return None;
+    }
+    resolve_pairing(parent, visiting)
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelAnimations {
@@ -678,7 +698,8 @@ pub struct ModelAnimations {
 
 pub fn animations_for_model(model_hash: &str) -> Option<ModelAnimations> {
     let model_hash = model_hash.to_ascii_lowercase();
-    let pairing = ANIMATION_PAIRINGS.get(&model_hash)?;
+    let entry = ANIMATION_PAIRINGS.get(&model_hash)?;
+    let pairing = resolve_pairing(&model_hash, &mut HashSet::new())?;
     let mut seen = BTreeMap::new();
     for path in &pairing.anims {
         seen.entry(path.to_ascii_lowercase())
@@ -686,7 +707,7 @@ pub fn animations_for_model(model_hash: &str) -> Option<ModelAnimations> {
     }
     Some(ModelAnimations {
         model_hash,
-        root_model: pairing.root_model.clone(),
+        root_model: entry.root_model.clone(),
         animations: seen.into_values().collect(),
     })
 }
@@ -820,6 +841,22 @@ mod tests {
             .map(|path| path.to_ascii_lowercase())
             .collect();
         assert_eq!(unique.len(), first.animations.len());
+    }
+
+    #[test]
+    fn model_pairing_can_fall_back_to_parent_anims() {
+        let child = ANIMATION_PAIRINGS
+            .iter()
+            .find(|(_, pairing)| pairing.parent.is_some());
+        let Some((child_hash, child_pairing)) = child else {
+            return;
+        };
+        let parent_hash = child_pairing.parent.as_ref().unwrap();
+        let child = animations_for_model(child_hash).unwrap();
+        let parent = animations_for_model(parent_hash).unwrap();
+        assert_eq!(child.animations, parent.animations);
+        assert_eq!(child.model_hash, child_hash.to_string());
+        assert_eq!(child.root_model, child_pairing.root_model);
     }
 
     #[test]

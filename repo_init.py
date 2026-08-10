@@ -4,7 +4,7 @@ import shutil
 import os, sys, stat
 from time import time
 import requests
-from tauri_build import build_dotnet
+# from tauri_build import build_dotnet
 
 try:
     from tqdm import tqdm  # type: ignore
@@ -16,7 +16,7 @@ CWD = Path(__file__).parent.resolve()
 
 def download_files():
     files = {
-        # "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.dll": "src-tauri/bin/dlls/xlink_tool.dll",
+        "https://github.com/SolidLink95/TotkBits/releases/download/v0.0.9/xlink_tool.dll": "src-tauri/bin/dlls/xlink_tool.dll",
         # "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.exp": "src-tauri/bin/dlls/xlink_tool.exp",
         # "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.lib": "src-tauri/bin/dlls/xlink_tool.lib",
         "https://github.com/SolidLink95/oead/releases/download/v1.0/oead_byml_pipe.exe": "src-tauri/bin/cpp/oead_byml_pipe.exe",
@@ -102,6 +102,10 @@ def safe_copy_dir(dir1, dir2, verbose=True):
     if verbose: print(f"Copying folder: {dir1.name}")
     shutil.copytree(dir1, dir2)
 
+def npm_install():
+    p = subprocess.run(["cmd", "/c", "npm", "install"], check=True)
+    return p
+
 def repo_init():
     cwd_path = Path(__file__).parent
     cwd = str(cwd_path)
@@ -113,6 +117,9 @@ def repo_init():
     bin_path.mkdir(parents=True, exist_ok=True)
     (cwd_path / "tmp").mkdir(parents=True, exist_ok=True)
 
+    print(f"[+] Installing npm dependencies")
+    npm_install()
+    print(f"[+] npm dependencies installed")
     print(f"[+] Copying compressed json files")
 
     # Copy zlib compressed json files
