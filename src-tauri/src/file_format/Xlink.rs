@@ -256,12 +256,17 @@ impl<'a> Xlink_rs<'a> {
         path: P,
         zstd: Arc<TotkZstd<'a>>,
     ) -> Option<(OpenedFile<'static>, SendData)> {
+        let xlink_format = zstd.clone().totk_config.clone().xlink_format.clone();
         let path = path.as_ref();
         let pathlib = Pathlib::new(path);
         let rawdata = std::fs::read(path).ok()?;
-        if !Magic::is_xlink(&rawdata) {
-            return None;
-        }
+        let rawdata = match xlink_data(&zstd, &rawdata) {
+            Ok(rawdata) => rawdata,
+            Err(error) => {
+                println!("Is {} an XLink file? no: {error}", path.display());
+                return None;
+            }
+        };
         print!("Is {} an XLink file? ", path.display());
         let text = match Self::new(zstd).and_then(|xlink| xlink.binary_to_yaml(&rawdata)) {
             Ok(text) => text,
@@ -282,7 +287,7 @@ impl<'a> Xlink_rs<'a> {
         data.path = pathlib;
         data.text = text;
         data.tab = "YAML".to_string();
-        data.lang = "xlink".to_string();
+        data.lang = if xlink_format=="modern" {"xlink".to_string()} else {"yaml".to_string()};
         data.get_file_label(TotkFileType::Xlink, Some(Endian::Little));
         Some((opened_file, data))
     }
