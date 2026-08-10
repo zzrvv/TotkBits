@@ -75,7 +75,7 @@ export default function ImageView({ activeTab, setStatusText }) {
     const replaceDds = async () => {
         const png = await open({ multiple: false, filters: [{ name: 'PNG image', extensions: ['png'] }] });
         if (!png) return;
-        await invoke('replace_dds_image', { target: document.fullPath, png, ddsType: image?.ddsType || '', mipCount: image?.mipCount || 1, arrayIndex, mipIndex, replacementFormat });
+        await invoke('replace_dds_image', { target: document.fullPath, png, ddsType: image?.ddsType || '', mipCount: image?.mipCount || 1, textureIndex, arrayIndex, mipIndex, replacementFormat });
         setRevision((value) => value + 1);
         setStatusText(`Replaced ${document.title} from ${png}`);
     };
@@ -174,17 +174,19 @@ export default function ImageView({ activeTab, setStatusText }) {
             <header><strong>{selectedEntry?.name || fileName}</strong><small>{image?.format || 'Image'}</small></header>
             {image && <dl><dt>Width</dt><dd>{image.width}</dd><dt>Height</dt><dd>{image.height}</dd><dt>Mip count</dt><dd>{image.mipCount}</dd>{image.ddsType && <><dt>DDS type</dt><dd>{image.ddsType}</dd></>}</dl>}
             {image?.entries?.[textureIndex] && <dl><dt>Array count</dt><dd>{image.entries[textureIndex].arrayCount}</dd><dt>Layer</dt><dd>{arrayIndex}</dd><dt>Mip level</dt><dd>{mipIndex}</dd><dt>Surface format</dt><dd>{image.entries[textureIndex].format}</dd></dl>}
-            {image?.format === 'DDS' && <section>
+            {(image?.format === 'DDS' || image?.format === 'G1T') && <section>
                 <h3>Replace from PNG</h3>
-                <p>Replaces layer {arrayIndex}, mip {mipIndex} while preserving the DDS format and other surfaces.</p>
-                <label>Output format<select value={replacementFormat} onChange={(event) => setReplacementFormat(event.target.value)}><option value="ORIGINAL">Keep original ({selectedEntry?.format})</option>{replacementFormats.map((format) => <option key={format} value={format} disabled={!encodableFormats.has(format)}>{format}{encodableFormats.has(format) ? '' : ' (unavailable)'}</option>)}</select></label>
-                <button type="button" onClick={replaceDds}>Replace selected…</button>
+                {/* <p>Replaces layer {arrayIndex}, mip {mipIndex} while preserving the file format and other surfaces.</p> */}
+                {/* {image?.format === 'G1T'
+                    ? <p>G1T format is preserved (for example {selectedEntry?.format || 'the original format'}).</p>
+                    : <label>Output format<select value={replacementFormat} onChange={(event) => setReplacementFormat(event.target.value)}><option value="ORIGINAL">Keep original ({selectedEntry?.format})</option>{replacementFormats.map((format) => <option key={format} value={format} disabled={!encodableFormats.has(format)}>{format}{encodableFormats.has(format) ? '' : ' (unavailable)'}</option>)}</select></label>} */}
+                <button type="button" onClick={replaceDds}>Replace</button>
             </section>}
             {image?.format === 'BNTX' && <section>
                 <h3>Replace selected surface</h3>
                 <p>Replaces layer {arrayIndex}, mip {mipIndex} while preserving the BNTX container.</p>
                 <label>Output format<select value={replacementFormat} onChange={(event) => setReplacementFormat(event.target.value)}><option value="ORIGINAL">Keep original ({selectedEntry?.format})</option>{replacementFormats.map((format) => <option key={format} value={format} disabled={!encodableFormats.has(format)}>{format}{encodableFormats.has(format) ? '' : ' (unavailable)'}</option>)}</select></label>
-                <button type="button" onClick={replaceBntx}>Replace selected…</button>
+                <button type="button" onClick={replaceBntx}>Replace</button>
                 <h3>Rename texture</h3>
                 <label>Texture name<input value={renameValue} onChange={(event) => setRenameValue(event.target.value)} /></label>
                 <button type="button" onClick={renameBntx} disabled={!renameValue.trim() || renameValue.trim() === image.entries?.[textureIndex]?.name}>Rename</button>

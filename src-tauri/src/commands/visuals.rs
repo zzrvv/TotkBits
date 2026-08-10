@@ -544,12 +544,24 @@ pub fn replace_dds_image(
     png: String,
     ddsType: String,
     mipCount: u32,
+    texture_index: Option<usize>,
     array_index: Option<u32>,
     mip_index: Option<u32>,
     replacement_format: Option<String>,
 ) -> Result<(), String> {
     require_experimental_visuals()?;
     let _ = (ddsType, mipCount);
+    let source = std::fs::read(&target).map_err(|error| error.to_string())?;
+    if crate::Settings::Magic::is_g1t(&source) {
+        return crate::file_format::Image::ImageDocument::replace_g1t_surface(
+            target,
+            png,
+            texture_index.unwrap_or(0),
+            array_index.unwrap_or(0),
+            mip_index.unwrap_or(0),
+        )
+        .map_err(|error| error.to_string());
+    }
     crate::file_format::Image::ImageDocument::replace_dds_surface(
         target,
         png,

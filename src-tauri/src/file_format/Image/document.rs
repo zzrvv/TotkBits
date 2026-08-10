@@ -708,6 +708,128 @@ impl ImageDocument {
         )
     }
 
+    pub fn replace_g1t_surface(
+        target: impl AsRef<Path>,
+        png: impl AsRef<Path>,
+        texture_index: usize,
+        array_index: u32,
+        mip_index: u32,
+    ) -> io::Result<()> {
+        use crate::parser::AOC::g1t;
+        let target = target.as_ref();
+        let replacement = image::open(png)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?
+            .to_rgba8();
+        let mut data = std::fs::read(target)?;
+        let surfaces = g1t::G1tFile::parse_surfaces(&data)?;
+        let texture = surfaces.get(texture_index).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "G1T texture index is out of range",
+            )
+        })?;
+        if mip_index != 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "G1T replacement currently supports only mip 0",
+            ));
+        }
+        if array_index >= texture.array_count {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "G1T array index is out of range",
+            ));
+        }
+        let dds_format = g1t::image_dds_format_for_type(texture.texture_type)?;
+        if replacement.dimensions() != (texture.width, texture.height) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "replacement must be {} x {} pixels",
+                    texture.width, texture.height
+                ),
+            ));
+        }
+        let max_mips = 32 - texture.width.max(texture.height).leading_zeros() as u8;
+        let mut mip_count = texture.mip_count.min(max_mips);
+        let mut writable_bytes = 0usize;
+        while mip_count > 0 {
+            let expected = g1t::texture_chain_size(
+                texture.texture_type,
+                texture.width,
+                texture.height,
+                mip_count,
+            )?;
+            if expected <= texture.layer_stride && expected > 0 {
+                writable_bytes = expected;
+                break;
+            }
+            mip_count = mip_count.saturating_sub(1);
+        }
+        if mip_count == 0 || writable_bytes == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "G1T texture payload is too small for replacement",
+            ));
+        }
+        let layer_start = texture.data_offset + (array_index as usize) * texture.layer_stride;
+        let layer_end = layer_start
+            .checked_add(texture.layer_stride)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "G1T replacement range overflow",
+                )
+            })?;
+        if layer_end > data.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "G1T texture layer exceeds file size",
+            ));
+        }
+        let mut cursor = layer_start;
+        let writable_end = layer_start.checked_add(writable_bytes).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "G1T replacement range overflow",
+            )
+        })?;
+        for mip in 0..mip_count {
+            let mip_width = (texture.width >> mip).max(1);
+            let mip_height = (texture.height >> mip).max(1);
+            let expected =
+                g1t::texture_mip_size(texture.texture_type, texture.width, texture.height, mip)?;
+            let mip_image = if mip == 0 {
+                replacement.clone()
+            } else {
+                image::imageops::resize(
+                    &replacement,
+                    mip_width,
+                    mip_height,
+                    image::imageops::FilterType::Triangle,
+                )
+            };
+            let encoded =
+                crate::file_format::Image::switch_texture::encode(&mip_image, dds_format, 0, true)?;
+            if encoded.len() > expected {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("encoded G1T mip {mip} does not fit existing data slot"),
+                ));
+            }
+            if cursor + expected > writable_end {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "G1T texture payload is too small for replacement",
+                ));
+            }
+            data[cursor..cursor + expected].fill(0);
+            data[cursor..cursor + encoded.len()].copy_from_slice(&encoded);
+            cursor += expected;
+        }
+        std::fs::write(target, data)
+    }
+
     pub fn rename_bntx_texture(
         path: impl AsRef<Path>,
         texture_index: usize,
@@ -1180,6 +1302,35 @@ mod tests {
     use base64::Engine;
     use std::{fs, sync::Arc};
 
+    fn similarity_coverage(original: &image::RgbaImage, candidate: &image::RgbaImage) -> f64 {
+        if original.dimensions() != candidate.dimensions() {
+            return 0.0;
+        }
+        let denominator = (u64::from(original.width()) * u64::from(original.height()) * 4) as f64;
+        if denominator == 0.0 {
+            return 1.0;
+        }
+        let total_delta: u64 = original
+            .pixels()
+            .zip(candidate.pixels())
+            .flat_map(|(left, right)| {
+                left.0
+                    .iter()
+                    .zip(right.0.iter())
+                    .map(|(a, b)| u64::from(a.abs_diff(*b)))
+            })
+            .sum();
+        let mean_delta = total_delta as f64 / (denominator * 255.0);
+        let similarity = 1.0 - mean_delta;
+        if similarity < 0.0 {
+            0.0
+        } else if similarity > 1.0 {
+            1.0
+        } else {
+            similarity
+        }
+    }
+
     #[test]
     fn compressed_non_image_is_not_accepted_by_extension() {
         assert!(!ImageDocument::supports(
@@ -1322,5 +1473,105 @@ mod tests {
         assert_eq!(parsed.textures[0].name, "Weapon_Lsword_902");
         fs::remove_file(output).unwrap();
         fs::remove_file(exported).unwrap();
+    }
+
+    #[test]
+    fn replace_g1t_png_round_trip_with_dataset_textures() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/impa_uchiha_all");
+        let data_dir = root.join("data");
+        let png_root = root.as_path();
+        if !data_dir.is_dir() || !png_root.is_dir() {
+            return;
+        }
+        let mut png_paths = Vec::new();
+        if let Ok(entries) = fs::read_dir(png_root) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|value| value.to_str()) == Some("png") {
+                    png_paths.push(path);
+                }
+            }
+        }
+        if png_paths.is_empty() {
+            return;
+        }
+        let work_dir = root.join("tmp_g1t_roundtrip");
+        fs::create_dir_all(&work_dir).unwrap();
+        let mut tested = 0usize;
+        let mut g1t_paths = Vec::new();
+        if let Ok(entries) = fs::read_dir(&data_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|value| value.to_str()) == Some("g1t") {
+                    g1t_paths.push(path);
+                }
+            }
+        }
+        for (index, path) in g1t_paths.into_iter().take(6).enumerate() {
+            let source = fs::read(&path).unwrap_or_default();
+            let surfaces = match crate::parser::AOC::g1t::G1tFile::parse_surfaces(&source) {
+                Ok(value) if !value.is_empty() => value,
+                _ => continue,
+            };
+            let Some(texture) = surfaces
+                .iter()
+                .find(|value| {
+                    crate::parser::AOC::g1t::image_dds_format_for_type(value.texture_type).is_ok()
+                })
+                .cloned()
+            else {
+                continue;
+            };
+            let png_source = &png_paths[index % png_paths.len()];
+            let replacement = image::open(png_source)
+                .unwrap_or_else(|error| panic!("{}: {error}", png_source.display()))
+                .to_rgba8();
+            let replacement = if replacement.dimensions() != (texture.width, texture.height) {
+                image::imageops::resize(
+                    &replacement,
+                    texture.width,
+                    texture.height,
+                    image::imageops::FilterType::Triangle,
+                )
+            } else {
+                replacement
+            };
+            let replacement_path = work_dir.join("replace.png");
+            std::fs::write(
+                &replacement_path,
+                crate::file_format::Image::png::encode(&replacement).unwrap(),
+            )
+            .unwrap();
+            let output = work_dir.join(path.file_name().unwrap());
+            std::fs::copy(&path, &output).unwrap();
+            ImageDocument::replace_g1t_surface(&output, &replacement_path, texture.index, 0, 0)
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+            let rendered =
+                ImageDocument::render_path_selection_with_zstd(&output, texture.index, 0, 0, None)
+                    .unwrap_or_else(|error| panic!("render {}: {error}", output.display()));
+            let encoded = rendered
+                .data_url
+                .split_once(',')
+                .map(|(_, value)| value)
+                .unwrap_or_else(|| panic!("invalid data url from {}", path.display()));
+            let exported = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .unwrap();
+            let exported = crate::file_format::Image::raster::decode(&exported).unwrap();
+            assert_eq!(
+                (texture.width, texture.height),
+                (exported.width(), exported.height()),
+                "{} dimensions changed",
+                path.display()
+            );
+            assert!(
+                similarity_coverage(&replacement, &exported) >= 0.99,
+                "{} similarity too low",
+                path.display()
+            );
+            tested += 1;
+        }
+        assert!(tested > 0, "no G1T textures could be tested");
+        let _ = fs::remove_file(work_dir.join("replace.png"));
     }
 }
