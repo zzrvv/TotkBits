@@ -24,7 +24,16 @@ impl AinbFile {
     ) -> Option<(OpenedFile, SendData)> {
         let path = path.as_ref();
         let bytes = std::fs::read(path).ok()?;
-        let (source, compression) = zstd.try_decompress_all_ordered_safe(&bytes, path);
+        Self::open_ainb_binary(&bytes, path, zstd)
+    }
+
+    pub fn open_ainb_binary<'a, P: AsRef<Path>>(
+        bytes: &[u8],
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'a>, SendData)> {
+        let path = path.as_ref();
+        let (source, compression) = zstd.try_decompress_all_ordered_safe(bytes, path);
         let document = AinbDocument::from_bytes(&source).ok()?;
         let text = document.to_yaml().ok()?;
         let mut opened_file = OpenedFile::default();

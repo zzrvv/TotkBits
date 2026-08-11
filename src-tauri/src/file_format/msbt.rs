@@ -5,9 +5,9 @@ use crate::{
     Open_and_Save::SendData,
     Settings::Magic,
     Settings::Pathlib,
-    Zstd::{TotkFileType, ZstdDictionary},
+    Zstd::{TotkFileType, TotkZstd, ZstdDictionary},
 };
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 pub struct MsbtFile {
     pub path: Pathlib,
@@ -49,6 +49,25 @@ impl MsbtFile {
         let name = path.as_ref().to_string_lossy().into_owned();
         let bytes = std::fs::read(&path).ok()?;
         let (parsed, text, endian) = Self::parse(&bytes)?;
+        Self::build_open_result(parsed, text, endian, name)
+    }
+
+    pub fn open_mstb_binary<P: AsRef<Path>>(
+        bytes: &[u8],
+        path: P,
+        _zstd: Arc<TotkZstd<'_>>,
+    ) -> Option<(OpenedFile<'static>, SendData)> {
+        let name = path.as_ref().to_string_lossy().into_owned();
+        let (parsed, text, endian) = Self::parse(bytes)?;
+        Self::build_open_result(parsed, text, endian, name)
+    }
+
+    fn build_open_result(
+        parsed: Msbt,
+        text: String,
+        endian: roead::Endian,
+        name: String,
+    ) -> Option<(OpenedFile<'static>, SendData)> {
         let mut opened = OpenedFile::default();
         opened.path = Pathlib::new(&name);
         opened.endian = Some(endian);

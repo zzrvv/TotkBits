@@ -218,6 +218,31 @@ impl<'a> Restbl<'_> {
         None
     }
 
+    pub fn open_restbl_binary<P: AsRef<Path>>(
+        binary: &[u8],
+        display_path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'a>, SendData)> {
+        let path = display_path.as_ref();
+        let mut restbl = Self::from_binary(binary, zstd.clone(), path)?;
+        let mut opened = OpenedFile::default();
+        opened.path = Pathlib::new(path);
+        opened.endian = Some(roead::Endian::Little);
+        opened.file_type = TotkFileType::Restbl;
+        let mut data = SendData::default();
+        data.tab = "RSTB".into();
+        data.path = Pathlib::new(path);
+        data.status_text = format!("Opened {}", path.display());
+        if zstd.totk_config.rstb_view == "json" {
+            data.tab = "YAML".into();
+            data.lang = "json".into();
+            data.text = restbl.to_json().ok()?;
+        }
+        data.get_file_label(TotkFileType::Restbl, Some(roead::Endian::Little));
+        opened.restbl = Some(restbl);
+        Some((opened, data))
+    }
+
     pub fn get_restb_entries<P: AsRef<Path>>(&mut self, path: P) -> io::Result<Arc<Vec<String>>> {
         let mut res = crate::LookupData::rstb_paths();
         if !should_scan_local_rstb_paths(path.as_ref()) {

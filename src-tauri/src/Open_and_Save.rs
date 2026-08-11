@@ -675,7 +675,7 @@ pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
         .or_else(|| crate::parser::AOC::g1m::G1mFile::open(file_name))
         .or_else(|| crate::parser::fbx::FbxFile::open(file_name))
         // Structured formats must run before the generic image detector. In
-        // particular, many BFEVFL files use the shared `.zs` compression suffix.
+        // particular, many BFEVFL files use the shared `.zs` compres2sion suffix.
         .or_else(|| BfevFile::open_bfev(&file_name, zstd.clone()))
         .or_else(|| crate::file_format::Image::ImageDocument::open(file_name, &zstd))
         .or_else(|| crate::file_format::bphcl::BphclFile::open(file_name))

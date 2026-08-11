@@ -1,10 +1,10 @@
-use std::{fs, io::Read, path::Path};
+use std::{fs, io::Read, path::Path, sync::Arc};
 
 use super::BinTextFile::OpenedFile;
 use crate::Open_and_Save::SendData;
 use crate::Settings::Magic;
 use crate::Settings::Pathlib;
-use crate::Zstd::TotkFileType;
+use crate::Zstd::{TotkFileType, TotkZstd};
 use roead::aamp::ParameterIO;
 
 use super::bphcl::safe_aamp_yaml;
@@ -13,12 +13,25 @@ pub struct AampFile;
 
 impl AampFile {
     pub fn open_aamp<P: AsRef<Path>>(path: P) -> Option<(OpenedFile<'static>, SendData)> {
-        let mut opened_file = OpenedFile::default();
-        let mut data = SendData::default();
         let path_ref = path.as_ref();
         let pathlib_var = Pathlib::new(path_ref);
         print!("Is {} an aamp? ", &pathlib_var.full_path);
         let raw_data = std::fs::read(path_ref).ok()?;
+        Self::open_aamp_data(&raw_data, path_ref)
+    }
+
+    pub fn open_aamp_binary<P: AsRef<Path>>(
+        raw_data: &[u8],
+        path: P,
+        _zstd: Arc<TotkZstd<'_>>,
+    ) -> Option<(OpenedFile<'static>, SendData)> {
+        Self::open_aamp_data(raw_data, path.as_ref())
+    }
+
+    fn open_aamp_data(raw_data: &[u8], path_ref: &Path) -> Option<(OpenedFile<'static>, SendData)> {
+        let pathlib_var = Pathlib::new(path_ref);
+        let mut opened_file = OpenedFile::default();
+        let mut data = SendData::default();
         if Magic::is_aamp(&raw_data) {
             let pio = ParameterIO::from_binary(&raw_data).ok()?; // Parse AAMP from binary data
             println!(" yes!");
@@ -39,24 +52,38 @@ pub struct TextFile;
 
 impl TextFile {
     pub fn open_text<P: AsRef<Path>>(path: P) -> Option<(OpenedFile<'static>, SendData)> {
-        let mut opened_file = OpenedFile::default();
-        let mut data = SendData::default();
         let path_ref = path.as_ref();
         let pathlib_var = Pathlib::new(path_ref);
         print!("Is {} regular text file? ", &pathlib_var.full_path);
         let mut file = fs::File::open(path_ref).ok()?;
         let mut buffer = Vec::new();
         if file.read_to_end(&mut buffer).is_ok() {
-            if let Ok(text) = String::from_utf8(buffer) {
-                println!(" yes!");
-                opened_file.path = pathlib_var.clone();
-                opened_file.file_type = TotkFileType::Text;
-                data.status_text = format!("Opened {}", &pathlib_var.full_path);
-                data.path = pathlib_var;
-                data.text = text;
-                data.get_file_label(TotkFileType::Text, None);
-                return Some((opened_file, data));
-            }
+            return Self::open_text_data(&buffer, path_ref);
+        }
+        None
+    }
+
+    pub fn open_text_binary<P: AsRef<Path>>(
+        buffer: &[u8],
+        path: P,
+        _zstd: Arc<TotkZstd<'_>>,
+    ) -> Option<(OpenedFile<'static>, SendData)> {
+        Self::open_text_data(buffer, path.as_ref())
+    }
+
+    fn open_text_data(buffer: &[u8], path_ref: &Path) -> Option<(OpenedFile<'static>, SendData)> {
+        let pathlib_var = Pathlib::new(path_ref);
+        let mut opened_file = OpenedFile::default();
+        let mut data = SendData::default();
+        if let Ok(text) = String::from_utf8(buffer.to_vec()) {
+            println!(" yes!");
+            opened_file.path = pathlib_var.clone();
+            opened_file.file_type = TotkFileType::Text;
+            data.status_text = format!("Opened {}", &pathlib_var.full_path);
+            data.path = pathlib_var;
+            data.text = text;
+            data.get_file_label(TotkFileType::Text, None);
+            return Some((opened_file, data));
         }
         println!(" no");
         None

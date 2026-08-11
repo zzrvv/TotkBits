@@ -44,10 +44,19 @@ impl BfevFile {
     ) -> Option<(OpenedFile<'a>, SendData)> {
         let path = path.as_ref();
         let source = std::fs::read(path).ok()?;
-        let bytes = if crate::Settings::Magic::is_evfl(&source) {
-            source
+        Self::open_bfev_binary(&source, path, zstd)
+    }
+
+    pub fn open_bfev_binary<'a, P: AsRef<Path>>(
+        source: &[u8],
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'a>, SendData)> {
+        let path = path.as_ref();
+        let bytes = if crate::Settings::Magic::is_evfl(source) {
+            source.to_vec()
         } else {
-            zstd.decompressor.decompress_zs(&source).ok()?
+            zstd.decompressor.decompress_zs(source).ok()?
         };
         let bfev = Self::from_binary(&bytes).ok()?;
         let text = bfev.original_text.clone();

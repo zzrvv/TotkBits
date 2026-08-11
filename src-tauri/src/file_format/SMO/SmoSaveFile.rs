@@ -61,6 +61,25 @@ impl<'a> SmoSaveFile<'a> {
         println!(" no");
         None
     }
+    pub fn open_smo_save_file_binary<P: AsRef<Path>>(
+        binary: &[u8],
+        display_path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'a>, SendData)> {
+        let path = display_path.as_ref();
+        let mut smo = Self::from_binary(binary, zstd, path).ok()?;
+        let text = smo.to_string().ok()?;
+        let mut opened = OpenedFile::default();
+        opened.path = Pathlib::new(path);
+        opened.endian = Some(smo.endian);
+        opened.file_type = TotkFileType::SmoSaveFile;
+        let mut data = SendData::default();
+        data.path = Pathlib::new(path);
+        data.text = text;
+        data.status_text = format!("Opened {}", path.display());
+        data.get_file_label(TotkFileType::SmoSaveFile, Some(smo.endian));
+        Some((opened, data))
+    }
     pub fn from_binary<P: AsRef<Path>>(
         data: &[u8],
         zstd: Arc<TotkZstd<'a>>,

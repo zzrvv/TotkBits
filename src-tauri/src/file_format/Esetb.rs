@@ -51,6 +51,30 @@ impl<'a> Esetb<'a> {
 
         None
     }
+    pub fn open_esetb_binary<P: AsRef<Path>>(
+        binary: &[u8],
+        display_path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'a>, SendData)> {
+        let path = display_path.as_ref();
+        let (raw, compression) = zstd.try_decompress_all_ordered_safe(binary, path);
+        let esetb = Self::from_binary(&raw, zstd).ok()?;
+        let endian = esetb.byml.endian;
+        let text = esetb.to_string();
+        let mut opened = OpenedFile::default();
+        opened.path = Pathlib::new(path);
+        opened.endian = endian;
+        opened.file_type = TotkFileType::Esetb;
+        opened.compression =
+            (compression != crate::Zstd::ZstdDictionary::None).then_some(compression);
+        opened.esetb = Some(esetb);
+        let mut data = SendData::default();
+        data.path = Pathlib::new(path);
+        data.text = text;
+        data.status_text = format!("Opened {}", path.display());
+        data.get_file_label(TotkFileType::Esetb, endian);
+        Some((opened, data))
+    }
     pub fn from_binary(data: &Vec<u8>, zstd: Arc<TotkZstd<'a>>) -> io::Result<Esetb<'a>> {
         let file_data = FileData {
             file_type: TotkFileType::Esetb,

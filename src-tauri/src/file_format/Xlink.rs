@@ -295,6 +295,34 @@ impl<'a> Xlink_rs<'a> {
         data.get_file_label(TotkFileType::Xlink, Some(Endian::Little));
         Some((opened_file, data))
     }
+
+    pub fn open_xlink_binary<P: AsRef<Path>>(
+        binary: &[u8],
+        display_path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'static>, SendData)> {
+        let path = display_path.as_ref();
+        let rawdata = xlink_data(&zstd, binary).ok()?;
+        let text = Self::new(zstd.clone())
+            .ok()?
+            .binary_to_yaml(&rawdata)
+            .ok()?;
+        let mut opened = OpenedFile::default();
+        opened.path = Pathlib::new(path);
+        opened.endian = Some(Endian::Little);
+        opened.file_type = TotkFileType::Xlink;
+        let mut data = SendData::default();
+        data.path = Pathlib::new(path);
+        data.text = text;
+        data.status_text = format!("Opened {}", path.display());
+        data.lang = if zstd.totk_config.xlink_format == "modern" {
+            "xlink".into()
+        } else {
+            "yaml".into()
+        };
+        data.get_file_label(TotkFileType::Xlink, Some(Endian::Little));
+        Some((opened, data))
+    }
 }
 
 #[cfg(test)]

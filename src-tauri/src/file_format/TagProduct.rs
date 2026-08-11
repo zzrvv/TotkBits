@@ -137,6 +137,28 @@ impl<'a> TagProduct<'a> {
         println!(" no");
         None
     }
+
+    pub fn open_tag_binary<P: AsRef<Path>>(
+        binary: &[u8],
+        display_path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'a>, SendData)> {
+        let path = display_path.as_ref();
+        let mut tag = Self::from_binary(&binary.to_vec(), path, zstd)?;
+        let mut opened = OpenedFile::default();
+        opened.path = Pathlib::new(path);
+        opened.endian = Some(roead::Endian::Little);
+        opened.file_type = TotkFileType::TagProduct;
+        let text = tag.to_text();
+        opened.tag = Some(tag);
+        let mut data = SendData::default();
+        data.path = Pathlib::new(path);
+        data.text = text;
+        data.lang = "json".into();
+        data.status_text = format!("Opened {}", path.display());
+        data.get_file_label(TotkFileType::TagProduct, Some(roead::Endian::Little));
+        Some((opened, data))
+    }
     pub fn new<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         if let Some(byml) = BymlFile::new(path.as_ref(), zstd.clone()) {
             let mut tag_product = TagProduct {

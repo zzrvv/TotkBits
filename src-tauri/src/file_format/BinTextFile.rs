@@ -80,6 +80,32 @@ impl<'a> BymlFile<'_> {
         println!(" no");
         None
     }
+
+    pub fn open_byml_binary<P: AsRef<Path>>(
+        binary: &[u8],
+        display_path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'a>, SendData)> {
+        let path = display_path.as_ref();
+        let file_data = Self::byml_data_to_bytes(&binary.to_vec(), zstd.clone()).ok()?;
+        let mut byml = Self::from_binary(&file_data.data, zstd, path).ok()?;
+        byml.file_type = file_data.file_type;
+        byml.file_data = file_data;
+        let endian = byml.endian;
+        let file_type = byml.file_data.file_type;
+        let text = byml.to_string();
+        let mut opened = OpenedFile::default();
+        opened.path = Pathlib::new(path);
+        opened.endian = endian;
+        opened.file_type = file_type;
+        opened.byml = Some(byml);
+        let mut data = SendData::default();
+        data.path = Pathlib::new(path);
+        data.text = text;
+        data.status_text = format!("Opened {}", path.display());
+        data.get_file_label(file_type, endian);
+        Some((opened, data))
+    }
 }
 
 #[allow(dead_code, unused_variables, unused_assignments)]

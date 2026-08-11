@@ -163,6 +163,15 @@ impl<'a> TotkFile<'a> {
         self.raise_err_template(msg)
     }
 
+    pub fn raise_err_magic_filetype<T>(&self) -> io::Result<T> {
+        let msg = format!(
+            "ERROR: Unable to parse magic based file {:?} of type {:?}!",
+            Magic::magic_to_str(&self.binary_raw),
+            &self.file_type
+        );
+        self.raise_err_template(msg)
+    }
+
     pub fn update_endian_from_byml(&mut self, byml: &BymlFile) {
         match byml.endian {
             Some(roead::Endian::Big) => self.endian = TotkEndian::BE,
@@ -192,6 +201,7 @@ impl<'a> TotkFile<'a> {
                 format!("Invalid magic: {}", Magic::magic_to_str(&res.binary_raw)),
             ));
         }
+        res.file_type = filetype_path;
         match filetype_path {
             TotkFileType::TagProduct => {
                 if let Some(mut tag) = TagProduct::from_binary(&res.binary_raw, path, zstd.clone())
@@ -240,117 +250,110 @@ impl<'a> TotkFile<'a> {
                 // return res.raise_not_implemented();
             }
         }
-
-        let parse_result: io::Result<()> = (|| {
-            match filetype_magic {
-                TotkFileType::Byml => {
-                    let file_type = if res.compression == ZstdDictionary::Bcett {
-                        TotkFileType::Bcett
-                    } else {
-                        TotkFileType::Byml
-                    };
-                    let file_data = FileData {
-                        file_type,
-                        data: res.binary_raw.clone(),
-                        compression: (res.compression != ZstdDictionary::None)
-                            .then_some(res.compression),
-                        yaz0_alignment: 0,
-                    };
-                    let mut byml = BymlFile::from_binary(&res.binary_raw, zstd.clone(), path)?;
-                    byml.file_type = file_type;
-                    byml.file_data = file_data;
-                    res.update_endian_from_byml(&byml);
-                    res.file_type = file_type;
-                    res.text = byml.to_string();
-                    res.cache_text.byml = Some(byml);
+        res.file_type = filetype_magic;
+        macro_rules! magic_result {
+            ($value:expr) => {
+                match $value {
+                    Ok(value) => value,
+                    Err(_) => return res.raise_err_magic_filetype(),
                 }
-                TotkFileType::ASB => {
-                    res.text = AsbFile::binary_to_text(&res.binary_raw)?;
-                    res.endian = TotkEndian::LE;
-                    res.file_type = TotkFileType::ASB;
+            };
+        }
+        macro_rules! magic_option {
+            ($value:expr) => {
+                match $value {
+                    Some(value) => value,
+                    None => return res.raise_err_magic_filetype(),
                 }
-                TotkFileType::AINB => {
-                    res.text = AinbFile::binary_to_text(&res.binary_raw)?;
-                    res.endian = TotkEndian::LE;
-                    res.file_type = TotkFileType::AINB;
-                }
-                TotkFileType::Evfl => {
-                    let bfev = BfevFile::from_binary(&res.binary_raw)?;
-                    res.text = bfev.document.to_json()?;
-                    res.endian = TotkEndian::LE;
-                    res.file_type = TotkFileType::Evfl;
-                    res.cache_misc.bfew = Some(bfev);
-                }
-                TotkFileType::Xlink => {
-                    let compression =
-                        (res.compression != ZstdDictionary::None).then_some(res.compression);
-                    let (_, text) =
-                        Xlink_rs::open_internal(path, &res.binary_raw, zstd.clone(), compression)
-                            .ok_or_else(|| {
-                            io::Error::new(io::ErrorKind::InvalidData, "Unable to parse Xlink data")
-                        })?;
-                    res.text = text;
-                    res.endian = TotkEndian::LE;
-                    res.file_type = TotkFileType::Xlink;
-                }
-                TotkFileType::Aamp => {
-                    let pio = ParameterIO::from_binary(&res.binary_raw)
-                        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                    res.text = crate::file_format::bphcl::safe_aamp_yaml(&pio)?;
-                    res.endian = TotkEndian::None;
-                    res.file_type = TotkFileType::Aamp;
-                }
-                TotkFileType::Msbt => {
-                    let msbt = MsbtFile::from_binary(
-                        res.binary_raw.clone(),
-                        Some(path.to_string_lossy().into_owned()),
-                    )
-                    .ok_or_else(|| {
-                        io::Error::new(io::ErrorKind::InvalidData, "Unable to parse MSBT data")
-                    })?;
-                    res.endian = match msbt.endian {
-                        roead::Endian::Little => TotkEndian::LE,
-                        roead::Endian::Big => TotkEndian::BE,
-                    };
-                    res.text = msbt.text.clone();
-                    res.file_type = TotkFileType::Msbt;
-                    res.cache_text.msbt = Some(msbt);
-                }
-                TotkFileType::Text => {
-                    res.text = String::from_utf8(res.binary_raw.clone()).map_err(|error| {
-                        io::Error::new(io::ErrorKind::InvalidData, error.utf8_error())
-                    })?;
-                    res.endian = TotkEndian::None;
-                    res.file_type = TotkFileType::Text;
-                }
-                TotkFileType::Restbl => {
-                    let restbl =
-                        Restbl::from_binary(data, zstd.clone(), path).ok_or_else(|| {
-                            io::Error::new(io::ErrorKind::InvalidData, "Unable to parse RSTB data")
-                        })?;
-                    if zstd.totk_config.rstb_view == "json" {
-                        res.text = restbl.to_json()?;
-                    }
-                    res.endian = TotkEndian::LE;
-                    res.file_type = TotkFileType::Restbl;
-                    res.cache_misc.rstb = Some(restbl);
-                }
-                unsupported => {
-                    return Err(io::Error::new(
-                        io::ErrorKind::Unsupported,
-                        format!("Text decoding is not implemented for {unsupported:?}"),
-                    ));
-                }
+            };
+        }
+        match filetype_magic {
+            TotkFileType::Byml => {
+                let file_type = if res.compression == ZstdDictionary::Bcett {
+                    TotkFileType::Bcett
+                } else {
+                    TotkFileType::Byml
+                };
+                let file_data = FileData {
+                    file_type,
+                    data: res.binary_raw.clone(),
+                    compression: (res.compression != ZstdDictionary::None)
+                        .then_some(res.compression),
+                    yaz0_alignment: 0,
+                };
+                let mut byml =
+                    magic_result!(BymlFile::from_binary(&res.binary_raw, zstd.clone(), path));
+                byml.file_type = file_type;
+                byml.file_data = file_data;
+                res.update_endian_from_byml(&byml);
+                res.file_type = file_type;
+                res.text = byml.to_string();
+                res.cache_text.byml = Some(byml);
             }
-
-            Ok(())
-        })();
-
-        if let Err(error) = parse_result {
-            return res.raise_err_template(format!(
-                "Detected {filetype_magic:?} for {}, but parsing failed: {error}",
-                path.display()
-            ));
+            TotkFileType::ASB => {
+                res.text = magic_result!(AsbFile::binary_to_text(&res.binary_raw));
+                res.endian = TotkEndian::LE;
+                res.file_type = TotkFileType::ASB;
+            }
+            TotkFileType::AINB => {
+                res.text = magic_result!(AinbFile::binary_to_text(&res.binary_raw));
+                res.endian = TotkEndian::LE;
+                res.file_type = TotkFileType::AINB;
+            }
+            TotkFileType::Evfl => {
+                let bfev = magic_result!(BfevFile::from_binary(&res.binary_raw));
+                res.text = magic_result!(bfev.document.to_json());
+                res.endian = TotkEndian::LE;
+                res.file_type = TotkFileType::Evfl;
+                res.cache_misc.bfew = Some(bfev);
+            }
+            TotkFileType::Xlink => {
+                let compression =
+                    (res.compression != ZstdDictionary::None).then_some(res.compression);
+                let (_, text) = magic_option!(Xlink_rs::open_internal(
+                    path,
+                    &res.binary_raw,
+                    zstd.clone(),
+                    compression
+                ));
+                res.text = text;
+                res.endian = TotkEndian::LE;
+                res.file_type = TotkFileType::Xlink;
+            }
+            TotkFileType::Aamp => {
+                let pio = magic_result!(ParameterIO::from_binary(&res.binary_raw));
+                res.text = magic_result!(crate::file_format::bphcl::safe_aamp_yaml(&pio));
+                res.endian = TotkEndian::None;
+                res.file_type = TotkFileType::Aamp;
+            }
+            TotkFileType::Msbt => {
+                let msbt = magic_option!(MsbtFile::from_binary(
+                    res.binary_raw.clone(),
+                    Some(path.to_string_lossy().into_owned()),
+                ));
+                res.endian = match msbt.endian {
+                    roead::Endian::Little => TotkEndian::LE,
+                    roead::Endian::Big => TotkEndian::BE,
+                };
+                res.text = msbt.text.clone();
+                res.file_type = TotkFileType::Msbt;
+                res.cache_text.msbt = Some(msbt);
+            }
+            TotkFileType::Text => {
+                res.text = magic_result!(String::from_utf8(res.binary_raw.clone()));
+                res.endian = TotkEndian::None;
+                res.file_type = TotkFileType::Text;
+            }
+            TotkFileType::Restbl => {
+                let restbl = magic_option!(Restbl::from_binary(data, zstd.clone(), path));
+                if zstd.totk_config.rstb_view == "json" {
+                    res.text = magic_result!(restbl.to_json());
+                }
+                res.endian = TotkEndian::LE;
+                res.file_type = TotkFileType::Restbl;
+                res.cache_misc.rstb = Some(restbl);
+            }
+            _ => return res.raise_err_magic_filetype(),
         }
 
         Ok(res)

@@ -77,6 +77,33 @@ impl AsbFile {
         Some((opened_file, data))
     }
 
+    pub fn open_asb_binary<'a, P: AsRef<Path>>(
+        binary: &[u8],
+        display_path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'a>, SendData)> {
+        let path = display_path.as_ref();
+        let (raw, compression) = zstd.try_decompress_all_ordered_safe(binary, path);
+        if !crate::Settings::Magic::is_asb(&raw) {
+            return None;
+        }
+        let file = Self::from_binary(&raw).ok()?;
+        let text = file.to_yaml().ok()?;
+        let mut opened = OpenedFile::default();
+        opened.path = Pathlib::new(path);
+        opened.file_type = TotkFileType::ASB;
+        opened.compression =
+            (compression != crate::Zstd::ZstdDictionary::None).then_some(compression);
+        let mut data = SendData {
+            path: Pathlib::new(path),
+            text,
+            status_text: format!("Opened: {}", path.display()),
+            ..Default::default()
+        };
+        data.get_file_label(TotkFileType::ASB, Some(roead::Endian::Little));
+        Some((opened, data))
+    }
+
     pub fn from_binary(data: &[u8]) -> io::Result<Self> {
         Ok(Self {
             document: Asb::from_bytes(data)?,
