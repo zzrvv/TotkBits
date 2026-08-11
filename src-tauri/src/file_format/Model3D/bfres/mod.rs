@@ -407,6 +407,7 @@ impl BfresFile {
         data.path = crate::Settings::Pathlib::new(path);
         data.file_label = format!("{} [BFRES]", data.path.name);
         data.file_metadata = "[BFRES] [3D]".into();
+        data.file_type = crate::Zstd::TotkFileType::Bfres;
         data.status_text = match outer_path {
             Some(outer) => format!("Opened {path} inside {outer}"),
             None => format!("Opened {path} from archive"),
@@ -524,6 +525,7 @@ impl BfresFile {
         data.path = disk_path;
         data.file_label = format!("{} [BFRES]", data.path.name);
         data.file_metadata = "[BFRES] [3D]".into();
+        data.file_type = crate::Zstd::TotkFileType::Bfres;
         if compression != ZstdDictionary::None {
             data.file_metadata += &format!(" [{:?}]", compression);
         }

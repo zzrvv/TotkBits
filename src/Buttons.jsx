@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { removeInternalFileClick, replaceInternalFileClick, clearSearchInSarcClick, searchTextInSarcClick, editInternalSarcFile, extractFileClick, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
 import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
+import { isFileTypeSaveable } from './FileTypes';
 import { useEditorContext } from './StateManager';
 import { set } from 'lodash';
 
@@ -37,7 +38,9 @@ function ImageButton({ src, onClick, alt, title, style }) {
 }
 
 const ButtonsDisplay = () => {
-  const { documents } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
+  const { documents, activeDocumentId } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
+  const activeDocument = documents.find((document) => document.id === activeDocumentId);
+  const isSaveEnabled = isFileTypeSaveable(activeDocument?.fileType);
   const showCloseButton = documents.length > 1 || (documents.length === 1 && !documents[0].clean);
   const {
     searchInSarcQuery, setSearchInSarcQuery,
@@ -51,7 +54,7 @@ const ButtonsDisplay = () => {
     setSavingFile, documentSnapshots
   } = useEditorContext();
 
-  const displayButtons = activeTab === "SARC" || activeTab === "AUDIO" || activeTab === "YAML" || activeTab === "RSTB" || activeTab !== "AOC_MODELS";
+  const displayButtons = !['3D', 'IMAGE', 'AMTA', 'AOC_MODELS'].includes(activeTab);
   // console.log("Display buttons? ", displayButtons);
   const handlePathToClipboard = (text) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -61,8 +64,6 @@ const ButtonsDisplay = () => {
     });
     setStatusText(`Copied to clipboard`);
   }
-
-  const activeTabRef = useRef(activeTab);
 
   //Buttons functions
   const handleOpenFileClick = () => {
@@ -79,13 +80,12 @@ const ButtonsDisplay = () => {
   };
 
   const handleSaveClick = () => {
-    if (activeTab === "COMPARER") {return null;}
-    console.log(activeTabRef.current, activeTab);
-    saveFileClick(setStatusText, activeTabRef.current, setpaths, editorRef, setSavingFile, documentSnapshots);
+    if (!isSaveEnabled) return null;
+    saveFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
   const handleSaveAsClick = () => {
-    if (activeTab === "COMPARER") {return null;}
-    saveAsFileClick(setStatusText, activeTabRef.current, setpaths, editorRef, setSavingFile, documentSnapshots);
+    if (!isSaveEnabled) return null;
+    saveAsFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
   const handleClearSarcSearch = () => {
     clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery, documentSnapshots);
@@ -131,33 +131,29 @@ const ButtonsDisplay = () => {
   }, []);
 
   const imageButtonsData = activeTab === "AUDIO" ? [
-    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
-    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
+    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
+    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
   ] : activeTab === "SARC" ? [
-    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
-    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
+    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
+    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
-    { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit (Ctrl+E)' },
+    { src: 'edit.png', alt: 'edit', onClick: handleOpenInternalSarcFile, title: 'Edit' },
     { src: 'add_sarc.png', alt: 'add', onClick: handleAddClick, title: 'Add' },
     { src: 'extract.png', alt: 'extract', onClick: () => extractFileClick(selectedPath, setStatusText), title: 'Extract' },
     { src: 'lupa.png', alt: 'find', onClick: handleSearchClick, title: 'Search in sarc' },
   ] : activeTab === "YAML" ? [
-    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
-    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
+    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
+    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
-    { src: 'back.png', alt: 'back', onClick: undoInEditor, title: 'Undo (Ctrl+Z)' },
-    { src: 'forward.png', alt: 'forward', onClick: redoInEditor, title: 'Redo (Ctrl+Shift+Z)' },
-    { src: 'lupa.png', alt: 'find', onClick: triggerSearchInEditor, title: 'Find (Ctrl+F)' },
-    { src: 'replace.png', alt: 'replace', onClick: triggerReplaceInEditor, title: 'Replace (Ctrl+H)' },
+    { src: 'back.png', alt: 'back', onClick: undoInEditor, title: 'Undo' },
+    { src: 'forward.png', alt: 'forward', onClick: redoInEditor, title: 'Redo' },
+    { src: 'lupa.png', alt: 'find', onClick: triggerSearchInEditor, title: 'Find' },
+    { src: 'replace.png', alt: 'replace', onClick: triggerReplaceInEditor, title: 'Replace' },
   ] : [
-    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open (Ctrl+O)' },
-    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save (Ctrl+S)' },
+    { src: 'open.png', alt: 'Open', onClick: handleOpenFileClick, title: 'Open' },
+    { src: 'save.png', alt: 'Save', onClick: handleSaveClick, title: 'Save' },
     { src: 'save_as.png', alt: 'save_as', onClick: handleSaveAsClick, title: 'Save as' },
-    // { src: 'back.png', alt: 'back', onClick: undoInEditor, title: 'Undo (Ctrl+Z)' },
-    // { src: 'forward.png', alt: 'forward', onClick: redoInEditor, title: 'Redo (Ctrl+Shift+Z)' },
-    // { src: 'lupa.png', alt: 'find', onClick: triggerSearchInEditor, title: 'Find (Ctrl+F)' },
-    // { src: 'replace.png', alt: 'replace', onClick: triggerReplaceInEditor, title: 'Replace (Ctrl+H)' },
   ]
     ;
   const handleFilterChange = (setPathsFilters, key, val) => {
@@ -261,100 +257,6 @@ const ButtonsDisplay = () => {
   };
 
 
-  useEffect(() => {
-    activeTabRef.current = activeTab;
-  }, [activeTab]);
-
-  useEffect(() => {//handle mouse and keyboards events
-    const handleContextMenu = (event) => {
-      // event.preventDefault();//prevent browser's default context menu
-      //commented out in order to access "Inspect" feature
-    };
-    const handleKeyDown = (event) => {
-      const functionKeys = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'];
-      // Check if the pressed key is one of the function keys
-      if (functionKeys.includes(event.code)) {
-        event.preventDefault();
-        switch (event.code) {
-          case 'F2':
-            if (activeTabRef.current === 'SARC') {
-              console.log("F2 pressed");
-              setIsAddPrompt(false);
-              setIsModalOpen(true);
-            }
-            break;
-          case 'F3':
-            if (activeTabRef.current === 'SARC') {
-              console.log("F3 pressed");
-              handleOpenInternalSarcFile();
-            }
-            break;
-        }
-      }
-      if (event.keyCode === 46) {//Delete key
-        event.preventDefault();
-        if (activeTabRef.current === 'SARC') {
-          console.log("Delete key pressed");
-          handleRemoveInternalElement();
-          return;
-        }
-      }
-      // Check if Ctrl or Command (for macOS) is pressed
-      if (!event.ctrlKey && !event.metaKey) return;
-      if (event.ctrlKey && event.shiftKey && event.keyCode === 83) {
-        event.preventDefault(); //prevent "Screenshot" feature for browser
-        handleSaveAsClick();
-      }
-
-      switch (event.key.toLowerCase()) {
-        case 'o': // Ctrl+O
-          event.preventDefault(); // Prevent the browser's default action
-          handleOpenFileClick();
-          break;
-        case 's': // Ctrl+S
-          event.preventDefault();
-          handleSaveClick();
-          break;
-        case 'e': // Ctrl+E,
-          event.preventDefault();
-          if (activeTabRef.current === 'SARC' && selectedPath.isfile) {
-            console.log("Edit: ", selectedPath);
-            extractFileClick(selectedPath, setStatusText);
-          }
-          break;
-        case 'f': // Ctrl+F: prevent the browser's default action
-          event.preventDefault();
-          if (activeTabRef.current === 'SARC') {
-            event.preventDefault();
-          }
-          break;
-        // case 'c': // Ctrl+C
-        //   event.preventDefault();
-        //   if (activeTabRef.current === 'SARC') {
-        //     handlePathToClipboard(selectedPath.path);
-        //   }
-        //   break;
-        // case 'r': // Ctrl+R: prevent the browser's default action
-        //   event.preventDefault();
-        //   console.log("Replacing: ", selectedPath);
-        //   if (selectedPath.isfile) {
-        //     replaceInternalFileClick(selectedPath.path, setStatusText, setpaths);
-
-        //   }
-        //   break;
-      }
-    };
-
-    // Add event listener for keydown
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('contextmenu', handleContextMenu);
-
-    // Clean up the event listener when the component unmounts
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('contextmenu', handleContextMenu);
-    };
-  }, [selectedPath]); // Pass an empty dependency array to ensure this effect runs only once after the initial render
   const isClearSearchShown = activeTab == "SARC" && searchInSarcQuery.length > 0 && !isSearchInSarcOpened;
 
   if (!displayButtons) return null;
@@ -362,7 +264,7 @@ const ButtonsDisplay = () => {
   return (
     <div>
       <div className="buttons-container">
-        {imageButtonsData.map((button, index) => (
+        {imageButtonsData.filter((button) => isSaveEnabled || (button.alt !== 'Save' && button.alt !== 'save_as')).map((button, index) => (
           <ImageButton
             key={index}
             src={button.src}
@@ -386,7 +288,7 @@ const ButtonsDisplay = () => {
           <button
             className="toolbar-close-button"
             onClick={() => window.dispatchEvent(new CustomEvent('totkbits:close-active-document'))}
-            title="Close current tab (Ctrl+W)"
+            title="Close current tab"
           >
             Close
           </button>

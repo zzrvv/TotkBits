@@ -23,7 +23,8 @@ use zstd::{stream::Decoder, stream::Encoder};
 
 pub const TOTK_ZSTD_COMPRESSION_LEVEL: i32 = 16;
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum TotkFileType {
     AINB,
     ASB,

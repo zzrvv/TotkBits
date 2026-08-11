@@ -124,6 +124,7 @@ impl FbxFile {
         send.path = crate::Settings::Pathlib::new(path);
         send.file_label = format!("{} [FBX]", send.path.name);
         send.file_metadata = "[3D MODEL] [READ ONLY]".into();
+        send.file_type = crate::Zstd::TotkFileType::Fbx;
         send.status_text = format!("Opened FBX {}", path.display());
         send.tab = "3D".into();
         send.read_only = true;

@@ -47,7 +47,9 @@ fn populate_weapon_icon_cache(
         let Some(icon_name) = file_name.strip_suffix(".bntx.zs") else {
             continue;
         };
-        if !icon_name.starts_with("Weapon_") || !source.is_file() {
+        let is_weapon = icon_name.starts_with("Weapon_") && icon_name.matches('_').count() == 2;
+        let is_armor = icon_name.starts_with("Armor_") && icon_name.matches('_').count() == 2;
+        if (!is_weapon && !is_armor) || !source.is_file() {
             continue;
         }
 

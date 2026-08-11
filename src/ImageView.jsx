@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { invoke } from './DocumentState';
 import { getDocumentsSnapshot, subscribeDocuments } from './DocumentState';
@@ -35,6 +35,20 @@ export default function ImageView({ activeTab, setStatusText }) {
     const [loading, setLoading] = useState(false);
     const [renameValue, setRenameValue] = useState('');
     const [replacementFormat, setReplacementFormat] = useState('ORIGINAL');
+    const canvasRef = useRef(null);
+
+    const fitImageToCanvas = useCallback(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || !image?.width || !image?.height) return;
+        const availableWidth = Math.max(1, canvas.clientWidth - 40);
+        const availableHeight = Math.max(1, canvas.clientHeight - 40);
+        const fitScale = Math.min(availableWidth / image.width, availableHeight / image.height);
+        const fortyPercentScale = Math.min(
+            availableWidth * 0.4 / image.width,
+            availableHeight * 0.4 / image.height,
+        );
+        setZoom(Math.min(16, fitScale, Math.max(1, fortyPercentScale)));
+    }, [image?.width, image?.height]);
 
     useEffect(() => {
         setTextureIndex(0);
@@ -61,6 +75,17 @@ export default function ImageView({ activeTab, setStatusText }) {
         });
         return () => { cancelled = true; };
     }, [activeTab, document?.fullPath, revision, textureIndex, arrayIndex, mipIndex]);
+
+    useEffect(() => {
+        if (activeTab !== 'IMAGE' || !image) return undefined;
+        const frame = requestAnimationFrame(fitImageToCanvas);
+        const observer = new ResizeObserver(fitImageToCanvas);
+        if (canvasRef.current) observer.observe(canvasRef.current);
+        return () => {
+            cancelAnimationFrame(frame);
+            observer.disconnect();
+        };
+    }, [activeTab, image, showTree, fitImageToCanvas]);
 
     if (activeTab !== 'IMAGE') return null;
     const exportPng = async () => {
@@ -133,11 +158,12 @@ export default function ImageView({ activeTab, setStatusText }) {
 
     return <main className="image-workspace">
         <header>
-            <div><strong>{document?.title || 'Image'}</strong>{image && <span>{image.format} · {image.width} × {image.height}</span>}</div>
+            {/* <div><strong>{document?.title || 'Image'}</strong>{image && <span>{image.format} · {image.width} × {image.height}</span>}</div> */}
+            {image && <span>{image.format} · {image.width} × {image.height}</span>}
             <button type="button" onClick={() => setShowTree((value) => !value)}>{showTree ? 'Hide tree' : 'Show tree'}</button>
             <div className="image-zoom-controls">
                 <button type="button" onClick={() => changeZoom(-0.25)} aria-label="Zoom out">−</button>
-                <button type="button" onClick={() => setZoom(1)}>{Math.round(zoom * 100)}%</button>
+                <button type="button" onClick={fitImageToCanvas} title="Fit image">{Math.round(zoom * 100)}%</button>
                 <button type="button" onClick={() => changeZoom(0.25)} aria-label="Zoom in">+</button>
             </div>
             <button type="button" onClick={exportPng} disabled={!image}>Render PNG</button>
@@ -163,7 +189,7 @@ export default function ImageView({ activeTab, setStatusText }) {
                 <button type="button" onClick={() => changeMip(mipIndex - 1)} disabled={mipIndex === 0 || loading} aria-label="Previous mip level">‹</button>
                 <button type="button" onClick={() => changeMip(mipIndex + 1)} disabled={mipIndex + 1 >= (selectedEntry?.mipCount || image?.mipCount || 1) || loading} aria-label="Next mip level">›</button>
             </div>
-            <div className="image-canvas" onWheel={(event) => { if (event.ctrlKey) { event.preventDefault(); changeZoom(event.deltaY < 0 ? 0.1 : -0.1); } }}>
+            <div ref={canvasRef} className="image-canvas">
                 {!image && !error && <span>Decoding image…</span>}
                 {error && <div className="image-error">{error}</div>}
                 {image && <img src={image.dataUrl} alt={document?.title || 'Decoded image'} style={{ width: `${image.width * zoom}px`, height: `${image.height * zoom}px` }} />}

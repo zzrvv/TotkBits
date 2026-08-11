@@ -1,4 +1,4 @@
-.image-workspace { position: fixed; inset: var(--main-top-offset) 0 var(--status-bar-h); z-index: 2; display: grid; grid-template: 44px minmax(0, 1fr) / auto minmax(0, 1fr) 290px; color: #dce3ea; background: #11151b; }
+.image-workspace { position: fixed; inset: var(--main-top-offset-no-buttons) 0 var(--status-bar-h); z-index: 2; display: grid; grid-template: 44px minmax(0, 1fr) / auto minmax(0, 1fr) 290px; color: #dce3ea; background: #11151b; }
 .image-workspace > header { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid #303946; background: #1a2029; }
 .image-workspace > header > div:first-child { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .image-workspace > header span { color: #8e9baa; font-size: 11px; }

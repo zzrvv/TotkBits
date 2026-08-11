@@ -63,10 +63,10 @@ const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onS
   };
   const isBars = paths.file_type === 'BARS';
   const actions = isFile ? [
-    { label: 'Edit', method: () => { setContextMenu({ visible: false, x: 0, y: 0 }); editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent); }, icon: 'context_menu/edit.png', shortcut: 'F3', isRender: true },
+    { label: 'Edit', method: () => { setContextMenu({ visible: false, x: 0, y: 0 }); editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent); }, icon: 'context_menu/edit.png', shortcut: '', isRender: true },
     
     { label: 'Extract', method: () => { setContextMenu({ visible: false, x: 0, y: 0 }); extractNestedSarcFile(outerPath, innerPath, setStatusText); }, icon: 'context_menu/extract.png', shortcut: '', isRender: true },
-    { label: 'Replace', method: async () => { const sourcePath = await chooseFile(); if (sourcePath) await mutate('replace', { sourcePath }); }, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R', isRender: true },
+    { label: 'Replace', method: async () => { const sourcePath = await chooseFile(); if (sourcePath) await mutate('replace', { sourcePath }); }, icon: 'context_menu/replace.png', shortcut: '', isRender: true },
     { label: 'Delete', method: async () => { if (window.confirm(`Delete ${innerPath}?`)) await mutate('delete'); }, icon: 'context_menu/remove.png', shortcut: '', isRender: !isBars },
     { label: 'Rename', method: rename, icon: 'context_menu/rename.png', shortcut: '', isRender: !isBars },
     { label: 'Compare', method: async () => {
@@ -100,7 +100,7 @@ const NestedDirectoryNode = ({ node, name, innerParent, outerPath, selected, onS
   ] : [
     { label: 'Add file', method: async () => { const sourcePath = await chooseFile(); if (sourcePath) { const fileName = sourcePath.replace(/\\/g, '/').split('/').pop(); await mutate('add', { sourcePath, newPath: null, path: `${innerPath}/${fileName}` }); } }, icon: 'context_menu/add_file.png', shortcut: '', isRender: true },
     { label: 'Add folder', method: async () => { const sourcePath = await chooseDir(); if (sourcePath) await mutate('add_dir', { sourcePath }); }, icon: 'context_menu/add_dir.png', shortcut: '', isRender: true },
-    { label: 'Extract', method: () => mutate('extract_folder'), icon: 'context_menu/extract.png', shortcut: 'Ctrl+E', isRender: true },
+    { label: 'Extract', method: () => mutate('extract_folder'), icon: 'context_menu/extract.png', shortcut: '', isRender: true },
     { label: 'New byml', method: () => mutate('new_byml'), icon: 'context_menu/byml.png', shortcut: '', isRender: true },
     { label: 'Delete', method: async () => { if (window.confirm(`Delete ${innerPath} and its contents?`)) await mutate('delete'); }, icon: 'context_menu/remove.png', shortcut: '', isRender: paths.file_type !== 'BARS' },
     { label: 'Rename', method: rename, icon: 'context_menu/rename.png', shortcut: '', isRender: paths.file_type !== 'BARS' },
@@ -422,17 +422,17 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
   const isBars = sarcPaths.file_type === 'BARS';
   const readOnlyPhysicsNode = sarcPaths.read_only && activeTab === 'SARC';
   const readOnlyActions = [
-    { label: 'View', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: 'F3', isRender: true },
-    { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E', isRender: true },
+    { label: 'View', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: '', isRender: true },
+    { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: '', isRender: true },
     { label: 'Delete', method: handleRemoveBphclNode, icon: 'context_menu/remove.png', shortcut: '', isRender: activeTab === 'SARC' && !isBars },
     { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: '', isRender: true },
     { label: 'Close', method: () => closeContextMenu(), icon: 'context_menu/close.png', shortcut: '', isRender: true },
   ];
   const contextMenuActions = readOnlyPhysicsNode && isFile ? readOnlyActions : isFile ? [
-    { label: 'Edit', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: 'F3', isRender: true },
+    { label: 'Edit', method: handleOpenInternalSarcFile, icon: 'context_menu/edit.png', shortcut: '', isRender: true },
     { label: 'Compare', method: handleCompareInternalSarcFile, icon: 'context_menu/compare.png', shortcut: '', isRender: !isBars },
-    { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E', isRender: true },
-    { label: 'Replace', method: handleReplaceInternalSarcFile, icon: 'context_menu/replace.png', shortcut: 'Ctrl+R', isRender: true },
+    { label: 'Extract', method: handleExtractInternalSarcFile, icon: 'context_menu/extract.png', shortcut: '', isRender: true },
+    { label: 'Replace', method: handleReplaceInternalSarcFile, icon: 'context_menu/replace.png', shortcut: '', isRender: true },
     { label: 'Delete', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: '', isRender: !isBars },
     { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: '', isRender: !isBars },
     { label: 'Copy path', method: () => handlePathToClipboard(fullPath), icon: 'context_menu/copy.png', shortcut: '', isRender: true },
@@ -442,7 +442,7 @@ const DirectoryNode = ({ node, name, path, onContextMenu, sarcPaths, selected, o
     { label: 'Replace audio from folder', method: handleReplaceBarsFromFolder, icon: 'context_menu/replace.png', shortcut: '', isRender: sarcPaths.file_type === 'BARS' },
     { label: 'Add file', method: handleAddInternalSarcFileToDir, icon: 'context_menu/add_file.png', shortcut: '', isRender: true },
     { label: 'Add folder', method: handleAddFilesFromDirRecursively, icon: 'context_menu/add_dir.png', shortcut: '', isRender: true },
-    { label: 'Extract', method: handleExtractInternalSarcFolder, icon: 'context_menu/extract.png', shortcut: 'Ctrl+E', isRender: true },
+    { label: 'Extract', method: handleExtractInternalSarcFolder, icon: 'context_menu/extract.png', shortcut: '', isRender: true },
     { label: 'New byml', method: handleAddEmptyByml, icon: 'context_menu/byml.png', shortcut: '', isRender: true },
     { label: 'Delete', method: handleRemoveInternalSarcFile, icon: 'context_menu/remove.png', shortcut: '', isRender: !isBars },
     { label: 'Rename', method: handleRenameInternalSarcFile, icon: 'context_menu/rename.png', shortcut: '', isRender: !isBars },

@@ -18,7 +18,7 @@ const documentCommands = new Set([
 ]);
 
 const createDocument = (title = 'Untitled') => ({
-    id: crypto.randomUUID(), title, fullPath: '', fileMetadata: '', parentDocumentId: null, clean: true,
+    id: crypto.randomUUID(), title, fullPath: '', fileMetadata: '', fileType: 'NONE', parentDocumentId: null, clean: true,
 });
 let documents = [createDocument()];
 let activeDocumentId = documents[0].id;
@@ -56,7 +56,7 @@ export const openUtilityDocument = (title, utilityTab) => {
     const reusable = documents.length === 1 && documents[0].clean ? documents[0] : null;
     const id = reusable ? reusable.id : addCleanDocument();
     documents = documents.map((document) => document.id === id
-        ? { ...document, title, clean: false, utilityTab }
+        ? { ...document, title, clean: false, utilityTab, fileType: 'OTHER' }
         : document);
     emit();
     return { id, created: true };
@@ -73,6 +73,7 @@ export const openModelCollectionDocument = (paths, title = 'Selected AOC models'
             title,
             fullPath: `aoc-models://${modelPaths.join('|')}`,
             fileMetadata: '[G1M] [ReadOnly]',
+            fileType: 'G1M',
             modelPaths,
             clean: false,
         }
@@ -99,6 +100,13 @@ const updateFullPath = (id, fullPath) => {
 const updateFileMetadata = (id, fileMetadata) => {
     documents = documents.map((document) => document.id === id
         ? { ...document, fileMetadata: fileMetadata || '' }
+        : document);
+    emit();
+};
+
+const updateFileType = (id, fileType) => {
+    documents = documents.map((document) => document.id === id
+        ? { ...document, fileType: fileType || 'NONE' }
         : document);
     emit();
 };
@@ -170,6 +178,7 @@ export const invoke = async (command, args = {}) => {
     if (comparisonDocumentId) {
         comparisonSources.set(comparisonDocumentId, sourceDocumentId);
         updateTitle(comparisonDocumentId, 'Comparison');
+        updateFileType(comparisonDocumentId, 'OTHER');
     }
     const documentId = isComparison ? sourceDocumentId
         : isOpen ? allocateOpenDocument(command, args)
@@ -211,6 +220,7 @@ export const invoke = async (command, args = {}) => {
                 updateTitle(documentId, g1mTitle || result.path?.name || result.file_label?.split(' [')[0] || 'Document', true);
                 updateFullPath(documentId, result.path?.full_path || args?.innerPath || args?.path || '');
                 updateFileMetadata(documentId, result.file_metadata || '');
+                updateFileType(documentId, result.file_type);
                 if (isOpen && command !== 'open_folder_struct') {
                     tauriInvoke('get_recent_files').then((recentFiles) => {
                         window.dispatchEvent(new CustomEvent('totkbits:recent-files-changed', {

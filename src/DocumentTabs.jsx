@@ -57,16 +57,11 @@ export default function DocumentTabs() {
     useEffect(() => {
         if (!contextMenu) return undefined;
         const dismiss = () => setContextMenu(null);
-        const dismissOnEscape = (event) => {
-            if (event.key === 'Escape') dismiss();
-        };
         window.addEventListener('mousedown', dismiss);
         window.addEventListener('resize', dismiss);
-        window.addEventListener('keydown', dismissOnEscape);
         return () => {
             window.removeEventListener('mousedown', dismiss);
             window.removeEventListener('resize', dismiss);
-            window.removeEventListener('keydown', dismissOnEscape);
         };
     }, [contextMenu]);
 
@@ -186,17 +181,9 @@ export default function DocumentTabs() {
                 void handleClose({ stopPropagation: () => { } }, activeDocumentId);
             }
         };
-        const handleCloseShortcut = (event) => {
-            if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== 'w') return;
-            event.preventDefault();
-            event.stopPropagation();
-            handleCloseActiveDocument();
-        };
         window.addEventListener('totkbits:close-active-document', handleCloseActiveDocument);
-        window.addEventListener('keydown', handleCloseShortcut, true);
         return () => {
             window.removeEventListener('totkbits:close-active-document', handleCloseActiveDocument);
-            window.removeEventListener('keydown', handleCloseShortcut, true);
         };
     }, [activeDocumentId]);
 

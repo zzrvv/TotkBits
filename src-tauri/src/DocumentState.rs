@@ -1063,6 +1063,16 @@ impl DocumentState {
             leaf.viewer_type
         );
         data.file_metadata = format!("[{format_name}] [{}] [{mode}]", leaf.viewer_type);
+        data.file_type = if editable_bphcl_aamp {
+            crate::Zstd::TotkFileType::Aamp
+        } else {
+            match format_name {
+                "BPHCL" => crate::Zstd::TotkFileType::Bphcl,
+                "HKCL" => crate::Zstd::TotkFileType::Hkcl,
+                "BPHHB" => crate::Zstd::TotkFileType::Bphhb,
+                _ => crate::Zstd::TotkFileType::Other,
+            }
+        };
         data.status_text = format!("Opened {} {format_name} leaf: {path}", mode.to_lowercase());
         data.read_only = !editable_bphcl_aamp;
         Some(data)
@@ -1101,6 +1111,7 @@ impl DocumentState {
         data.path = crate::Settings::Pathlib::new(&file_name);
         data.file_label = format!("{file_name} [AMTA] [ReadOnly]");
         data.file_metadata = "[AMTA] [ReadOnly]".into();
+        data.file_type = crate::Zstd::TotkFileType::Other;
         data.status_text = format!("Opened read-only AMTA metadata: {path}");
         data.read_only = true;
         Ok(data)

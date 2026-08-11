@@ -449,6 +449,7 @@ pub struct SendData {
     pub path: Pathlib,
     pub file_label: String,
     pub file_metadata: String,
+    pub file_type: TotkFileType,
     pub status_text: String,
     pub tab: String,
     pub rstb_paths: Vec<serde_json::Value>,
@@ -467,6 +468,7 @@ impl Default for SendData {
             path: Pathlib::default(),
             file_label: "".to_string(),
             file_metadata: "".to_string(),
+            file_type: TotkFileType::None,
             status_text: "".to_string(),
             tab: "YAML".to_string(),
             rstb_paths: Vec::default(),
@@ -500,6 +502,7 @@ impl SendData {
         filetype: TotkFileType,
         dictionary: Option<ZstdDictionary>,
     ) {
+        self.file_type = filetype;
         self.file_metadata = match dictionary {
             Some(ZstdDictionary::Yaz0) => format!("[{filetype:?}] [Yaz0]"),
             Some(ZstdDictionary::None) => format!("[{filetype:?}]"),
@@ -627,6 +630,14 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
 #[cfg(test)]
 mod remembered_compression_tests {
     use super::*;
+
+    #[test]
+    fn send_data_serializes_file_type_as_uppercase() {
+        let mut data = SendData::default();
+        data.set_file_metadata(TotkFileType::TagProduct, None);
+        let json = serde_json::to_value(data).unwrap();
+        assert_eq!(json["file_type"], "TAGPRODUCT");
+    }
 
     #[test]
     fn reapplies_yaz0_with_remembered_alignment() {

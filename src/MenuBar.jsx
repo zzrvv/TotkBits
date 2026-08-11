@@ -8,10 +8,12 @@ import { clearCompareData, compareFilesByDecision, compareInternalFileWithOVanil
 import { getDocumentsSnapshot, openUtilityDocument, subscribeDocuments } from './DocumentState';
 import { useEditorContext } from './StateManager';
 import { invoke } from '@tauri-apps/api/core';
+import { isFileTypeSaveable } from './FileTypes';
 
 function MenuBarDisplay({ updateButton = null }) {
   const { documents, activeDocumentId } = useSyncExternalStore(subscribeDocuments, getDocumentsSnapshot);
-  const fileMetadata = documents.find((document) => document.id === activeDocumentId)?.fileMetadata || '';
+  const activeDocument = documents.find((document) => document.id === activeDocumentId);
+  const fileMetadata = activeDocument?.fileMetadata || '';
   // const [backupPaths, setBackupPaths] = useState({ paths: [], added_paths: [], modded_paths: [] }); //paths structures for directory tree
 
   const {
@@ -65,11 +67,13 @@ function MenuBarDisplay({ updateButton = null }) {
   const handleSaveClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
+    if (!isFileTypeSaveable(activeDocument?.fileType)) return;
     saveFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
   const handleSaveAsClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
+    if (!isFileTypeSaveable(activeDocument?.fileType)) return;
     saveAsFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
 
@@ -325,11 +329,10 @@ function MenuBarDisplay({ updateButton = null }) {
   };
   const iconSize = '20px';
   const blankIcon = 'menu/blank.png';
-  const isSaveEnabled = !['COMPARER', 'AOC_MODELS'].includes(activeTab)
-    && !(activeTab === 'YAML' && readOnly);
+  const isSaveEnabled = isFileTypeSaveable(activeDocument?.fileType);
 
   const fileMenuItems = [
-    { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.png', shortcut: 'Ctrl+O' },
+    { label: 'Open file', onClick: handleOpenFileClick, icon: 'file.png', shortcut: '' },
     {
       label: 'Open recent',
       icon: 'open_recent.png',
@@ -346,8 +349,8 @@ function MenuBarDisplay({ updateButton = null }) {
     },
     { label: 'Open folder', onClick: handleOpenFolderClick, icon: 'dir_opened.png', shortcut: '' },
     { label: 'AOC model', onClick: handleOpenAocModels, icon: 'menu/aoc_logo.png', shortcut: '', condition: aocModelCatalog !== null },
-    { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: 'Ctrl+S', condition: isSaveEnabled },
-    { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: 'Ctrl+Shift+S', condition: isSaveEnabled },
+    { label: 'Save', onClick: handleSaveClick, icon: 'menu/save.png', shortcut: '', condition: isSaveEnabled },
+    { label: 'Save as', onClick: handleSaveAsClick, icon: 'menu/save_as.png', shortcut: '', condition: isSaveEnabled },
     { label: 'Close all', onClick: handleCloseAllFilesClick, icon: 'menu/closeall.png', shortcut: '' },
     { label: 'Settings', onClick: handleEditOptions, icon: 'menu/edit_config.png', shortcut: '' },
     { label: 'Restart', onClick: restartAppClick, icon: 'menu/restart.png', shortcut: '' },

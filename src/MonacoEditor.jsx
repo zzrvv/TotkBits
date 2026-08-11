@@ -35,24 +35,6 @@ const InitializeEditor = (props) => {
     wordWrap: 'on',
     fontSize: settings.fontSize,
   });
-  editorRef.current.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD, () => {
-    const editor = editorRef.current;
-    const model = editor?.getModel();
-    if (!model) return;
-    const edits = editor.getSelections()
-      .filter((selection) => !selection.isEmpty())
-      .map((selection) => ({
-        range: new monaco.Range(
-          selection.endLineNumber,
-          selection.endColumn,
-          selection.endLineNumber,
-          selection.endColumn,
-        ),
-        text: model.getValueInRange(selection),
-        forceMoveMarkers: true,
-      }));
-    if (edits.length > 0) editor.executeEdits('duplicate-selection', edits);
-  });
   if (props.documentModels) {
     props.documentModels.current.set(initialDocumentId, initialModel);
   }

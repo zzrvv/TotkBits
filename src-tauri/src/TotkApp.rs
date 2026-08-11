@@ -516,6 +516,10 @@ impl<'a> TotkBitsApp<'a> {
         data.status_text = status;
         if let Some(archive) = &self.archive {
             data.file_metadata = archive.get_metadata();
+            data.file_type = match archive.file_type() {
+                "BARS" => TotkFileType::Bars,
+                _ => TotkFileType::Archive,
+            };
             data.path = Pathlib::new(archive.path.clone());
             data.file_label = format!("{} [{}]", data.path.name, archive.kind());
             data.sarc_paths.paths = archive.paths();

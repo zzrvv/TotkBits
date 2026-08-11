@@ -368,6 +368,7 @@ impl G1mFile {
             .map(|name| format!("[{}] {} [G1M]", name.trim(), send.path.name))
             .unwrap_or_else(|| format!("{} [G1M]", send.path.name));
         send.file_metadata = "[G1M]".into();
+        send.file_type = crate::Zstd::TotkFileType::G1M;
         send.status_text = format!("Opened G1M {}", path.display());
         send.tab = "3D".into();
         send.read_only = false;
