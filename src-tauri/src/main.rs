@@ -57,7 +57,9 @@ fn main() -> io::Result<()> {
     main_initialization()?;
     // test_case()?;
     // return Ok(());
-    let startup_data = StartupData::new()?.to_json()?;
+    let startup = StartupData::new()?;
+    Settings::launch_weapon_icon_cache(&startup.config);
+    let startup_data = startup.to_json()?;
     // println!("{:?}", startup_data);
     let documents = Documents::default();
     if let Err(err) = tauri::Builder::default()

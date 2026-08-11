@@ -287,7 +287,11 @@ impl<'a> Xlink_rs<'a> {
         data.path = pathlib;
         data.text = text;
         data.tab = "YAML".to_string();
-        data.lang = if xlink_format=="modern" {"xlink".to_string()} else {"yaml".to_string()};
+        data.lang = if xlink_format == "modern" {
+            "xlink".to_string()
+        } else {
+            "yaml".to_string()
+        };
         data.get_file_label(TotkFileType::Xlink, Some(Endian::Little));
         Some((opened_file, data))
     }
