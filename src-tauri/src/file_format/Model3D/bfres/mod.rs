@@ -636,6 +636,13 @@ impl BfresFile {
                     .ok()
                     .and_then(|pointer| read_string(data, pointer as u64))
             };
+            // These named resources must have a valid ResString pointer. This
+            // also filters coincidental magic bytes in appended geometry;
+            // FSKL/FVTX and several animation resources may legitimately be
+            // unnamed and therefore cannot use this check.
+            if matches!(&signature, b"FMDL" | b"FMAT" | b"FSHP") && section_name.is_none() {
+                continue;
+            }
             sections.push(BfresSection {
                 signature,
                 offset: offset as u64,
@@ -732,10 +739,9 @@ fn parse_render_graph(
     let (bones, matrix_to_bone) = sections
         .iter()
         .find(|section| &section.signature == b"FSKL")
-        .map(|section| {
-            skeleton::parse_skeleton(data, section.offset as usize, endian, version_major)
+        .and_then(|section| {
+            skeleton::parse_skeleton(data, section.offset as usize, endian, version_major).ok()
         })
-        .transpose()?
         .unwrap_or_default();
     let mut meshes = Vec::new();
     for section in sections

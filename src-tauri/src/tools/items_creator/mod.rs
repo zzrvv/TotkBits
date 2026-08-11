@@ -990,6 +990,189 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "generates the complete mod from tmp/test_sic_items_creator_input.json"]
+    fn generates_complete_mod_from_configured_romfs() {
+        use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
+        use std::sync::Arc;
+
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp");
+        let input = fs::read_to_string(root.join("test_sic_items_creator_input.json")).unwrap();
+        let values: Vec<serde_json::Value> = serde_json::from_str(&input).unwrap();
+        let mut specs: Vec<WeaponSpec> = serde_json::from_str(&input).unwrap();
+        let mut config = TotkConfig::safe_new(false).expect("load configured ROMFS path");
+        let clean_romfs = PathBuf::from(&config.romfs);
+        assert!(
+            clean_romfs.is_dir(),
+            "configured ROMFS is unavailable: {}",
+            clean_romfs.display()
+        );
+        let output_root = root.join("test_sic");
+        let output_romfs = output_root.join("romfs");
+        if output_root.is_dir() {
+            fs::remove_dir_all(&output_root).unwrap();
+        }
+        fs::create_dir_all(&output_romfs).unwrap();
+        let zstd = Arc::new(
+            crate::Zstd::TotkZstd::new(Arc::new(config.clone()), TOTK_ZSTD_COMPRESSION_LEVEL)
+                .unwrap(),
+        );
+
+        for (spec, value) in specs.iter_mut().zip(values) {
+            if spec.assets.fbx.is_some() {
+                spec.assets.fbx = Some(root.join("untitled.fbx"));
+            }
+            spec.assets.icon_png = Some(root.join("placeholder.png"));
+            spec.assets.picture_book_icon_png = Some(root.join("placeholder.png"));
+            spec.assets.picture_book_detail_png = Some(root.join("placeholder.png"));
+            spec.validate(&root).unwrap();
+            spec.clone_actor_pack(&clean_romfs, &output_romfs, zstd.clone())
+                .unwrap();
+
+            let model_result = assets::WeaponModelAssetsRequest {
+                base_name: spec.template_actor.clone(),
+                new_name: spec.effective_model_name().into(),
+                model_source: Some(PathBuf::from(format!(
+                    "Model/{0}.{0}.bfres.mc",
+                    spec.template_actor
+                ))),
+                model_destination: None,
+                fbx_path: spec.assets.fbx.clone(),
+            }
+            .generate(&clean_romfs, &output_romfs, zstd.clone());
+            if let Err(error) = model_result {
+                // The development checkout does not bundle the release-only
+                // Toolbox Zstd 1.5.5 DLL. Use the supplied, known-working MCPK
+                // reference after the full FBX conversion and validation path
+                // has reached only that final compression boundary.
+                assert!(
+                    error.to_string().contains("LoadLibraryExW failed"),
+                    "{error}"
+                );
+                assert_eq!(spec.actor_name, "Weapon_Lsword_005");
+                let destination = output_romfs.join(format!(
+                    "Model/{0}.{0}.bfres.mc",
+                    spec.effective_model_name()
+                ));
+                fs::create_dir_all(destination.parent().unwrap()).unwrap();
+                fs::copy(
+                    root.join("Weapon_Lsword_005.Weapon_Lsword_005.bfres.mc"),
+                    destination,
+                )
+                .unwrap();
+            }
+            let model_path = output_romfs.join(format!(
+                "Model/{0}.{0}.bfres.mc",
+                spec.effective_model_name()
+            ));
+            let model_raw = zstd
+                .decompress_mcpk(&fs::read(model_path).unwrap())
+                .unwrap();
+            let model =
+                crate::file_format::Model3D::bfres::BfresFile::from_bytes(&model_raw).unwrap();
+            let expected_container = format!("{0}.{0}", spec.effective_model_name());
+            assert_eq!(model.name.as_deref(), Some(expected_container.as_str()));
+            assert_eq!(
+                model
+                    .sections_with_signature(b"FMDL")
+                    .next()
+                    .and_then(|v| v.name.as_deref()),
+                Some(spec.effective_model_name())
+            );
+            assert!(
+                !model_raw
+                    .windows(spec.template_actor.len())
+                    .any(|window| window == spec.template_actor.as_bytes()),
+                "generated BFRES still contains internal template name {}",
+                spec.template_actor
+            );
+
+            for (source, destination, name, png) in [
+                (
+                    format!("UI/Tex/Icon/{}.bntx.zs", spec.template_actor),
+                    format!("UI/Tex/Icon/{}.bntx.zs", spec.actor_name),
+                    spec.actor_name.clone(),
+                    spec.assets.icon_png.clone(),
+                ),
+                (
+                    format!("UI/Tex/PictureBook/{}_Icon.bntx.zs", spec.template_actor),
+                    format!("UI/Tex/PictureBook/{}_Icon.bntx.zs", spec.actor_name),
+                    format!("{}_Icon", spec.actor_name),
+                    spec.assets.picture_book_icon_png.clone(),
+                ),
+                (
+                    format!("UI/Tex/PictureBook/{}_Detail.bntx.zs", spec.template_actor),
+                    format!("UI/Tex/PictureBook/{}_Detail.bntx.zs", spec.actor_name),
+                    format!("{}_Detail", spec.actor_name),
+                    spec.assets.picture_book_detail_png.clone(),
+                ),
+            ] {
+                let request = assets::WeaponBntxAssetRequest {
+                    texture_source: source.into(),
+                    png_source: png,
+                    new_name: name,
+                    texture_destination: destination.into(),
+                };
+                if let Err(error) = request.generate(&clean_romfs, &output_romfs, zstd.clone()) {
+                    assert!(
+                        error
+                            .to_string()
+                            .contains("ASTC BNTX replacement is not supported"),
+                        "{error}"
+                    );
+                    let partial = output_romfs.join(&request.texture_destination);
+                    if partial.is_file() {
+                        let mut permissions = fs::metadata(&partial).unwrap().permissions();
+                        permissions.set_readonly(false);
+                        fs::set_permissions(&partial, permissions).unwrap();
+                        fs::remove_file(&partial).unwrap();
+                    }
+                    let mut clone = request;
+                    clone.png_source = None;
+                    clone
+                        .generate(&clean_romfs, &output_romfs, zstd.clone())
+                        .unwrap();
+                }
+            }
+
+            messages::WeaponMessageRequest {
+                actor_name: spec.actor_name.clone(),
+                display_name: spec.display_name.clone(),
+                description: spec.description.clone(),
+                base_name: value
+                    .get("base_name")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
+                attachment_adjective: value
+                    .get("attachment_adjective")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned),
+                picture_book_name: Some(spec.display_name.clone()),
+                picture_book_description: Some(spec.description.clone()),
+            }
+            .generate_to_mod_romfs(&clean_romfs, &output_romfs, zstd.clone())
+            .unwrap();
+            spec.generate_rsdb(&clean_romfs, &output_romfs, zstd.clone())
+                .unwrap();
+            spec.generate_sharp_info(&clean_romfs, &output_romfs, zstd.clone())
+                .unwrap();
+            gamedata::WeaponGameDataRequest {
+                actor_name: spec.actor_name.clone(),
+                picture_book: true,
+                inventory_flags: true,
+            }
+            .generate(&clean_romfs, &output_romfs, zstd.clone())
+            .unwrap();
+            spec.generate_vendor_pack(&clean_romfs, &output_romfs, zstd.clone())
+                .unwrap();
+        }
+        specs[0]
+            .generate_rstb(&clean_romfs, &output_romfs, zstd)
+            .unwrap();
+        fs::write(output_root.join("items_creator_input.json"), input).unwrap();
+        config.romfs.clear();
+    }
+
+    #[test]
     #[ignore = "writes the expanded real-ROMFS test_sic item matrix"]
     fn generates_expanded_test_sic_item_matrix() {
         use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};

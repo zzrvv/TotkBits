@@ -14,7 +14,8 @@ struct Attribute {
 }
 
 pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u8>, BfresError> {
-    let parsed = BfresFile::from_bytes(data)?;
+    let parsed = BfresFile::from_bytes(data)
+        .map_err(|e| error(e.offset, format!("while parsing source BFRES: {e}")))?;
     if parsed.header.version[2] != 10 || parsed.header.endian != Endian::Little {
         return Err(error(
             0,
@@ -23,8 +24,27 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
     }
     let mut imported = import_for_bfres(fbx).map_err(|e| error(0, e.to_string()))?;
     validate_compatible_skeleton(&parsed, &imported.bones, &imported.meshes)?;
-    let mut shapes: Vec<_> = parsed.sections_with_signature(b"FSHP").cloned().collect();
+    // `BfresFile` deliberately keeps a broad signature index, which can also
+    // find the bytes "FSHP" inside payload data. Geometry replacement needs
+    // actual resource headers, so reject candidates whose mandatory pointers
+    // do not address the fixed BFRES region.
+    let shape_reader = BinaryReader::with_endian(data, BinaryEndian::Little);
+    let mut shapes: Vec<_> = parsed
+        .sections_with_signature(b"FSHP")
+        .filter(|shape| {
+            let offset = shape.offset as usize;
+            offset.checked_add(96).is_some_and(|end| end <= data.len())
+                && read_u64(&shape_reader, offset + 16)
+                    .is_ok_and(|pointer| pointer != 0 && (pointer as usize) < data.len())
+                && read_u64(&shape_reader, offset + 24)
+                    .is_ok_and(|pointer| pointer != 0 && (pointer as usize) < data.len())
+        })
+        .cloned()
+        .collect();
     shapes.sort_by_key(|shape| shape.offset);
+    let template_has_skin = shapes.iter().any(|shape| {
+        read_u16(&shape_reader, shape.offset as usize + 88).is_ok_and(|count| count != 0)
+    });
     if imported.meshes.len() > shapes.len() {
         return Err(error(
             0,
@@ -35,7 +55,8 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
             ),
         ));
     }
-    orient_meshes_to_source_bind_space(&mut imported.meshes, &parsed.render.meshes)?;
+    orient_meshes_to_source_bind_space(&mut imported.meshes, &parsed.render.meshes)
+        .map_err(|e| error(e.offset, format!("while orienting imported meshes: {e}")))?;
     for mesh in &mut imported.meshes {
         weld_mesh_vertices(mesh)?;
         calculate_tangents(mesh).map_err(|failure| {
@@ -73,7 +94,9 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
         .iter()
         .position(|b| b.name == "Root")
         .or_else(|| parsed.render.bones.iter().position(|b| b.parent_index < 0))
-        .ok_or_else(|| error(0, "BFRES skeleton has no Root bone"))? as u16;
+        // Rigid weapon BFRES files can omit the decoded FSKL graph while their
+        // shapes still conventionally address bone/matrix slot zero.
+        .unwrap_or(0) as u16;
     let matrix_by_bone: HashMap<u16, u16> = parsed
         .render
         .matrix_to_bone
@@ -97,11 +120,20 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
 
     for mesh in &mut imported.meshes {
         remap_weights(mesh, &imported_to_bfres, root)?;
+        if !template_has_skin {
+            for joints in &mut mesh.bone_indices {
+                *joints = [0; 8];
+            }
+            for weights in &mut mesh.bone_weights {
+                *weights = [0.0; 8];
+            }
+        }
     }
 
     let mut writer = BinaryWriter::from_vec(data.to_vec(), BinaryEndian::Little);
     writer.seek(align_up(data.len().max(buffer_base), 256));
     let mut used_streams = BTreeSet::new();
+    let mut added_skin_palette = false;
     for (shape_index, shape) in shapes.iter().enumerate() {
         let shape_offset = shape.offset as usize;
         let stream_offset = read_u64(&reader, shape_offset + 16)? as usize;
@@ -118,7 +150,9 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
             continue;
         }
         let mut skin_offset = read_u64(&reader, shape_offset + 32)? as usize;
-        let mut skin_capacity = read_u16(&reader, shape_offset + 88)? as usize;
+        let mut skin_capacity = read_u16(&reader, shape_offset + 88)
+            .map_err(|e| error(e.offset, format!("FSHP skin count: {e}")))?
+            as usize;
         let mesh = &mut imported.meshes[shape_index];
         let has_active_skin = mesh
             .bone_weights
@@ -134,6 +168,7 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
             skin_offset = writer.position();
             writer.write_u16(root);
             skin_capacity = 1;
+            added_skin_palette = true;
             put_u64(&mut writer, shape_offset + 32, skin_offset as u64);
         }
         constrain_skin_palette(mesh, skin_capacity, root);
@@ -162,7 +197,9 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
         };
         let radius = (length(center) + length(extent)) as f32;
         let bounds_offset = read_u64(&reader, shape_offset + 56)? as usize;
-        let submesh_count = read_u16(&reader, mesh_entry + 52)? as usize;
+        let submesh_count = read_u16(&reader, mesh_entry + 52)
+            .map_err(|e| error(e.offset, format!("FMES submesh count: {e}")))?
+            as usize;
         for bound_index in 0..=submesh_count {
             let target = bounds_offset + bound_index * 24;
             for (component, value) in center.into_iter().chain(extent).enumerate() {
@@ -213,7 +250,9 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
         let strides_offset = read_u64(&reader, stream_offset + 56)? as usize;
         let attr_count = read_u8(&reader, stream_offset + 76)? as usize;
         let buffer_count = read_u8(&reader, stream_offset + 77)? as usize;
-        let alignment = read_u16(&reader, stream_offset + 86)? as usize;
+        let alignment = read_u16(&reader, stream_offset + 86)
+            .map_err(|e| error(e.offset, format!("FVTX alignment: {e}")))?
+            as usize;
         let attributes = (0..attr_count)
             .map(|i| {
                 let entry = attr_offset + i * 16;
@@ -223,7 +262,9 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
                     format: BinaryReader::with_endian(data, BinaryEndian::Big)
                         .read_u16_at(entry + 8)
                         .map_err(io_error(entry + 8))?,
-                    offset: read_u16(&reader, entry + 12)? as usize,
+                    offset: read_u16(&reader, entry + 12)
+                        .map_err(|e| error(e.offset, format!("FVTX attribute {i}: {e}")))?
+                        as usize,
                     buffer: read_u8(&reader, entry + 14)? as usize,
                 })
             })
@@ -315,7 +356,8 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
         put_u16(&mut writer, shape_offset + 84, root);
     }
     let output = writer.into_inner();
-    let reparsed = BfresFile::from_bytes(&output)?;
+    let reparsed = BfresFile::from_bytes(&output)
+        .map_err(|e| error(e.offset, format!("while reopening rebuilt BFRES: {e}")))?;
     let expected_vertices: usize = imported
         .meshes
         .iter()
@@ -347,9 +389,18 @@ pub(super) fn replace_geometry_from_fbx(data: &[u8], fbx: &[u8]) -> Result<Vec<u
             ),
         ));
     }
-    let mut canonical = super::serializer::emit_v10_canonical_copy(&output)?;
-    super::serializer::rebase_v10_relocations(&output, &mut canonical)?;
-    BfresFile::from_bytes(&canonical.bytes)?;
+    // Appended vertex/index buffers are addressed by offsets relative to the
+    // external buffer and do not add relocation entries. Preserve the source
+    // resource graph byte-for-byte when no new absolute skin pointer was made.
+    if !added_skin_palette {
+        return Ok(output);
+    }
+    let mut canonical = super::serializer::emit_v10_canonical_copy(&output)
+        .map_err(|e| error(e.offset, format!("while canonicalizing rebuilt BFRES: {e}")))?;
+    super::serializer::rebase_v10_relocations(&output, &mut canonical)
+        .map_err(|e| error(e.offset, format!("while rebasing rebuilt BFRES: {e}")))?;
+    BfresFile::from_bytes(&canonical.bytes)
+        .map_err(|e| error(e.offset, format!("while validating canonical BFRES: {e}")))?;
     Ok(canonical.bytes)
 }
 
@@ -537,7 +588,10 @@ fn validate_compatible_skeleton(
     let extra_indices: BTreeSet<u16> = imported
         .iter()
         .enumerate()
-        .filter(|(_, (name, _))| !expected_by_name.contains_key(name))
+        // FBX exporters commonly add a synthetic `Root` above the actual
+        // skeleton. The remapping phase intentionally maps unknown bones to
+        // the BFRES root, so this conventional wrapper is safe to accept.
+        .filter(|(_, (name, _))| name != "Root" && !expected_by_name.contains_key(name))
         .filter_map(|(index, _)| u16::try_from(index).ok())
         .collect();
     for mesh in meshes {
@@ -590,15 +644,18 @@ fn orient_meshes_to_source_bind_space(
 ) -> Result<(), BfresError> {
     let mut remaining: Vec<usize> = (0..sources.len()).collect();
     for mesh in meshes {
+        // Some BFRES templates expose fewer decoded render meshes than their
+        // FSHP slot table (notably the hidden-blade slot). Such an extra FBX
+        // mesh still has a valid destination; leave it in FBX bind space.
+        if remaining.is_empty() {
+            continue;
+        }
         let wants_blade = contains_blade_hide(&mesh.name);
         let position = remaining
             .iter()
             .position(|index| contains_blade_hide(&sources[*index].name) == wants_blade)
             .unwrap_or(0);
-        let source_index = remaining
-            .get(position)
-            .copied()
-            .ok_or_else(|| error(0, "FBX contains more meshes than the source BFRES"))?;
+        let source_index = remaining[position];
         remaining.remove(position);
         let source = &sources[source_index];
         let (permutation, mut signs) =

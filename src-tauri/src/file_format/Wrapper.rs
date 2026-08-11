@@ -14,7 +14,14 @@ pub struct ExeWrapper {
 impl ExeWrapper {
     pub fn new(exe: String, args: Vec<String>) -> Self {
         let exe = if Path::new(&exe).is_relative() {
-            exe_relative_path(exe).to_string_lossy().into_owned()
+            let release_path = exe_relative_path(&exe);
+            if release_path.is_file() {
+                release_path
+            } else {
+                Path::new(env!("CARGO_MANIFEST_DIR")).join(&exe)
+            }
+            .to_string_lossy()
+            .into_owned()
         } else {
             exe
         };

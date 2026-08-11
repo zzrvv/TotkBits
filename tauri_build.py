@@ -81,6 +81,9 @@ def restore_main_rs(cwd):
 def tauri_build():
     t1 = time.time()
     os.system("cls")
+    resdit = cwd/'res'
+    resdit.mkdir(exist_ok=True, parents=True)
+    (resdit / "asdf").mkdir(exist_ok=True, parents=True)
     cwd  = Path(__file__).parent
     cwd_str = str(cwd)
     os.chdir(str(cwd / "src-tauri"))
@@ -97,7 +100,7 @@ def tauri_build():
     run(["cargo", "tauri", "build", "--bundles", "nsis"])
     print(f"[+] Restoring main.rs")
     restore_main_rs(cwd)
-    os.chdir(str(cwd / "res"))
+    os.chdir(str(resdit))
     install_and_package(cwd)
     os.chdir(cwd_str)
     subprocess.run(["cmd", "/c", "start", "explorer", str(cwd / "src-tauri\\target\\release\\bundle\\nsis")])

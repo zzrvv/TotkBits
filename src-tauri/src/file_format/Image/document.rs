@@ -84,6 +84,14 @@ impl ImageDocument {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::copy(source, destination)?;
+        // Mounted ROMFS files are read-only and Windows preserves that bit on
+        // copy. The mod copy must be writable before its internal name is
+        // patched in place.
+        let mut permissions = std::fs::metadata(destination)?.permissions();
+        if permissions.readonly() {
+            permissions.set_readonly(false);
+            std::fs::set_permissions(destination, permissions)?;
+        }
         Self::rename_bntx_texture(destination, 0, new_name, zstd)?;
         Ok(BntxReplacementReport {
             name: new_name.to_owned(),

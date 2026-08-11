@@ -2476,6 +2476,9 @@ pub(super) fn read_dictionary(
     data: &[u8],
     offset: usize,
 ) -> Result<Vec<DictionaryNode>, BfresError> {
+    if offset == 0 {
+        return Ok(Vec::new());
+    }
     let count = read_u32(data, offset + 4)? as usize;
     let mut nodes = Vec::with_capacity(count + 1);
     for index in 0..=count {
@@ -2485,7 +2488,11 @@ pub(super) fn read_dictionary(
             reference: read_u32(data, entry)?,
             left: read_u16(data, entry + 4)?,
             right: read_u16(data, entry + 6)?,
-            key: read_res_string(data, key_offset)?,
+            key: if index == 0 || key_offset == 0 {
+                String::new()
+            } else {
+                read_res_string(data, key_offset)?
+            },
         });
     }
     Ok(nodes)

@@ -90,16 +90,15 @@ impl<'a> ModRstbProcessor<'a> {
             let existing = existing_table
                 .as_ref()
                 .and_then(|table| table.get(path.clone()).copied());
-            if existing_table.is_some() && existing.is_none() {
+            if existing_table.is_some() && existing != Some(estimated) {
                 needs_rebuild = true;
             }
             if vanilla == Some(estimated) {
                 modified_matching_vanilla.insert(path, estimated);
                 continue;
             }
-            let value = existing.unwrap_or(estimated);
-            table.set(path.clone(), value);
-            entries.insert(path, value);
+            table.set(path.clone(), estimated);
+            entries.insert(path, estimated);
         }
         estimator.entries = entries
             .iter()

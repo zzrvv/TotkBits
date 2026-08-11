@@ -100,7 +100,8 @@ impl WeaponModelAssetsRequest {
                     ))
                 })?
         };
-        let base_bfres = BfresFile::from_bytes(&raw).map_err(io::Error::other)?;
+        let base_bfres = BfresFile::from_bytes(&raw)
+            .map_err(|error| invalid_data(format!("failed to parse base BFRES: {error}")))?;
         let major_version = base_bfres
             .header
             .version
@@ -141,13 +142,7 @@ impl WeaponModelAssetsRequest {
             copied.push(destination);
         }
 
-        let container_name = format!("{}.{}", self.new_name, self.new_name);
-        let renamed =
-            BfresFile::rename_first_model_and_container(&raw, &self.new_name, &container_name)
-                .map_err(io::Error::other)?;
-        let mut renamed =
-            BfresFile::rename_material_texture_slots(&renamed, &self.base_name, &self.new_name)
-                .map_err(io::Error::other)?;
+        let mut customized = raw;
         if let Some(fbx_path) = &self.fbx_path {
             let fbx_path = if fbx_path.is_absolute() {
                 fbx_path.clone()
@@ -160,10 +155,39 @@ impl WeaponModelAssetsRequest {
                     format!("custom FBX is missing: {}", fbx_path.display()),
                 ));
             }
-            renamed = BfresFile::replace_geometry_from_fbx(&renamed, &fs::read(fbx_path)?)
-                .map_err(io::Error::other)?;
+            customized = BfresFile::replace_geometry_from_fbx(&customized, &fs::read(fbx_path)?)
+                .map_err(|error| {
+                    invalid_data(format!("failed to replace BFRES geometry: {error}"))
+                })?;
         }
-        let verified = BfresFile::from_bytes(&renamed).map_err(io::Error::other)?;
+        let container_name = format!("{}.{}", self.new_name, self.new_name);
+        let renamed = BfresFile::rename_first_model_and_container(
+            &customized,
+            &self.new_name,
+            &container_name,
+        )
+        .map_err(|error| {
+            invalid_data(format!("failed to rename BFRES model/container: {error}"))
+        })?;
+        let mut renamed =
+            BfresFile::rename_material_texture_slots(&renamed, &self.base_name, &self.new_name)
+                .map_err(|error| {
+                    invalid_data(format!("failed to rename BFRES texture slots: {error}"))
+                })?;
+        // Actor templates also embed their model name in shape names and other
+        // ResStrings beyond the container, FMDL, and material texture slots.
+        // Actor IDs have equal width, so replacing the remaining occurrences
+        // in place preserves every pointer, string prefix, and relocation.
+        if self.base_name.len() == self.new_name.len() {
+            for offset in 0..=renamed.len().saturating_sub(self.base_name.len()) {
+                if renamed[offset..].starts_with(self.base_name.as_bytes()) {
+                    renamed[offset..offset + self.new_name.len()]
+                        .copy_from_slice(self.new_name.as_bytes());
+                }
+            }
+        }
+        let verified = BfresFile::from_bytes(&renamed)
+            .map_err(|error| invalid_data(format!("failed to reopen renamed BFRES: {error}")))?;
         validate_bfres_geometry(&verified)?;
         if verified.materials.iter().any(|material| {
             material
