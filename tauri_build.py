@@ -79,13 +79,13 @@ def restore_main_rs(cwd):
     main_rs.write_text(data)
 
 def tauri_build():
+    cwd  = Path(__file__).parent
+    cwd_str = str(cwd)
     t1 = time.time()
     os.system("cls")
     resdit = cwd/'res'
     resdit.mkdir(exist_ok=True, parents=True)
     (resdit / "asdf").mkdir(exist_ok=True, parents=True)
-    cwd  = Path(__file__).parent
-    cwd_str = str(cwd)
     os.chdir(str(cwd / "src-tauri"))
     print(f"[+] Cleaning tauri project")
     run(["cargo", "clean"])
