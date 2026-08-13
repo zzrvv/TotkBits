@@ -356,7 +356,11 @@ impl<'a> TotkFile<'a> {
                 };
                 byml.to_binary(endian)
             }
-            TotkFileType::ASB => AsbFile::text_to_binary(text, None)?,
+            TotkFileType::ASB => AsbFile::text_to_binary(
+                text,
+                None,
+                self.cache_text.asb.as_ref().map(|file| &file.document),
+            )?,
             TotkFileType::AINB => AinbFile::text_to_binary(text)?,
             TotkFileType::Evfl => BfevFile::text_to_binary(text)?,
             TotkFileType::Xlink => Xlink_rs::text_to_binary(
@@ -1073,8 +1077,15 @@ impl<'a> TotkFile<'a> {
         result.cache_3d.bfres = opened.bfres;
         result.cache_3d.source_data = opened.visual_data.or(opened.bfres_data);
         result.cache_3d.custom_g1m = opened.custom_g1m;
-        if result.file_type == TotkFileType::ASB && !result.text.is_empty() {
-            let binary = AsbFile::text_to_binary(&result.text, None)?;
+        result.cache_text.asb = opened.asb.map(|document| AsbFile {
+            document,
+            baev: None,
+        });
+        if result.file_type == TotkFileType::ASB
+            && result.cache_text.asb.is_none()
+            && !result.text.is_empty()
+        {
+            let binary = AsbFile::text_to_binary(&result.text, None, None)?;
             result.cache_text.asb = Some(AsbFile::from_binary(&binary)?);
         }
         if result.file_type == TotkFileType::AINB && !result.text.is_empty() {
@@ -1109,11 +1120,18 @@ impl<'a> TotkFile<'a> {
         result.cache_text.msbt = internal.msyt;
         result.cache_text.esetb = internal.esetb;
         result.cache_text.tag = internal.tag;
+        result.cache_text.asb = internal.asb.map(|document| AsbFile {
+            document,
+            baev: None,
+        });
         if let Some(aamp) = internal.aamp {
             result.cache_text.aamp = Some(crate::file_format::bphcl::aamp_from_yaml(&aamp)?);
         }
-        if result.file_type == TotkFileType::ASB && !result.text.is_empty() {
-            let binary = AsbFile::text_to_binary(&result.text, None)?;
+        if result.file_type == TotkFileType::ASB
+            && result.cache_text.asb.is_none()
+            && !result.text.is_empty()
+        {
+            let binary = AsbFile::text_to_binary(&result.text, None, None)?;
             result.cache_text.asb = Some(AsbFile::from_binary(&binary)?);
         }
         Ok(result)

@@ -65,6 +65,7 @@ impl AsbFile {
         let mut opened_file = OpenedFile::default();
         opened_file.path = Pathlib::new(path);
         opened_file.file_type = TotkFileType::ASB;
+        opened_file.asb = Some(file.document.clone());
         opened_file.asb_baev_path = baev_path;
         opened_file.asb_baev_data = baev_original_data;
         let mut data = SendData {
@@ -92,6 +93,7 @@ impl AsbFile {
         let mut opened = OpenedFile::default();
         opened.path = Pathlib::new(path);
         opened.file_type = TotkFileType::ASB;
+        opened.asb = Some(file.document.clone());
         opened.compression =
             (compression != crate::Zstd::ZstdDictionary::None).then_some(compression);
         let mut data = SendData {
@@ -132,11 +134,20 @@ impl AsbFile {
         Asb::from_bytes(data)?.to_yaml()
     }
 
-    pub fn text_to_binary(text: &str, opened_file: Option<&OpenedFile<'_>>) -> io::Result<Vec<u8>> {
+    pub fn text_to_binary(
+        text: &str,
+        opened_file: Option<&OpenedFile<'_>>,
+        cached_asb: Option<&Asb>,
+    ) -> io::Result<Vec<u8>> {
         match serde_yaml::from_str::<Self>(text) {
             Ok(file) => {
                 if file.baev.is_some() {
                     Self::offer_baev_save(opened_file);
+                }
+                if cached_asb.is_some_and(|cached| {
+                    serde_yaml::to_value(cached).ok() == serde_yaml::to_value(&file.document).ok()
+                }) {
+                    return Ok(cached_asb.expect("checked cached ASB").to_bytes());
                 }
                 file.document.to_native_bytes()
             }
@@ -205,19 +216,15 @@ mod tests {
             let path = entry.path();
             if path.is_dir() {
                 visit_asb_files(&path, tested);
-            } else if path.extension().and_then(|value| value.to_str()) == Some("asb") {
+            } else {
                 let bytes = fs::read(&path).expect("read ASB corpus file");
-                let Ok(yaml) = AsbFile::binary_to_text(&bytes) else {
+                let Ok(file) = AsbFile::from_binary(&bytes) else {
                     continue;
                 };
-                let rebuilt = AsbFile::text_to_binary(&yaml, None)
+                let yaml = file.to_yaml().expect("serialize ASB YAML");
+                let rebuilt = AsbFile::text_to_binary(&yaml, None, Some(&file.document))
                     .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
-                assert!(
-                    crate::Settings::Magic::is_asb(&rebuilt),
-                    "{}",
-                    path.display()
-                );
-                AsbFile::binary_to_text(&rebuilt).expect("parse rebuilt ASB");
+                assert_eq!(rebuilt, bytes, "{}", path.display());
                 *tested += 1;
             }
         }

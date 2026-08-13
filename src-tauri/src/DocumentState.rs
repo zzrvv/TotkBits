@@ -1195,7 +1195,9 @@ impl DocumentState {
             data.tab = "YAML".into();
             return Some(data);
         }
-        let bytes = documents.get_mut(id)?.internal_binary(&save_data.text)?;
+        let bytes = documents
+            .get_mut(id)?
+            .internal_binary(&save_data.text, None)?;
         let parent_data = documents
             .get_mut(&link.document_id)?
             .update_child_entry(link.outer_path.as_deref(), &link.inner_path, bytes)

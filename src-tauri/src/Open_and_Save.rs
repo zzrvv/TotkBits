@@ -101,10 +101,12 @@ fn get_string_from_decoded_data<P: AsRef<Path>>(
         return None;
     }
     if Magic::is_asb(&rawdata) {
-        if let Ok(text) = AsbFile::binary_to_text(&rawdata) {
+        if let Ok(asb) = AsbFile::from_binary(&rawdata) {
+            let text = asb.to_yaml().ok()?;
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
             internal_file.file_type = TotkFileType::ASB;
+            internal_file.asb = Some(asb.document);
             internal_file.compression = compression;
             return Some((internal_file, text));
         }
@@ -189,6 +191,7 @@ pub fn get_binary_by_filetype(
     yaz0_alignment: u32,
     internal_msbt: Option<&crate::parser::msbt::Msbt>,
     internal_ainb: Option<&crate::parser::ainb::AinbDocument>,
+    internal_asb: Option<&crate::parser::asb::Asb>,
     internal_tag: Option<&TagProduct<'_>>,
     is_internal: bool,
 ) -> Option<Vec<u8>> {
@@ -212,7 +215,8 @@ pub fn get_binary_by_filetype(
             }
         }
         TotkFileType::ASB => {
-            if let Ok(some_data) = AsbFile::text_to_binary(text, Some(opened_file)) {
+            let cached_asb = internal_asb.or(opened_file.asb.as_ref());
+            if let Ok(some_data) = AsbFile::text_to_binary(text, Some(opened_file), cached_asb) {
                 rawdata = some_data;
             }
         }

@@ -89,6 +89,27 @@ fn apply_compression_preference(
     bytes
 }
 
+fn compression_for_save_as(
+    compression: Option<ZstdDictionary>,
+    destination: Option<&str>,
+) -> Option<ZstdDictionary> {
+    if destination.is_some_and(|path| !path.to_ascii_lowercase().ends_with(".zs"))
+        && compression.is_some_and(|kind| {
+            matches!(
+                kind,
+                ZstdDictionary::Zs
+                    | ZstdDictionary::Pack
+                    | ZstdDictionary::Empty
+                    | ZstdDictionary::Bcett
+            )
+        })
+    {
+        None
+    } else {
+        compression
+    }
+}
+
 pub struct TotkBitsApp<'a> {
     pub opened_file: OpenedFile<'a>, //path to opened file in string
     pub text: String,
@@ -422,9 +443,9 @@ impl<'a> TotkBitsApp<'a> {
         Some(data)
     }
 
-    pub fn internal_binary(&mut self, text: &str) -> Option<Vec<u8>> {
+    pub fn internal_binary(&mut self, text: &str, destination: Option<&str>) -> Option<Vec<u8>> {
         let internal = self.internal_file.as_ref()?;
-        let compression = internal.compression;
+        let compression = compression_for_save_as(internal.compression, destination);
         let name = internal.path.name.clone();
         let bytes = get_binary_by_filetype(
             internal.file_type,
@@ -433,10 +454,11 @@ impl<'a> TotkBitsApp<'a> {
             self.zstd.clone(),
             &internal.path.full_path,
             &mut self.opened_file,
-            internal.compression,
+            compression,
             internal.yaz0_alignment,
             internal.msyt.as_ref(),
             internal.ainb.as_ref(),
+            internal.asb.as_ref(),
             internal.tag.as_ref(),
             true,
         )?;
@@ -826,7 +848,8 @@ impl<'a> TotkBitsApp<'a> {
         zstd: Arc<TotkZstd>,
         dest_file: &str,
     ) -> Option<Vec<u8>> {
-        let compression = self.opened_file.compression;
+        let compression =
+            compression_for_save_as(self.opened_file.compression, Some(dest_file));
         let yaz0_alignment = self.opened_file.yaz0_alignment;
         let name = self.opened_file.path.name.clone();
         let bytes = get_binary_by_filetype(
@@ -838,6 +861,7 @@ impl<'a> TotkBitsApp<'a> {
             &mut self.opened_file,
             compression,
             yaz0_alignment,
+            None,
             None,
             None,
             None,
@@ -1240,7 +1264,7 @@ impl<'a> TotkBitsApp<'a> {
                         self.opened_file.path = Pathlib::new(dest_file);
                     } else {
                         let rawdata = if self.internal_file.is_some() {
-                            self.internal_binary(&save_data.text)
+                            self.internal_binary(&save_data.text, Some(&dest_file))
                         } else {
                             self.get_binary_for_opened_file(
                                 &save_data.text,
@@ -1414,6 +1438,7 @@ impl<'a> TotkBitsApp<'a> {
                 internal_file.yaz0_alignment,
                 internal_file.msyt.as_ref(),
                 internal_file.ainb.as_ref(),
+                internal_file.asb.as_ref(),
                 internal_file.tag.as_ref(),
                 true,
             )?;
@@ -1450,6 +1475,7 @@ impl<'a> TotkBitsApp<'a> {
                     internal_file.yaz0_alignment,
                     internal_file.msyt.as_ref(),
                     internal_file.ainb.as_ref(),
+                    internal_file.asb.as_ref(),
                     internal_file.tag.as_ref(),
                     true,
                 )?;
@@ -1478,6 +1504,7 @@ impl<'a> TotkBitsApp<'a> {
                         internal_file.yaz0_alignment,
                         internal_file.msyt.as_ref(),
                         internal_file.ainb.as_ref(),
+                        internal_file.asb.as_ref(),
                         internal_file.tag.as_ref(),
                         true,
                     )?;
@@ -1532,6 +1559,7 @@ impl<'a> TotkBitsApp<'a> {
                 &mut self.opened_file,
                 compression,
                 yaz0_alignment,
+                None,
                 None,
                 None,
                 None,

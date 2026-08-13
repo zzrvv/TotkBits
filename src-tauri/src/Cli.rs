@@ -212,6 +212,7 @@ impl CliCommand {
             None,
             None,
             None,
+            None,
             false,
         )
         .filter(|bytes| !bytes.is_empty())

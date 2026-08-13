@@ -4,6 +4,7 @@ import App from "./App";
 import { EditorProvider } from './StateManager'; // Adjust the path as necessary
 import "./styles.css";
 import "./XlinkLanguage";
+import "./KeyShortcuts";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

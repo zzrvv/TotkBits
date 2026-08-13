@@ -629,6 +629,7 @@ pub struct OpenedFile<'a> {
     pub tag: Option<TagProduct<'a>>,
     pub restbl: Option<Restbl<'a>>,
     pub esetb: Option<Esetb<'a>>,
+    pub asb: Option<crate::parser::asb::Asb>,
     pub asb_baev_path: Option<std::path::PathBuf>,
     pub asb_baev_data: Option<Vec<u8>>,
 }
@@ -655,6 +656,7 @@ impl Default for OpenedFile<'_> {
             tag: None,
             restbl: None,
             esetb: None,
+            asb: None,
             asb_baev_path: None,
             asb_baev_data: None,
         }
@@ -689,6 +691,7 @@ impl<'a> OpenedFile<'_> {
             tag: None,
             restbl: None,
             esetb: None,
+            asb: None,
             asb_baev_path: None,
             asb_baev_data: None,
         }
@@ -715,6 +718,7 @@ impl<'a> OpenedFile<'_> {
             tag: None,
             restbl: None,
             esetb: None,
+            asb: None,
             asb_baev_path: None,
             asb_baev_data: None,
         }
@@ -733,6 +737,7 @@ impl<'a> OpenedFile<'_> {
         self.bphhb = None;
         self.hkcl = None;
         self.tag = None;
+        self.asb = None;
         self.asb_baev_path = None;
         self.asb_baev_data = None;
     }
