@@ -777,16 +777,6 @@ fn write_material(out: &mut String, id: i64, name: &str) {
     .ok();
     writeln!(
         out,
-        "            P: \"EmissiveColor\", \"Color\", \"\", \"A\",1,1,1"
-    )
-    .ok();
-    writeln!(
-        out,
-        "            P: \"EmissiveFactor\", \"Number\", \"\", \"A\",1"
-    )
-    .ok();
-    writeln!(
-        out,
         "            P: \"TransparentColor\", \"Color\", \"\", \"A\",1,1,1"
     )
     .ok();
@@ -898,7 +888,7 @@ fn mesh_bones(mesh: &BfresMesh, bone_count: usize) -> Vec<usize> {
 fn material_texture_slots(
     material: &G1mMaterial,
 ) -> Vec<(&'static str, &crate::parser::AOC::g1m::G1mTextureSlot)> {
-    let mut result = Vec::with_capacity(3);
+    let mut result = Vec::with_capacity(2);
     if let Some(slot) = material
         .texture_slots
         .iter()
@@ -912,13 +902,6 @@ fn material_texture_slots(
         .find(|slot| slot.texture_type == "Normal")
     {
         result.push(("NormalMap", slot));
-    }
-    if let Some(slot) = material
-        .texture_slots
-        .iter()
-        .find(|slot| slot.texture_type == "Emission")
-    {
-        result.push(("EmissiveColor", slot));
     }
     result
 }
@@ -1252,8 +1235,6 @@ mod tests {
         assert_eq!(texture_uv_index("DiffuseColor", true), 1);
         assert_eq!(texture_uv_index("NormalMap", false), 1);
         assert_eq!(texture_uv_index("NormalMap", true), 2);
-        assert_eq!(texture_uv_index("EmissiveColor", false), 1);
-        assert_eq!(texture_uv_index("EmissiveColor", true), 2);
     }
 
     #[test]

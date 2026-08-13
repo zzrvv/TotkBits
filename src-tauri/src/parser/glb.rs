@@ -351,10 +351,6 @@ pub fn export_g1m(
                 .texture_slots
                 .iter()
                 .find(|slot| slot.texture_type.eq_ignore_ascii_case("Normal"));
-            let emission = material
-                .texture_slots
-                .iter()
-                .find(|slot| slot.texture_type.eq_ignore_ascii_case("Emission"));
             let diffuse_key =
                 diffuse.map(|slot| format!("{prefix}{}", slot.name).to_ascii_lowercase());
             for secondary_uv in [false, true] {
@@ -374,13 +370,6 @@ pub fn export_g1m(
                     texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
                 }) {
                     exported["normalTexture"] = json!({ "index": texture, "texCoord": detail_uv });
-                }
-                if let Some(texture) = emission.and_then(|slot| {
-                    texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
-                }) {
-                    exported["emissiveTexture"] =
-                        json!({ "index": texture, "texCoord": detail_uv });
-                    exported["emissiveFactor"] = json!([1.0, 1.0, 1.0]);
                 }
                 if diffuse_key
                     .as_ref()
@@ -713,7 +702,14 @@ mod tests {
             .filter(|mesh| !mesh.positions.is_empty() && !mesh.indices.is_empty())
             .collect();
         assert_eq!(exported_meshes.len(), source_meshes.len());
-        let mut emission_count = 0;
+        let emission_texture_count = exported_textures
+            .iter()
+            .filter(|texture| {
+                texture["name"]
+                    .as_str()
+                    .is_some_and(|name| name.starts_with("emm_"))
+            })
+            .count();
         let mut primary_uv_meshes = 0;
         let mut secondary_uv_meshes = 0;
         for (mesh, exported) in source_meshes.into_iter().zip(exported_meshes) {
@@ -742,17 +738,10 @@ mod tests {
                         .is_some_and(|name| name.starts_with("nrm_"))
                 );
             }
-            if let Some(texture) = material["emissiveTexture"].as_object() {
-                assert_eq!(texture["texCoord"].as_u64(), Some(detail_uv));
-                assert!(
-                    exported_textures[texture["index"].as_u64().unwrap() as usize]["name"]
-                        .as_str()
-                        .is_some_and(|name| name.starts_with("emm_"))
-                );
-                emission_count += 1;
-            }
+            assert!(material.get("emissiveTexture").is_none());
+            assert_eq!(material["emissiveFactor"], json!([0.0, 0.0, 0.0]));
         }
-        assert!(emission_count > 0);
+        assert!(emission_texture_count > 0);
         assert!(primary_uv_meshes > 0);
         assert!(secondary_uv_meshes > 0);
     }
