@@ -100,6 +100,7 @@ impl Default for Cache3D {
 }
 
 pub struct TotkFile<'a> {
+    uuid: String,
     pub zstd: Arc<TotkZstd<'a>>,
     pub file_type: TotkFileType,
     pub endian: TotkEndian,
@@ -118,6 +119,7 @@ pub struct TotkFile<'a> {
 impl<'a> TotkFile<'a> {
     pub fn default(zstd: Arc<TotkZstd<'a>>) -> Self {
         Self {
+            uuid: uuid::Uuid::new_v4().to_string(),
             zstd: zstd.clone(),
             file_type: TotkFileType::None,
             endian: TotkEndian::None,
@@ -131,6 +133,10 @@ impl<'a> TotkFile<'a> {
             cache_3d: Default::default(),
             cache_misc: Default::default(),
         }
+    }
+
+    pub fn id(&self) -> String {
+        self.uuid.clone()
     }
 
     pub fn filetype_from_path(path: impl AsRef<Path>) -> TotkFileType {
@@ -357,5 +363,34 @@ impl<'a> TotkFile<'a> {
         }
 
         Ok(res)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{TotkConfig::TotkConfig, Zstd::TOTK_ZSTD_COMPRESSION_LEVEL};
+
+    fn test_zstd() -> Arc<TotkZstd<'static>> {
+        Arc::new(TotkZstd::dictionaryless(
+            Arc::new(TotkConfig::default()),
+            TOTK_ZSTD_COMPRESSION_LEVEL,
+        ))
+    }
+
+    #[test]
+    fn id_is_a_read_only_uuid_v4_copy() {
+        let file = TotkFile::default(test_zstd());
+        let second = TotkFile::default(test_zstd());
+        let mut id = file.id();
+
+        assert_eq!(uuid::Uuid::parse_str(&id).unwrap().get_version_num(), 4);
+        assert_ne!(id, second.id());
+        id.push_str("-changed");
+        assert_ne!(id, file.id());
+        assert_eq!(
+            uuid::Uuid::parse_str(&file.id()).unwrap().get_version_num(),
+            4
+        );
     }
 }

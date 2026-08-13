@@ -1,6 +1,11 @@
 use base64::Engine;
 use serde_json::{json, Map, Value};
-use std::{collections::HashMap, fs, io, io::Cursor, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs, io,
+    io::Cursor,
+    path::Path,
+};
 
 use crate::parser::{
     binary::BinaryWriter,
@@ -208,6 +213,14 @@ fn convert_uv_for_glb(uv: [f32; 2]) -> [f32; 2] {
     uv
 }
 
+fn mesh_has_secondary_uv(mesh: &crate::file_format::Model3D::bfres::BfresMesh) -> bool {
+    mesh.uv_maps
+        .iter()
+        .filter(|uvs| uvs.len() == mesh.positions.len())
+        .count()
+        > 1
+}
+
 fn accessor(view: usize, component_type: u32, count: usize, kind: &str) -> Value {
     json!({ "bufferView": view, "componentType": component_type, "count": count, "type": kind })
 }
@@ -231,6 +244,54 @@ fn texture_png(texture: &ResolvedG1tTexture) -> Option<(Vec<u8>, bool)> {
     Some((png.into_inner(), has_transparency))
 }
 
+fn texture_export_base(model: &G1mFile, texture: &ResolvedG1tTexture) -> String {
+    let texture_names: HashSet<_> = std::iter::once(texture.name.as_str())
+        .chain(texture.aliases.iter().map(String::as_str))
+        .collect();
+    let kind = model
+        .materials
+        .iter()
+        .flat_map(|material| &material.texture_slots)
+        .find(|slot| texture_names.contains(slot.name.as_str()))
+        .map(|slot| match slot.texture_type.as_str() {
+            "Diffuse" => "alb",
+            "Normal" => "nrm",
+            "Emission" => "emm",
+            "AmbientOcclusion" => "aoo",
+            "Specular" => "spm",
+            _ => "tex",
+        })
+        .unwrap_or("tex");
+    let (archive_path, archive_index) = texture
+        .path
+        .rsplit_once('#')
+        .unwrap_or((texture.path.as_str(), texture.name.as_str()));
+    let archive_hash = Path::new(archive_path)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("g1t");
+    safe_texture_name(&format!("{kind}_{archive_hash}_{archive_index}"))
+}
+
+fn safe_texture_name(value: &str) -> String {
+    let value: String = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    if value.is_empty() {
+        "texture".into()
+    } else {
+        value
+    }
+}
+
 pub fn export_g1m(
     models: &[(&G1mFile, &[ResolvedG1tTexture], String)],
     output: &Path,
@@ -245,8 +306,9 @@ pub fn export_g1m(
     let mut skins = Vec::new();
     let mut texture_indices = HashMap::<String, usize>::new();
     let mut texture_has_transparency = HashMap::<String, bool>::new();
+    let mut used_texture_names = HashSet::new();
 
-    for (_, resolved, prefix) in models {
+    for (model, resolved, prefix) in models {
         for texture in *resolved {
             let key = format!("{prefix}{}", texture.name).to_ascii_lowercase();
             if texture_indices.contains_key(&key) {
@@ -257,8 +319,15 @@ pub fn export_g1m(
             };
             let view = binary.push(&bytes, None)?;
             let index = images.len();
-            images.push(json!({ "name": format!("{prefix}{}.png", texture.name), "bufferView": view, "mimeType": "image/png" }));
-            textures.push(json!({ "source": index, "sampler": 0 }));
+            let base = texture_export_base(model, texture);
+            let mut exported_name = base.clone();
+            let mut suffix = 2;
+            while !used_texture_names.insert(exported_name.to_ascii_lowercase()) {
+                exported_name = format!("{base}_{suffix}");
+                suffix += 1;
+            }
+            images.push(json!({ "name": format!("{exported_name}.png"), "bufferView": view, "mimeType": "image/png" }));
+            textures.push(json!({ "name": exported_name, "source": index, "sampler": 0 }));
             texture_indices.insert(key.clone(), index);
             texture_has_transparency.insert(key, has_transparency);
             for alias in &texture.aliases {
@@ -278,32 +347,52 @@ pub fn export_g1m(
                 .texture_slots
                 .iter()
                 .find(|slot| slot.texture_type.eq_ignore_ascii_case("Diffuse"));
-            let mut pbr = json!({ "metallicFactor": 0.0, "roughnessFactor": 1.0 });
+            let normal = material
+                .texture_slots
+                .iter()
+                .find(|slot| slot.texture_type.eq_ignore_ascii_case("Normal"));
+            let emission = material
+                .texture_slots
+                .iter()
+                .find(|slot| slot.texture_type.eq_ignore_ascii_case("Emission"));
             let diffuse_key =
                 diffuse.map(|slot| format!("{prefix}{}", slot.name).to_ascii_lowercase());
-            if let Some(texture) = diffuse.and_then(|slot| {
-                texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
-            }) {
-                pbr["baseColorTexture"] = json!({
-                    "index": texture,
-                    "texCoord": diffuse.map_or(0, |slot| slot.uv_layer)
+            for secondary_uv in [false, true] {
+                let mut pbr = json!({ "metallicFactor": 0.0, "roughnessFactor": 1.0 });
+                if let Some(texture) = diffuse.and_then(|slot| {
+                    texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
+                }) {
+                    pbr["baseColorTexture"] = json!({ "index": texture, "texCoord": 0 });
+                }
+                let mut exported = json!({
+                    "name": format!("{prefix}{}{}", material.name, if secondary_uv { "_UV2" } else { "_UV1" }),
+                    "pbrMetallicRoughness": pbr,
+                    "doubleSided": true
                 });
+                let detail_uv = usize::from(secondary_uv);
+                if let Some(texture) = normal.and_then(|slot| {
+                    texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
+                }) {
+                    exported["normalTexture"] = json!({ "index": texture, "texCoord": detail_uv });
+                }
+                if let Some(texture) = emission.and_then(|slot| {
+                    texture_indices.get(&format!("{prefix}{}", slot.name).to_ascii_lowercase())
+                }) {
+                    exported["emissiveTexture"] =
+                        json!({ "index": texture, "texCoord": detail_uv });
+                    exported["emissiveFactor"] = json!([1.0, 1.0, 1.0]);
+                }
+                if diffuse_key
+                    .as_ref()
+                    .and_then(|key| texture_has_transparency.get(key))
+                    .copied()
+                    .unwrap_or(false)
+                {
+                    exported["alphaMode"] = json!("MASK");
+                    exported["alphaCutoff"] = json!(0.5);
+                }
+                materials.push(exported);
             }
-            let mut exported = json!({
-                "name": format!("{prefix}{}", material.name),
-                "pbrMetallicRoughness": pbr,
-                "doubleSided": true
-            });
-            if diffuse_key
-                .as_ref()
-                .and_then(|key| texture_has_transparency.get(key))
-                .copied()
-                .unwrap_or(false)
-            {
-                exported["alphaMode"] = json!("MASK");
-                exported["alphaCutoff"] = json!(0.5);
-            }
-            materials.push(exported);
         }
 
         let bone_node_base = nodes.len();
@@ -467,7 +556,8 @@ pub fn export_g1m(
                 "primitives": [{
                     "attributes": Value::Object(attributes),
                     "indices": index_accessor,
-                    "material": material_base + mesh.material_index as usize,
+                    "material": material_base + mesh.material_index as usize * 2
+                        + usize::from(mesh_has_secondary_uv(mesh)),
                     "mode": 4
                 }]
             }));
@@ -479,7 +569,7 @@ pub fn export_g1m(
             }
             nodes.push(node);
         }
-        material_base += model.materials.len();
+        material_base += model.materials.len() * 2;
     }
 
     let child_nodes: std::collections::HashSet<usize> = nodes
@@ -568,6 +658,103 @@ mod tests {
         assert!(!has_fully_transparent_pixel(&image(1)));
         assert!(!has_fully_transparent_pixel(&image(127)));
         assert!(has_fully_transparent_pixel(&image(0)));
+    }
+
+    #[test]
+    fn supplied_4d_model_uses_viewer_uv_routing() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/4d58bba9.g1m");
+        if !source.is_file() {
+            return;
+        }
+        let config = crate::TotkConfig::TotkConfig::safe_new(false).unwrap();
+        if config.aoc_path.is_empty() {
+            return;
+        }
+        let model = G1mFile::from_path(&source).unwrap();
+        let textures = model.resolve_textures_for_export(&source, Path::new(&config.aoc_path));
+        let output = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../tmp/4d58bba9_naming_test/4d58bba9_uv_routing.glb");
+        export_g1m(
+            &[(&model, textures.textures.as_slice(), String::new())],
+            &output,
+        )
+        .unwrap();
+
+        let bytes = fs::read(output).unwrap();
+        let json_len = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+        let document: Value = serde_json::from_slice(&bytes[20..20 + json_len]).unwrap();
+        let exported_meshes = document["meshes"].as_array().unwrap();
+        let materials = document["materials"].as_array().unwrap();
+        let images = document["images"].as_array().unwrap();
+        let exported_textures = document["textures"].as_array().unwrap();
+        assert_eq!(images.len(), exported_textures.len());
+        for texture in exported_textures {
+            let name = texture["name"].as_str().unwrap();
+            let parts: Vec<_> = name.split('_').collect();
+            assert!(matches!(
+                parts.first().copied(),
+                Some("alb" | "nrm" | "emm" | "aoo" | "spm" | "tex")
+            ));
+            assert_eq!(parts.get(1).map(|part| part.len()), Some(8));
+            assert!(parts[1]
+                .chars()
+                .all(|character| character.is_ascii_hexdigit()));
+            assert!(parts
+                .get(2)
+                .is_some_and(|index| index.chars().all(|character| character.is_ascii_digit())));
+            let source = texture["source"].as_u64().unwrap() as usize;
+            let image_name = format!("{name}.png");
+            assert_eq!(images[source]["name"].as_str(), Some(image_name.as_str()));
+        }
+        let source_meshes: Vec<_> = model
+            .render
+            .meshes
+            .iter()
+            .filter(|mesh| !mesh.positions.is_empty() && !mesh.indices.is_empty())
+            .collect();
+        assert_eq!(exported_meshes.len(), source_meshes.len());
+        let mut emission_count = 0;
+        let mut primary_uv_meshes = 0;
+        let mut secondary_uv_meshes = 0;
+        for (mesh, exported) in source_meshes.into_iter().zip(exported_meshes) {
+            let material_index = exported["primitives"][0]["material"].as_u64().unwrap() as usize;
+            let material = &materials[material_index];
+            let detail_uv = u64::from(mesh_has_secondary_uv(mesh));
+            if detail_uv == 0 {
+                primary_uv_meshes += 1;
+            } else {
+                secondary_uv_meshes += 1;
+            }
+            if let Some(texture) = material["pbrMetallicRoughness"]["baseColorTexture"].as_object()
+            {
+                assert_eq!(texture["texCoord"].as_u64(), Some(0));
+                assert!(
+                    exported_textures[texture["index"].as_u64().unwrap() as usize]["name"]
+                        .as_str()
+                        .is_some_and(|name| name.starts_with("alb_"))
+                );
+            }
+            if let Some(texture) = material["normalTexture"].as_object() {
+                assert_eq!(texture["texCoord"].as_u64(), Some(detail_uv));
+                assert!(
+                    exported_textures[texture["index"].as_u64().unwrap() as usize]["name"]
+                        .as_str()
+                        .is_some_and(|name| name.starts_with("nrm_"))
+                );
+            }
+            if let Some(texture) = material["emissiveTexture"].as_object() {
+                assert_eq!(texture["texCoord"].as_u64(), Some(detail_uv));
+                assert!(
+                    exported_textures[texture["index"].as_u64().unwrap() as usize]["name"]
+                        .as_str()
+                        .is_some_and(|name| name.starts_with("emm_"))
+                );
+                emission_count += 1;
+            }
+        }
+        assert!(emission_count > 0);
+        assert!(primary_uv_meshes > 0);
+        assert!(secondary_uv_meshes > 0);
     }
 
     #[test]

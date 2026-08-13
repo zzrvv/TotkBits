@@ -429,7 +429,7 @@ fn build_ascii(
         );
         material_ids.push(
             (0..input.model.materials.len())
-                .map(|_| ids.take())
+                .map(|_| [ids.take(), ids.take()])
                 .collect::<Vec<_>>(),
         );
     }
@@ -472,28 +472,37 @@ fn build_ascii(
             );
         }
         for (index, material) in input.model.materials.iter().enumerate() {
-            write_material(
-                &mut objects,
-                material_ids[model_index][index],
-                &format!("{}{}", input.prefix, material.name),
-            );
-            for (property, slot) in material_texture_slots(material) {
-                let Some(exported_texture) =
-                    texture_paths.get(&texture_key(&input.prefix, &slot.name))
-                else {
-                    continue;
-                };
-                texture_links.push(TextureLink {
-                    id: ids.take(),
-                    video_id: ids.take(),
-                    material_id: material_ids[model_index][index],
-                    property,
-                    name: exported_texture.name.clone(),
-                    relative_path: exported_texture.relative_path.clone(),
-                    uv_set: format!("UVChannel_{}", slot.uv_layer as usize + 1),
-                    has_transparency: property == "DiffuseColor"
-                        && exported_texture.has_transparency,
-                });
+            for secondary_uv in [false, true] {
+                let variant = usize::from(secondary_uv);
+                write_material(
+                    &mut objects,
+                    material_ids[model_index][index][variant],
+                    &format!(
+                        "{}{}_{}",
+                        input.prefix,
+                        material.name,
+                        if secondary_uv { "UV2" } else { "UV1" }
+                    ),
+                );
+                for (property, slot) in material_texture_slots(material) {
+                    let Some(exported_texture) =
+                        texture_paths.get(&texture_key(&input.prefix, &slot.name))
+                    else {
+                        continue;
+                    };
+                    let uv_index = texture_uv_index(property, secondary_uv);
+                    texture_links.push(TextureLink {
+                        id: ids.take(),
+                        video_id: ids.take(),
+                        material_id: material_ids[model_index][index][variant],
+                        property,
+                        name: exported_texture.name.clone(),
+                        relative_path: exported_texture.relative_path.clone(),
+                        uv_set: format!("UVChannel_{uv_index}"),
+                        has_transparency: property == "DiffuseColor"
+                            && exported_texture.has_transparency,
+                    });
+                }
             }
         }
         for mesh in &input.model.render.meshes {
@@ -530,7 +539,7 @@ fn build_ascii(
             }
             let material_id = material_ids[model_index]
                 .get(mesh.material_index as usize)
-                .copied()
+                .map(|variants| variants[usize::from(mesh_has_secondary_uv(mesh))])
                 .unwrap_or(root_id);
             mesh_links.push(MeshLink {
                 geometry_id,
@@ -768,6 +777,16 @@ fn write_material(out: &mut String, id: i64, name: &str) {
     .ok();
     writeln!(
         out,
+        "            P: \"EmissiveColor\", \"Color\", \"\", \"A\",1,1,1"
+    )
+    .ok();
+    writeln!(
+        out,
+        "            P: \"EmissiveFactor\", \"Number\", \"\", \"A\",1"
+    )
+    .ok();
+    writeln!(
+        out,
         "            P: \"TransparentColor\", \"Color\", \"\", \"A\",1,1,1"
     )
     .ok();
@@ -879,7 +898,7 @@ fn mesh_bones(mesh: &BfresMesh, bone_count: usize) -> Vec<usize> {
 fn material_texture_slots(
     material: &G1mMaterial,
 ) -> Vec<(&'static str, &crate::parser::AOC::g1m::G1mTextureSlot)> {
-    let mut result = Vec::with_capacity(2);
+    let mut result = Vec::with_capacity(3);
     if let Some(slot) = material
         .texture_slots
         .iter()
@@ -894,7 +913,30 @@ fn material_texture_slots(
     {
         result.push(("NormalMap", slot));
     }
+    if let Some(slot) = material
+        .texture_slots
+        .iter()
+        .find(|slot| slot.texture_type == "Emission")
+    {
+        result.push(("EmissiveColor", slot));
+    }
     result
+}
+
+fn mesh_has_secondary_uv(mesh: &BfresMesh) -> bool {
+    mesh.uv_maps
+        .iter()
+        .filter(|uvs| uvs.len() == mesh.positions.len())
+        .count()
+        > 1
+}
+
+fn texture_uv_index(property: &str, secondary_uv: bool) -> usize {
+    if property == "DiffuseColor" || !secondary_uv {
+        1
+    } else {
+        2
+    }
 }
 
 fn model_space_geometry(mesh: &BfresMesh, bones: &[BfresBone]) -> (Vec<[f32; 3]>, Vec<[f32; 3]>) {
@@ -1202,6 +1244,16 @@ mod tests {
         assert_eq!(texture_kind_prefix("AmbientOcclusion"), "aoo");
         assert_eq!(texture_kind_prefix("Specular"), "spm");
         assert_eq!(texture_kind_prefix("Unknown"), "tex");
+    }
+
+    #[test]
+    fn routes_material_textures_like_the_viewer() {
+        assert_eq!(texture_uv_index("DiffuseColor", false), 1);
+        assert_eq!(texture_uv_index("DiffuseColor", true), 1);
+        assert_eq!(texture_uv_index("NormalMap", false), 1);
+        assert_eq!(texture_uv_index("NormalMap", true), 2);
+        assert_eq!(texture_uv_index("EmissiveColor", false), 1);
+        assert_eq!(texture_uv_index("EmissiveColor", true), 2);
     }
 
     #[test]

@@ -52,6 +52,7 @@ dependencies = [
  "tegra_swizzle",
  "texture2ddecoder",
  "toml 0.8.19",
+ "uuid",
  "walkdir",
  "windows 0.58.0",
  "winreg 0.52.0",
