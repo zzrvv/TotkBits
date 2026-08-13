@@ -1,5 +1,4 @@
 #![allow(non_snake_case, non_camel_case_types)]
-use flate2::read::ZlibDecoder;
 use roead;
 use roead::sarc::{Sarc, SarcWriter};
 use serde::{Deserialize, Serialize};
@@ -11,21 +10,17 @@ use std::sync::Arc;
 
 //mod Zstd;
 
+use crate::file_format::BinTextFile::BymlFile;
+use crate::Open_and_Save::SendData;
+use crate::Settings::Magic;
 use crate::Settings::{makedirs, Pathlib};
 use crate::TotkConfig::TotkConfig;
-use crate::Zstd::{is_sarc, is_sarc_root_path, sha256, TotkFileType, TotkZstd};
+use crate::Zstd::{sha256, TotkFileType, TotkZstd, ZstdDictionary};
 
 // use super::SarcEntriesData::get_sarc_entries_data;
 
-pub fn get_sarc_entries_data() -> io::Result<HashMap<String, String>> {
-    //parse json
-    println!("Getting global sarc data ");
-    let json_zlibdata = fs::read("bin/totk_sarc_sha256.bin")?;
-    let mut decoder = ZlibDecoder::new(&json_zlibdata[..]);
-    let mut json_str = String::new();
-    decoder.read_to_string(&mut json_str)?;
-    let res: HashMap<String, String> = serde_json::from_str(&json_str)?;
-    Ok(res)
+pub fn get_sarc_entries_data() -> Arc<HashMap<String, String>> {
+    crate::LookupData::sarc_sha256()
 }
 
 pub struct PackComparer<'a> {
@@ -35,11 +30,92 @@ pub struct PackComparer<'a> {
     pub zstd: Arc<TotkZstd<'a>>,
     pub added: HashMap<String, String>,
     pub modded: HashMap<String, String>,
-    pub global_sarc_data: HashMap<String, String>,
+    pub global_sarc_data: Arc<HashMap<String, String>>,
 }
 
 #[allow(dead_code)]
 impl<'a> PackComparer<'a> {
+    pub fn default_new(zstd: Arc<TotkZstd<'a>>) -> Self {
+        PackComparer {
+            opened: None,
+            vanila: None,
+            zstd: zstd.clone(),
+            added: Default::default(),
+            modded: Default::default(),
+            global_sarc_data: Arc::default(),
+        }
+    }
+    pub fn set_zstd(&mut self, zstd: Arc<TotkZstd<'a>>) {
+        self.zstd = zstd.clone();
+        if let Some(opened) = &mut self.opened {
+            opened.zstd = zstd.clone();
+        }
+        if let Some(vanila) = &mut self.vanila {
+            vanila.zstd = zstd;
+        }
+    }
+
+    pub fn open_sarc_bytes<P: AsRef<Path>>(
+        path: P,
+        rawdata: &[u8],
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(Self, crate::Open_and_Save::SendData)> {
+        let mut data = SendData::default();
+        let path_ref = path.as_ref();
+        print!("Is {:?} a sarc? ", &path_ref.display());
+        let pathlib_var = Pathlib::new(path_ref);
+        let Ok(mut sarc) = PackFile::from_binary(&rawdata, zstd.clone()) else {
+            println!(" no!");
+            return None;
+        };
+        sarc.path = pathlib_var.clone();
+
+        println!(" yes!");
+        data.status_text = format!("Opened {}", &path_ref.to_string_lossy().replace("\\", "/"));
+        data.path = pathlib_var.clone();
+        data.tab = "SARC".to_string();
+        // data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, &sarc., e_s);
+        let Some(pack) = PackComparer::from_pack(sarc, zstd.clone()) else {
+            println!(" no!");
+            return None;
+        };
+        data.get_sarc_paths(&pack);
+        return Some((pack, data));
+    }
+
+    pub fn open_sarc<P: AsRef<Path>>(
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(Self, crate::Open_and_Save::SendData)> {
+        let rawdata = fs::read(path.as_ref()).ok()?;
+        return Self::open_sarc_bytes(path.as_ref(), &rawdata, zstd.clone());
+
+        // let mut data = SendData::default();
+        // let path_ref = path.as_ref();
+        // print!("Is {:?} a sarc? ", &path_ref.display());
+        // let pathlib_var = Pathlib::new(path_ref);
+        // if let Ok(sarc) = PackFile::new(path_ref, zstd.clone()) {
+        //     let e_s = if sarc.endian == roead::Endian::Little {
+        //         " [LE]"
+        //     } else {
+        //         " [BE]"
+        //     };
+        //     let yaz0_s = if sarc.is_yaz0 { " [Yaz0] " } else { " " };
+        //     if let Some(pack) = PackComparer::from_pack(sarc, zstd.clone()) {
+        //         println!(" yes!");
+        //         data.get_sarc_paths(&pack);
+        //         data.status_text =
+        //             format!("Opened {}", &path_ref.to_string_lossy().replace("\\", "/"));
+        //         data.path = pathlib_var.clone();
+        //         data.tab = "SARC".to_string();
+        //         data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, yaz0_s, e_s);
+        //         return Some((pack, data));
+        //     }
+        // }
+        // println!(" no");
+
+        // None
+    }
     pub fn from_pack(pack: PackFile<'a>, zstd: Arc<TotkZstd<'a>>) -> Option<Self> {
         let config = zstd.clone().totk_config.clone();
         // let vanila = PackComparer::get_vanila_sarc(&pack.path, zstd.clone());
@@ -59,59 +135,34 @@ impl<'a> PackComparer<'a> {
             zstd: zstd.clone(),
             added: HashMap::default(),
             modded: HashMap::default(),
-            global_sarc_data: HashMap::default(),
+            global_sarc_data: Arc::default(),
         };
         println!("Comparing and reloading");
-        pack.compare_and_reload();
+        if let Err(error) = pack.compare_and_reload() {
+            eprintln!("Failed to initialize SARC comparison: {error}");
+            return None;
+        }
         Some(pack)
     }
 
-    pub fn extract_folder<P: AsRef<Path>>(
-        &self,
-        source_folder: String,
-        dest_path: P,
-    ) -> io::Result<String> {
-        // if is_sarc_root_path(&source_folder) {
-        //     return self.extract_all_to_folder(dest_path);
-        // }
-        let is_sarc_root = is_sarc_root_path(&source_folder);
-        let mut prefix = source_folder.clone();
-        if !prefix.ends_with('/') {
-            prefix.push('/');
-        }
-        let mut chars_to_skip = 0;
-        let source_folder_parent = Pathlib::new(&source_folder).parent;
-        if !is_sarc_root && !source_folder_parent.is_empty() {
-            chars_to_skip = source_folder_parent.len() + 1; //skip parent folders with this if nested  folder is selected
-        }
+    pub fn extract_all_to_folder<P: AsRef<Path>>(&self, dest_path: P) -> io::Result<String> {
         let mut p = PathBuf::from(dest_path.as_ref());
         if let Some(pack) = &self.opened {
             let mut i: i32 = 0;
-            if is_sarc_root {
-                let name = pack.path.stem.as_str();
-                p.push(name);
-            }
+            let name = pack.path.stem.as_str();
+            p.push(name);
             fs::create_dir_all(&p)?;
             for file in pack.sarc.files() {
                 if let Some(file_name) = file.name() {
-                    if is_sarc_root || file_name.starts_with(&prefix) {
-                        let mut file_path = p.clone();
-                        if chars_to_skip > 0 { //safely skip parent folders
-                            file_path.push(file_name[chars_to_skip..].to_string());
-                        } else {
-                            file_path.push(file_name);
-                        }
-                        makedirs(&file_path)?;
-                        fs::write(&file_path, file.data)?;
-                        i += 1;
-                    }
+                    let mut file_path = p.clone();
+                    file_path.push(file_name);
+                    makedirs(&file_path)?;
+                    fs::write(&file_path, file.data)?;
+                    i += 1;
                 }
             }
-            if is_sarc_root {
-                return Ok(format!("Extracted {} files to {}", i, p.display()));
-            } else {
-                return Ok(format!("Extracted {} files from {}", i, &source_folder));
-            }
+
+            return Ok(format!("Extracted {} files to {}", i, p.display()));
         }
 
         return Err(io::Error::new(
@@ -119,34 +170,73 @@ impl<'a> PackComparer<'a> {
             "No opened pack",
         ));
     }
-    // pub fn extract_all_to_folder<P: AsRef<Path>>(&self, dest_path: P) -> io::Result<String> {
-    //     let mut p = PathBuf::from(dest_path.as_ref());
-    //     if let Some(pack) = &self.opened {
-    //         let mut i: i32 = 0;
-    //         let name = pack.path.stem.as_str();
-    //         p.push(name);
-    //         fs::create_dir_all(&p)?;
-    //         for file in pack.sarc.files() {
-    //             if let Some(file_name) = file.name() {
-    //                 let mut file_path = p.clone();
-    //                 file_path.push(file_name);
-    //                 makedirs(&file_path)?;
-    //                 fs::write(&file_path, file.data)?;
-    //                 i += 1;
-    //             }
-    //         }
 
-    //         return Ok(format!("Extracted {} files to {}", i, p.display()));
-    //     }
+    pub fn extract_folder_to<P: AsRef<Path>>(
+        &mut self,
+        source_folder: &str,
+        dest_path: P,
+    ) -> io::Result<String> {
+        let paths = self.get_sarc_paths().paths;
+        let opened = self
+            .opened
+            .as_mut()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "No opened pack"))?;
+        let prefix = source_folder.trim_matches(['/', '\\']);
+        let prefix_with_separator = if prefix.is_empty() {
+            String::new()
+        } else {
+            format!("{}/", prefix.replace('\\', "/"))
+        };
+        // When extracting a selected directory, make that directory the root of
+        // the result instead of recreating the SARC name and its full parent path.
+        // Full-archive extraction has its own path and intentionally keeps the
+        // existing `<destination>/<sarc name>/...` layout.
+        let output_root = if prefix.is_empty() {
+            dest_path.as_ref().join(&opened.path.stem)
+        } else {
+            let folder_name = prefix
+                .rsplit('/')
+                .next()
+                .filter(|name| !name.is_empty())
+                .ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "Invalid SARC folder path")
+                })?;
+            dest_path.as_ref().join(folder_name)
+        };
+        let mut count = 0;
 
-    //     return Err(io::Error::new(
-    //         io::ErrorKind::InvalidInput,
-    //         "No opened pack",
-    //     ));
-    // }
+        for path in paths {
+            let normalized = path.replace('\\', "/");
+            if !prefix_with_separator.is_empty()
+                && normalized != prefix
+                && !normalized.starts_with(&prefix_with_separator)
+            {
+                continue;
+            }
+            if let Some(bytes) = opened.writer.get_file(&path) {
+                let relative_path = if prefix_with_separator.is_empty() {
+                    normalized.as_str()
+                } else {
+                    normalized
+                        .strip_prefix(&prefix_with_separator)
+                        .unwrap_or(normalized.as_str())
+                };
+                let output_path = output_root.join(relative_path);
+                makedirs(&output_path)?;
+                fs::write(output_path, bytes)?;
+                count += 1;
+            }
+        }
+        Ok(format!(
+            "Extracted {} files to {}",
+            count,
+            output_root.display()
+        ))
+    }
 
     pub fn get_sarc_paths(&self) -> SarcPaths {
         let mut paths = SarcPaths::default();
+        paths.file_type = "SARC".into();
         if let Some(opened) = &self.opened {
             for file in opened.sarc.files() {
                 if let Some(name) = file.name {
@@ -169,14 +259,15 @@ impl<'a> PackComparer<'a> {
         paths
     }
 
-    pub fn compare_and_reload(&mut self) {
+    pub fn compare_and_reload(&mut self) -> io::Result<()> {
         if let Some(opened) = &mut self.opened {
-            opened.reload();
+            opened.reload()?;
             opened.self_populate_hashes();
             // println!("hasehs {:?}\nNow to compare", opened.hashes);
         }
         // println!("Comparing, ready...");
         self.compare();
+        Ok(())
     }
 
     pub fn compare(&mut self) {
@@ -211,7 +302,7 @@ impl<'a> PackComparer<'a> {
                 //custom actor
                 println!("Comparing custom actor");
                 if self.global_sarc_data.is_empty() {
-                    self.global_sarc_data = get_sarc_entries_data().unwrap_or_default();
+                    self.global_sarc_data = get_sarc_entries_data();
                 }
                 let mut added: HashMap<String, String> = HashMap::default();
                 let mut modded: HashMap<String, String> = HashMap::default();
@@ -268,9 +359,6 @@ impl<'a> PackComparer<'a> {
     }
     #[allow(dead_code)]
     pub fn get_vanila_sarc(path: &Pathlib, zstd: Arc<TotkZstd<'a>>) -> Option<PackFile<'a>> {
-        if !zstd.clone().is_valid() {
-            return None;
-        }
         let pack = PackComparer::get_vanila_pack(path, zstd.clone());
         if pack.is_some() {
             return pack;
@@ -309,11 +397,13 @@ pub struct PackFile<'a> {
     pub writer: SarcWriter,
     pub hashes: HashMap<String, String>,
     pub sarc: Sarc<'a>,
-    pub is_yaz0: bool,
+    pub compression: Option<ZstdDictionary>,
+    pub yaz0_alignment: u32,
+    pub dirty: bool,
 }
 
 #[allow(dead_code)]
-impl<'a> PackFile<'_> {
+impl<'a> PackFile<'a> {
     pub fn default(zstd: Arc<TotkZstd<'a>>) -> io::Result<PackFile<'a>> {
         let mut writer = SarcWriter::new(roead::Endian::Little);
         let sarc = Sarc::new(writer.to_binary().clone())
@@ -328,7 +418,9 @@ impl<'a> PackFile<'_> {
             writer: writer,
             hashes: HashMap::default(),
             sarc: sarc,
-            is_yaz0: false,
+            compression: None,
+            yaz0_alignment: 0,
+            dirty: false,
         })
     }
 
@@ -339,24 +431,19 @@ impl<'a> PackFile<'_> {
         //decompressor: &'a ZstdDecompressor,
         //compressor: &'a ZstdCompressor
     ) -> io::Result<PackFile<'a>> {
-        let mut pack = Self::default(zstd.clone())?;
-        pack.sarc_file_to_bytes(&path)?;
-        // pack.sarc = Sarc::new(&pack.data).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
-        pack.writer = SarcWriter::from_sarc(&pack.sarc);
-        pack.endian = pack.sarc.endian();
-        pack.path = Pathlib::new(path.as_ref());
-        Ok(pack)
+        let bytes = fs::read(path)?;
+        let pack = Self::from_binary(&bytes, zstd.clone());
+        pack
     }
 
     pub fn rename(&mut self, old_name: &str, new_name: &str) -> io::Result<()> {
-        let some_data = self.writer.get_file(old_name);
+        let some_data = self.writer.get_file(old_name).cloned();
         match some_data {
             Some(data) => {
-                let d = data.clone();
-                self.writer.add_file(new_name, d.to_vec());
-                self.writer.remove_file(old_name);
-                self.reload();
-                self.self_populate_hashes();
+                self.mutate_writer(|writer| {
+                    writer.add_file(new_name, data);
+                    writer.remove_file(old_name);
+                })?;
             }
             None => {
                 let e = format!("File {} absent in sarc {}", &old_name, &self.path.full_path);
@@ -366,9 +453,81 @@ impl<'a> PackFile<'_> {
         Ok(())
     }
 
-    pub fn reload(&mut self) {
+    pub fn mutate_writer(&mut self, operation: impl FnOnce(&mut SarcWriter)) -> io::Result<()> {
+        let mut candidate_writer = self.writer.clone();
+        operation(&mut candidate_writer);
+        let candidate_sarc = Sarc::new(candidate_writer.to_binary())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        let candidate_hashes = PackFile::populate_hashes(&candidate_sarc);
+        self.writer = candidate_writer;
+        self.sarc = candidate_sarc;
+        self.hashes = candidate_hashes;
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// Rebuilds this archive from named entries and reapplies the compression
+    /// detected when it was opened. Format-specific callers should use this
+    /// instead of constructing SARC data or selecting dictionaries themselves.
+    pub fn rebuild_binary(
+        &self,
+        entries: impl IntoIterator<Item = (String, Vec<u8>)>,
+    ) -> io::Result<Vec<u8>> {
+        let mut writer = SarcWriter::new(self.endian);
+        for (path, data) in entries {
+            writer.add_file(&path, data);
+        }
+        let raw = writer.to_binary();
+        Sarc::new(raw.clone())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        match self.compression {
+            Some(ZstdDictionary::Yaz0) => {
+                TotkZstd::compress_yaz0_with_alignment(&raw, self.yaz0_alignment)
+            }
+            Some(dictionary) => self.zstd.compress_with_dictionary(&raw, dictionary),
+            None => Ok(raw),
+        }
+    }
+
+    /// Rebuilds the current archive while replacing only the named members.
+    /// This retains the source SARC writer's hash multiplier and layout policy,
+    /// which format-specific archives such as MALS rely on.
+    pub fn rebuild_replacing_entries(
+        &self,
+        replacements: impl IntoIterator<Item = (String, Vec<u8>)>,
+    ) -> io::Result<Vec<u8>> {
+        let mut writer = self.writer.clone();
+        for (path, data) in replacements {
+            writer.add_file(&path, data);
+        }
+        let raw = writer.to_binary();
+        Sarc::new(raw.clone())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        match self.compression {
+            Some(ZstdDictionary::Yaz0) => {
+                TotkZstd::compress_yaz0_with_alignment(&raw, self.yaz0_alignment)
+            }
+            Some(dictionary) => self.zstd.compress_with_dictionary(&raw, dictionary),
+            None => Ok(raw),
+        }
+    }
+
+    /// Parses one internal BYML entry through TotkBits' BYML document wrapper.
+    pub fn byml_file(&self, path: &str) -> io::Result<BymlFile<'a>> {
+        let data = self.sarc.get_data(path).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                format!("pack entry is missing: {path}"),
+            )
+        })?;
+        BymlFile::from_binary(data, self.zstd.clone(), path)
+    }
+
+    pub fn reload(&mut self) -> io::Result<()> {
         let data: Vec<u8> = self.writer.to_binary();
-        self.sarc = Sarc::new(data).expect("Failed");
+        self.sarc =
+            Sarc::new(data).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        Ok(())
     }
 
     pub fn self_populate_hashes(&mut self) {
@@ -393,48 +552,116 @@ impl<'a> PackFile<'_> {
         self.save(dest_file)
     }
 
-    fn compress(&self, data: &Vec<u8>) -> io::Result<Vec<u8>> {
-        // let zstd = ZstdCppCompressor::from_totk_zstd(self.zstd.clone());
-        match self.file_type {
-            TotkFileType::Sarc => {
-                println!("Compressing SARC");
-                // return self.zstd.compressor.compress_pack(data);
-                return self.zstd.compress_pack(data);
-            }
-            TotkFileType::MalsSarc => {
-                println!("Compressing MALS SARC");
-                // return self.zstd.compressor.compress_zs(data);
-                return self.zstd.compress_zs(data);
-            }
-            _ => {
-                return Ok(data.to_vec());
-            }
-        }
-    }
-
     pub fn save(&mut self, dest_file: String) -> io::Result<()> {
-        makedirs(&PathBuf::from(&dest_file))?;
-        let mut data: Vec<u8> = self.writer.to_binary();
-        if dest_file.to_lowercase().ends_with(".zs") {
-            data = self.compress(&data)?;
-        } else if self.is_yaz0 {
-            data = roead::yaz0::compress(&data);
+        if dest_file.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "SARC save path is empty",
+            ));
         }
-        let mut file_handle: fs::File = fs::File::create(dest_file)?;
+        makedirs(&PathBuf::from(&dest_file))?;
+        let raw_data = self.writer.to_binary();
+        let should_compress = self.compression.is_some()
+            && (!self.totk_config.ask_for_compression
+                || rfd::MessageDialog::new()
+                    .set_title("Save compression")
+                    .set_description(format!(
+                        "{} was opened with {:?} compression.\n\nCompress the saved file?",
+                        self.path.name, self.compression
+                    ))
+                    .set_level(rfd::MessageLevel::Info)
+                    .set_buttons(rfd::MessageButtons::YesNo)
+                    .show()
+                    == rfd::MessageDialogResult::Yes);
+        let data = match (should_compress, self.compression) {
+            (true, Some(ZstdDictionary::Yaz0)) => {
+                TotkZstd::compress_yaz0_with_alignment(&raw_data, self.yaz0_alignment)?
+            }
+            (true, Some(dictionary)) => {
+                self.zstd.compress_with_dictionary(&raw_data, dictionary)?
+            }
+            _ => raw_data.clone(),
+        };
+        if data.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "refusing to save an empty SARC",
+            ));
+        }
+        let mut file_handle: fs::File = fs::File::create(&dest_file)?;
         file_handle.write_all(&data)?;
+        self.data = raw_data;
+        self.path = Pathlib::new(&dest_file);
+        self.dirty = false;
         Ok(())
     }
+
+    // pub fn to_senddata(&self) -> SendData {
+    //     let mut data = SendData::default();
+    //     data.get_sarc_paths(self);
+    //     data.status_text =
+    //         format!("Opened {}", &path_ref.to_string_lossy().replace("\\", "/"));
+    //     data.path = pathlib_var.clone();
+    //     data.tab = "SARC".to_string();
+    //     data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, yaz0_s, e_s);
+
+    //     data
+    // }
+
+    pub fn from_binary(data: &[u8], zstd: Arc<TotkZstd<'a>>) -> io::Result<PackFile<'a>> {
+        let yaz0_alignment = Magic::is_yaz0(data)
+            .then(|| TotkZstd::yaz0_alignment(data))
+            .unwrap_or_default();
+        let (rawdata, compression) = if Magic::is_sarc(&data) {
+            (data.to_vec(), ZstdDictionary::None)
+        } else if Magic::is_yaz0(&data) {
+            (TotkZstd::decompress_yaz0(data)?, ZstdDictionary::Yaz0)
+        } else {
+            zstd.try_decompress_all_ordered_safe(data, "some_example.pack.zs")
+        };
+        if !Magic::is_sarc(&rawdata) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "ERROR: Not a sarc data",
+            ));
+        }
+        let res_rawdata = rawdata.clone();
+        let sarc =
+            Sarc::new(rawdata).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let writer = SarcWriter::from_sarc(&sarc);
+        let ftype = match compression {
+            ZstdDictionary::Pack => TotkFileType::Sarc,
+            ZstdDictionary::Zs => TotkFileType::MalsSarc,
+            _ => TotkFileType::Sarc,
+        };
+        Ok(PackFile {
+            path: Pathlib::default(),
+            totk_config: zstd.clone().totk_config.clone(),
+            zstd: zstd.clone(),
+            data: res_rawdata,
+            file_type: ftype,
+            endian: sarc.endian(),
+            writer: writer,
+            hashes: HashMap::default(),
+            sarc,
+            compression: (compression != ZstdDictionary::None).then_some(compression),
+            yaz0_alignment,
+            dirty: false,
+        })
+    }
+
     pub fn sarc_file_to_bytes<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
         let mut f_handle: fs::File = fs::File::open(&path)?;
         let mut buffer: Vec<u8> = Vec::new();
         f_handle.read_to_end(&mut buffer)?;
-        if buffer.starts_with(b"Yaz0") {
-            if let Ok(dec_data) = roead::yaz0::decompress(&buffer) {
+        if Magic::is_yaz0(&buffer) {
+            self.yaz0_alignment = TotkZstd::yaz0_alignment(&buffer);
+            if let Ok(dec_data) = TotkZstd::decompress_yaz0(&buffer) {
                 buffer = dec_data;
-                self.is_yaz0 = true;
+                self.compression = Some(ZstdDictionary::Yaz0);
             }
-            if is_sarc(&buffer) {
-                // self.data = buffer;
+            if Magic::is_sarc(&buffer) {
+                self.data = buffer.clone();
                 self.sarc = Sarc::new(buffer)
                     .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                 return Ok(());
@@ -447,26 +674,29 @@ impl<'a> PackFile<'_> {
             .ends_with(".zs")
         {
             if let Ok(dec_data) = self.zstd.decompress_pack(&buffer) {
-                if is_sarc(&dec_data) {
-                    // self.data = dec_data;
+                if Magic::is_sarc(&dec_data) {
+                    self.data = dec_data.clone();
                     self.sarc = Sarc::new(dec_data)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                     self.file_type = TotkFileType::Sarc;
+                    self.compression = Some(ZstdDictionary::Pack);
                     return Ok(());
                 }
             }
-            if let Ok(dec_data) = self.zstd.decompress_zs(&buffer) {
-                if is_sarc(&dec_data) {
-                    // self.data = dec_data;
+            if let Ok(dec_data) = self.zstd.decompressor.decompress_zs(&buffer) {
+                if Magic::is_sarc(&dec_data) {
+                    self.data = dec_data.clone();
                     self.sarc = Sarc::new(dec_data)
                         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
                     self.file_type = TotkFileType::MalsSarc;
+                    self.compression = Some(ZstdDictionary::Zs);
                     return Ok(());
                 }
             }
         }
-        if is_sarc(&buffer) {
-            // self.data = buffer;
+        if Magic::is_sarc(&buffer) {
+            self.compression = None;
+            self.data = buffer.clone();
             self.sarc =
                 Sarc::new(buffer).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
             return Ok(());
@@ -498,14 +728,14 @@ impl<'a> PackFile<'_> {
     //         file_data.data = buffer;
     //         return Ok((is_yaz0, file_data));
     //     }
-    //     match zstd.decompress_pack(&buffer) {
+    //     match zstd.decompressor.decompress_pack(&buffer) {
     //         Ok(res) => {
     //             if is_sarc(&res) {
     //                 file_data.data = res;
     //             }
     //         }
     //         Err(_) => {
-    //             match zstd.decompress_zs(&buffer) {
+    //             match zstd.decompressor.decompress_zs(&buffer) {
     //                 //try decompressing with other dicts
     //                 Ok(res) => {
     //                     if is_sarc(&res) {
@@ -538,6 +768,9 @@ pub struct SarcPaths {
     pub paths: Vec<String>,
     pub added_paths: Vec<String>,
     pub modded_paths: Vec<String>,
+    pub nested_paths: HashMap<String, Vec<String>>,
+    pub read_only: bool,
+    pub file_type: String,
 }
 impl Default for SarcPaths {
     fn default() -> Self {
@@ -545,6 +778,65 @@ impl Default for SarcPaths {
             paths: Vec::new(),
             added_paths: Vec::new(),
             modded_paths: Vec::new(),
+            nested_paths: HashMap::new(),
+            read_only: false,
+            file_type: String::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opened_sarc_remembers_its_disk_save_path() {
+        let config = Arc::new(TotkConfig::default());
+        let zstd = Arc::new(TotkZstd::dictionaryless(
+            config,
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+        ));
+        let mut writer = SarcWriter::new(roead::Endian::Little);
+        writer.add_file("test.txt", b"test".to_vec());
+        let bytes = writer.to_binary();
+        let destination =
+            std::env::temp_dir().join(format!("totkbits-sarc-save-{}.sarc", std::process::id()));
+
+        let (mut comparer, _) =
+            PackComparer::open_sarc_bytes(&destination, &bytes, zstd).expect("open SARC bytes");
+        let opened = comparer.opened.as_mut().expect("opened SARC");
+        assert_eq!(opened.path.full_path, destination.to_string_lossy());
+        opened.save_default().expect("save SARC to remembered path");
+        assert!(destination.is_file());
+        let saved = fs::read(&destination).expect("read saved SARC");
+        let _ = fs::remove_file(destination);
+        assert!(Magic::is_sarc(&saved));
+    }
+
+    #[test]
+    fn yaz0_sarc_save_serializes_writer_and_reapplies_compression() {
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/_ss/yaz0/MarioZombie.szs");
+        if !source.is_file() {
+            return;
+        }
+        let config = Arc::new(TotkConfig::default());
+        let zstd = Arc::new(TotkZstd::dictionaryless(
+            config,
+            crate::Zstd::TOTK_ZSTD_COMPRESSION_LEVEL,
+        ));
+        let mut pack = PackFile::new(&source, zstd).unwrap();
+        let destination =
+            std::env::temp_dir().join(format!("totkbits-yaz0-save-as-{}.szs", std::process::id()));
+
+        pack.save(destination.to_string_lossy().into_owned())
+            .unwrap();
+        let actual = fs::read(&destination).unwrap();
+        let _ = fs::remove_file(destination);
+        assert!(Magic::is_yaz0(&actual));
+        assert_eq!(TotkZstd::yaz0_alignment(&actual), pack.yaz0_alignment);
+        assert_eq!(
+            TotkZstd::decompress_yaz0(&actual).unwrap(),
+            pack.writer.to_binary()
+        );
     }
 }

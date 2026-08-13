@@ -7,9 +7,12 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+.cache/*
 node_modules/*
 res/asdf/*
 res/*
+ext_projects/*/target/*
+ext_projects/*/Cargo.lock
 tmp/*
 /bin/*
 # /bin/ainb/
@@ -33,9 +36,10 @@ dist-ssr
 /src-tauri/bin/
 /src-tauri/external
 /res/*
-/tmp/
+./tmp/
 /ext_projects/updater/target
 ext_projects/bphcl/__pycache__
+ext_projects/oead
 /src-tauri/updater.exe
 /src-tauri/DotNetWrapper.exe
 
@@ -44,5 +48,6 @@ ext_projects/bphcl/__pycache__
 /ext_projects/bphcl/main*
 
 /__pycache__
+*__pycache__*
 **__init__.py
 package-lock.json

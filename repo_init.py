@@ -1,38 +1,50 @@
 import subprocess
 from pathlib import Path
 import shutil
-import os, sys
+import os, sys, stat
+from time import time
 import requests
-from tauri_build import build_dotnet
+# from tauri_build import build_dotnet
+
 try:
-    from tqdm import tqdm # type: ignore
+    from tqdm import tqdm  # type: ignore
 except ImportError:
     print("Install tqdm first using command: pip install tqdm")
     sys.exit(1)
+CWD = Path(__file__).parent.resolve()
 
-def download_dlls():
-    dlls = {
-        "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.dll": "src-tauri/bin/dlls/xlink_tool.dll",
-        "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.exp": "src-tauri/bin/dlls/xlink_tool.exp",
-        "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.lib": "src-tauri/bin/dlls/xlink_tool.lib",
+
+def download_files():
+    files = {
+        "https://github.com/SolidLink95/TotkBits/releases/download/v0.0.9/xlink_tool.dll": "src-tauri/bin/dlls/xlink_tool.dll",
+        # "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.exp": "src-tauri/bin/dlls/xlink_tool.exp",
+        # "https://github.com/SolidLink95/xlink2_bindings_rs/releases/download/0.1/xlink_tool.lib": "src-tauri/bin/dlls/xlink_tool.lib",
+        "https://github.com/SolidLink95/oead/releases/download/v1.0/oead_byml_pipe.exe": "src-tauri/bin/cpp/oead_byml_pipe.exe",
+        "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/meshcodec.dll": "src-tauri/bin/dlls/meshcodec.dll",
+        "https://github.com/SolidLink95/roead/blob/master/data/botw_hashed_names.txt": "src-tauri/bin/botw_hashed_names.txt",
+        # "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/meshcodec.exp": "src-tauri/bin/dlls/meshcodec.exp",
+        # "https://github.com/SolidLink95/MeshCodec/releases/download/v1.0/MeshCodec.lib": "src-tauri/bin/dlls/MeshCodec.lib",
     }
-    if dlls:
-        print("[+] Downloading DLLs")
-        for url, local_path in dlls.items():
-            local_path = Path(local_path)
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            download_file(url, local_path)
-        print(f"[+] Downloaded {len(dlls.keys())} DLLs")
+    if not files:
+        return
+    print("[+] Downloading files")
+    for url, local_path in files.items():
+        local_path = Path(local_path)
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        download_file(url, local_path)
+    print(f"[+] Downloaded {len(files.keys())} files")
+
 
 def remove_file(file):
     x = Path(file)
-    if x.exists() and x.is_file():
-        file_str = str(x)
-        try:
-            subprocess.run(["cmd", "/c", "del", file_str], check=True)
-            print(f"[+] Removed: {file_str}")
-        except subprocess.CalledProcessError:
-            print(f"[-] Failed to remove: {file_str}")
+    if not x.is_file(): return
+    file_str = str(x)
+    try:
+        subprocess.run(["cmd", "/c", "del", file_str], check=True)
+        print(f"[+] Removed: {file_str}")
+    except subprocess.CalledProcessError:
+        print(f"[-] Failed to remove: {file_str}")
+
 
 def rename_directory(source, new_name):
     source_path = Path(source)
@@ -45,21 +57,21 @@ def rename_directory(source, new_name):
 
 def download_file(url, local_path):
     # Create the directory if it doesn't exist
-    Path(local_path).parent.mkdir(parents=True, exist_ok=True)  
-    
+    Path(local_path).parent.mkdir(parents=True, exist_ok=True)
+
     # Send a GET request to the URL
     response = requests.get(url, stream=True)
     # Check if the request was successful
     response.raise_for_status()
-    
+
     # Get the total file size from the response headers
-    total_size = int(response.headers.get('content-length', 0))
+    total_size = int(response.headers.get("content-length", 0))
     local_path = str(local_path)
     # Open a local file for writing in binary mode
-    with open(local_path, 'wb') as f, tqdm(
+    with open(local_path, "wb") as f, tqdm(
         desc=local_path,
         total=total_size,
-        unit='iB',
+        unit="iB",
         unit_scale=True,
         unit_divisor=1024,
     ) as bar:
@@ -68,141 +80,71 @@ def download_file(url, local_path):
             f.write(chunk)
             bar.update(len(chunk))
     return local_path
-    
+
+
 def copy_files(bin_path):
-    files_to_copy = {
-        "src-tauri/misc/baev.py": f"{bin_path}/asb/baev.py",
-        "src-tauri/misc/asb.py": f"{bin_path}/asb/asb.py",
-        "src-tauri/misc/ptcl.py": f"{bin_path}/ptcl/ptcl.py",
-    }
+    files_to_copy = {}
     for file1, file2 in files_to_copy.items():
         shutil.copyfile(file1, file2)
         print(f"[+] Copied {file1} -> {file2}")
+
+def safe_copy(file1, file2, verbose=True):
+    file1, file2 = Path(file1), Path(file2)
+    if not file1.is_file(): return
+    if file2.is_file(): return
+    if verbose: print(f"Copying: {file1.name}")
+    shutil.copyfile(file1, file2)
     
-def remove_files():
-    files_to_remove = [
-            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib/t64-arm.exe",
-            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib/w64-arm.exe",
-            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools/cli-arm64.exe",
-            # "bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools/gui-arm64.exe",
-            "src-tauri/bin/asb/asb_as_json.7z",
-            "src-tauri/bin/winpython/Jupyter Lab.exe",
-            "src-tauri/bin/winpython/Jupyter Notebook.exe",
-            "src-tauri/bin/winpython/Pyzo.exe",
-            "src-tauri/bin/winpython/Qt Assistant.exe",
-            "src-tauri/bin/winpython/Qt Linguist.exe",
-            "src-tauri/bin/winpython/Qt Designer.exe",
-            "src-tauri/bin/winpython/Spyder reset.exe",
-            "src-tauri/bin/winpython/Spyder.exe",
-            "src-tauri/bin/winpython/WinPython Terminal.exe",
-            "src-tauri/bin/winpython/WinPython Powershell Prompt.exe",
-            "src-tauri/bin/winpython/WinPython Interpreter.exe",
-            "src-tauri/bin/winpython/WinPython Control Panel.exe",
-            "src-tauri/bin/winpython/VS Code.exe",
-            "src-tauri/bin/winpython/WinPython Command Prompt.exe",
-            "src-tauri/bin/ainb/ainb_as_json_v1.9.7z"
-            ]
-    files_to_remove = [Path(f) for f in files_to_remove]
-    files_to_remove += list(Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages/pip/_vendor/distlib").glob("*.exe"))
-    files_to_remove += list(Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages/setuptools").glob("*.exe"))
-    
-    for file in files_to_remove:
-        remove_file(file.resolve())
+def safe_copy_dir(dir1, dir2, verbose=True):
+    dir1, dir2 = Path(dir1), Path(dir2)
+    if not dir1.is_dir(): return
+    if dir2.is_dir() and next(dir2.glob("*"), None) is not None: return
+    if verbose: print(f"Copying folder: {dir1.name}")
+    shutil.copytree(dir1, dir2)
+
+def npm_install():
+    p = subprocess.run(["cmd", "/c", "npm", "install"], check=True)
+    return p
 
 def repo_init():
-    cwd = os.getcwd()
-    cwd_path = Path(cwd)
-    bin_path = "src-tauri/bin"
-    bin_path_p = Path(bin_path)
-    if bin_path_p.exists() and bin_path_p.is_dir():
+    cwd_path = Path(__file__).parent
+    cwd = str(cwd_path)
+    misc_dir = cwd_path / "src-tauri/misc"
+    bin_path = cwd_path / "src-tauri/bin"
+    dll_dir = bin_path / "dlls"
+    if bin_path.is_dir():
         shutil.rmtree(bin_path)
-    bin_path_p.mkdir(parents=True, exist_ok=True)
-    #dotnet
-    build_dotnet(cwd_path)
-    if not Path(f"{bin_path}/asb/asb.py").exists() or not Path(f"{bin_path}/ainb/ainb/ainb.py").exists():
-        p = subprocess.run(["git", "submodule", "init"])
-        p = subprocess.run(["git", "submodule", "update", "--init", "--recursive"])
-        if p.returncode != 0:
-            raise Exception("[-] Failed to update git submodule")
-    copy_files(bin_path)
-    tmp_path = Path("tmp")
-    winpython_installer_exe = tmp_path / "winpython.exe"
-    if not winpython_installer_exe.exists():
-        print("[+] Downloading winpython")
-        url = "https://github.com/winpython/winpython/releases/download/7.1.20240203final/Winpython64-3.11.8.0dot.exe"
-        if tmp_path.exists():
-            shutil.rmtree(str(tmp_path))
-        tmp_path.mkdir(parents=True, exist_ok=True)
-        winpython_installer_exe = str(winpython_installer_exe)
-        download_file(url, winpython_installer_exe)
-        
-    #winpython_dir = Path(os.path.join(cwd, bin_path, "winpython"))
-    winpython_dir = cwd_path / bin_path
-    python_exe = next((e for e in winpython_dir.rglob("*.exe") if e.name=="python.exe"), None) if winpython_dir.exists() else None
-    if python_exe is None:
-        print("[+] Installing winpython")
-        #p = subprocess.run([winpython_installer_exe, "/silent", f"/dir={winpython_dir}"])
-        p = subprocess.run([winpython_installer_exe, f"-o{str(winpython_dir)}", f"-y"])
-        if p.returncode != 0:
-            raise Exception("[-] Failed to install winpython")
-    
-    winpython_dir = rename_directory(winpython_dir / "WPy64-31180", str(winpython_dir / "winpython"))
-    
-    python_exe = next((e for e in winpython_dir.rglob("*.exe") if e.name=="python.exe"), None)
-    if python_exe is None:
-        sys.exit("[-] Unable to find python.exe in winpython directory")
-    python_exe_str = python_exe.as_posix()
-    requirements_txt = "src-tauri/pip.txt"
-    if not Path(requirements_txt).exists():
-        sys.exit(f"[-] Unable to find pip.txt: {requirements_txt}")
-    if not python_exe.exists():
-        sys.exit(f"[-] Unable to find python.exe: {python_exe}")
-    
-    print("[+] Intalling winpython dependencies") # python -m pip install --upgrade pip
+    bin_path.mkdir(parents=True, exist_ok=True)
+    (cwd_path / "tmp").mkdir(parents=True, exist_ok=True)
 
-    p = subprocess.run([python_exe_str, "-m", "pip", "install", "--upgrade", "pip"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True) #
-    p = subprocess.run([python_exe_str, "-m", "pip", "install", "-r", requirements_txt], stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
-    if p.returncode != 0:
-        raise Exception("[-] Failed to install winpython dependencies")
+    print(f"[+] Installing npm dependencies")
+    npm_install()
+    print(f"[+] npm dependencies installed")
     print(f"[+] Copying compressed json files")
-    
-    site_packages = Path("src-tauri/bin/winpython/python-3.11.8.amd64/Lib/site-packages")
-    
-    #Copy zlib compressed json files
-    for file in (cwd_path / "src-tauri/misc").glob("*.bin"):
-        destfile = cwd_path / "src-tauri/bin" / file.name
-        if not destfile.exists():
-            print(f"Copying: {file.name}")
-            shutil.copyfile(file, destfile)
-    print(f"[+] Removing unused exe files")
-    
-    #Remove junk files
-    remove_files()
-    remove_file(winpython_installer_exe)
-    if tmp_path.exists():
-        shutil.rmtree(str(tmp_path))
-    
-    #Copy directories
-    dirs_to_copy = {
-        # "src-tauri/bin/ainb/ainb": site_packages / "ainb",
-        # "src-tauri/bin/asb": site_packages / "asb",
-        # "src-tauri/bin/ptcl": site_packages / "ptcl",
-    }
-    for src_dir, dest_dir in dirs_to_copy.items():
-        src_dir_path = Path(src_dir)
-        dest_dir_path = Path(dest_dir)
-        if not dest_dir_path.exists():
-            shutil.copytree(src_dir_path, dest_dir_path)
-            print(f"[+] Copied {src_dir} -> {dest_dir}")
-        else:
-            print(f"[+] Directory already exists: {dest_dir}")
-    
-    #Download dlls
-    download_dlls()
-    
-    print("\n[+] Totkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file")
+
+    # Copy zlib compressed json files
+    dll_dir.mkdir(parents=True, exist_ok=True)
+    for file in misc_dir.glob("*.dll"):
+        safe_copy(file, dll_dir / file.name)
         
+    files = list(misc_dir.glob("*.bin"))
+    files += list(misc_dir.glob("*.json"))
+    files += list(misc_dir.glob("*.txt"))
+    for file in files:
+        safe_copy(file, cwd_path / "src-tauri/bin" / file.name)
+
+    # Copy directories
+    dirs_to_copy = {}
+    for src_dir, dest_dir in dirs_to_copy.items():
+        safe_copy_dir(src_dir, dest_dir)
+
+    # Download dlls
+    download_files()
+
+    print(
+        "\n[+] Totkbits initialized successfully. In order to build the project remember to install all other dependencies listed in README file"
+    )
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     repo_init()

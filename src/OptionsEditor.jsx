@@ -1,154 +1,143 @@
-import { invoke } from "@tauri-apps/api/tauri";
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
+import * as monaco from "monaco-editor";
+import { invoke } from './DocumentState';
 import { useEditorContext } from "./StateManager";
+
+const fields = [
+    { key: "romfs", label: "TOTK RomFS path", type: "path" },
+    { key: "Stop asking for romfs path", label: "Stop asking for a RomFS path", type: "boolean" },
+    { key: "BOTW WIIU path (optional)", label: "BOTW Wii U path", type: "path" },
+    { key: "AOC path (optional)", label: "Age of Calamity path", type: "path" },
+    { key: "UI scale", label: "Entire UI scale", type: "number", min: 0.2, max: 3.0, step: 0.1 },
+    { key: "font size", label: "Editor font size", type: "number", min: 8, max: 72 },
+    { key: "Context menu font size", label: "Context-menu font size", type: "number", min: 8, max: 40 },
+    { key: "Byml inline container max count", label: "BYML inline item limit", type: "number", min: 1, max: 10 },
+    { key: "Text editor theme", label: "Editor theme", type: "select", options: ["vs", "vs-dark", "hc-black", "hc-light"] },
+    { key: "Lower float precision", label: "Lower float precision", type: "boolean" },
+    { key: "Text editor minimap", label: "Show editor minimap", type: "boolean" },
+    { key: "Prompt on close all", label: "Prompt before closing all", type: "boolean" },
+    { key: "Rotation in degrees", label: "Display rotations in degrees", type: "boolean" },
+    { key: "ask for compression", label: "Ask for compression", type: "boolean" },
+    { key: "rstb", label: "RSTB view", type: "select", options: ["editor", "json"] },
+    { key: "xlink_format", label: "XLink format", type: "select", options: ["legacy", "modern"] },
+];
 
 function OptionsEditor() {
     const {
-        settings,
-        setSettings,
-        statusText,
-        setStatusText,
-        setIsOptionsOpen,
-        setConfig,
-        setConfigLoading,
-        isOptionsOpen,
-        config,
-        configLoading,
-        setIsModalOpen,
-        isModalOpen,
+        settings, setSettings, setStatusText, setIsOptionsOpen, setConfig,
+        setConfigLoading, isOptionsOpen, config, configLoading, setIsModalOpen,
+        editorRef, rightEditorRef,
     } = useEditorContext();
 
-    const updateRomfsPath = async () => {
-        console.log(config);
-        const path = await invoke("open_dir_dialog");
-        if (path === "" || path === null || path === undefined) {
-            return;
-        }
-        setConfig((prev) => ({ ...prev, ["romfs"]: path }));
-    }
-
-    const onClose = () => {
-        setIsOptionsOpen(false);
-        setIsModalOpen(!isModalOpen);
-        setStatusText("Options closed");
-    };
-
-    const isOpen = isOptionsOpen;
-
     useEffect(() => {
-        if (isOpen) {
-            fetchConfig();
-        }
-    }, [isOpen]);
+        if (!isOptionsOpen) return;
+        setConfigLoading(true);
+        invoke("get_toml_config")
+            .then((configData) => {
+                setConfig(configData);
+                setStatusText("Settings loaded");
+            })
+            .catch((error) => {
+                console.error("Error fetching config:", error);
+                setStatusText(`Error: unable to load settings: ${error}`);
+            })
+            .finally(() => setConfigLoading(false));
+    }, [isOptionsOpen, setConfig, setConfigLoading, setStatusText]);
 
-    const fetchConfig = async () => {
-        try {
-            const configData = await invoke("get_toml_config");
-            setConfig(configData);
-            setConfigLoading(false);
-            setStatusText("Options loaded");
-        } catch (error) {
-            console.error("Error fetching config:", error);
-        }
+    const close = () => {
+        setIsOptionsOpen(false);
+        setIsModalOpen(false);
+        setStatusText("Settings closed");
     };
 
-    const handleChange = (key, value) => {
-        setConfig((prev) => ({ ...prev, [key]: value }));
+    const chooseDirectory = async (key) => {
+        const path = await invoke("open_dir_dialog");
+        if (path) setConfig((current) => ({ ...current, [key]: path }));
     };
 
-    const handleSave = async () => {
-        let is_zstd_working = false;
+    const change = (field, rawValue) => {
+        const value = field.type === "number" ? Number(rawValue) : rawValue;
+        setConfig((current) => ({ ...current, [field.key]: value }));
+    };
+
+    const save = async () => {
         try {
-            console.log("Saving config:", config);
-            const content = await invoke("update_toml_config", { newConfig: config });
-            onClose();
-            if (content) {
-                setStatusText(content.status_text);
-                if (content.status_text.startsWith("ZSTD available")) {
-                    is_zstd_working = true;
-                }
-            }
+            const uiScale = Math.min(3, Math.max(0.2, Number(config["UI scale"]) || 1));
+            const normalizedConfig = { ...config, "UI scale": uiScale };
+            const content = await invoke("update_toml_config", { newConfig: normalizedConfig });
+            setConfig(normalizedConfig);
+            setSettings((current) => ({
+                ...current,
+                uiScale,
+                fontSize: config["font size"],
+                contextMenuFontSize: config["Context menu font size"],
+                theme: config["Text editor theme"],
+                minimap: config["Text editor minimap"],
+                zstd_msg: content?.status_text?.includes("dictionaries are available")
+                    ? ""
+                    : content?.status_text || current.zstd_msg,
+            }));
+            monaco.editor.setTheme(config["Text editor theme"]);
+            const editorOptions = {
+                fontSize: config["font size"],
+                minimap: { enabled: config["Text editor minimap"] },
+            };
+            editorRef.current?.updateOptions(editorOptions);
+            rightEditorRef.current?.updateOptions(editorOptions);
+            setIsOptionsOpen(false);
+            setIsModalOpen(false);
+            window.dispatchEvent(new CustomEvent('totkbits:aoc-config-changed'));
+            setStatusText(content?.status_text || "Settings saved");
         } catch (error) {
             console.error("Error saving config:", error);
+            setStatusText(`Error: unable to save settings: ${error}`);
         }
-        if (is_zstd_working || statusText.startsWith("ZSTD available")) {
-            setSettings(prev => ({ ...prev, zstd_msg: "" }));
-        }
-        console.log("Settings ", settings);
-        console.log("zstd_msg ", settings.zstd_msg);
-        console.log("statusText ", statusText);
     };
 
-    if (!isOpen) return null;
-
-    // Define dropdown options for specific settings
-    const dropdownOptions = {
-        "Text editor theme": ["light", "dark", "vs-dark"],
-        // "font size": [12, 14, 16, 18, 20],
-        "rotation in degrees": [0, 90, 180, 270],
-        "Byml inline container max count": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    };
+    if (!isOptionsOpen) return null;
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-content">
-                <h2>Options</h2>
-                <div className="options-grid">
-                    <div></div> <div
-                        style={{ textAlign: "right" }}><button
-                            className="modal-footer-button"
-                            onClick={updateRomfsPath}
-                            title="Select romfs path"
-                        >
-                            Select romfs path
-                        </button></div>
-                    {Object.entries(config).map(([key, value]) => (
-                        <React.Fragment key={key}>
-                            {/* Left Column: Key */}
-                            <div className="config-label">
-                                <label>{key}</label>
-                            </div>
-
-                            {/* Right Column: Value */}
-                            <div className="config-value">
-                                {typeof value === "boolean" ? (
-                                    <input
-                                        type="checkbox"
-                                        checked={value}
-                                        onChange={(e) => handleChange(key, e.target.checked)}
-                                    />
-                                ) : dropdownOptions[key] ? (
-                                    <select
-                                        value={value}
-                                        onChange={(e) => handleChange(key, e.target.value)}
-                                    >
-                                        {dropdownOptions[key].map((option) => (
-                                            <option key={option} value={option}>
-                                                {option}
-                                            </option>
-                                        ))}
-                                    </select>
-                                ) : (
-                                    <input
-                                        type={typeof value === "number" ? "number" : "text"}
-                                        value={value}
-                                        onChange={(e) => handleChange(key, e.target.value)}
-                                    />
-                                )}
-                            </div>
-                        </React.Fragment>
-                    ))}
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div className="modal-content settings-modal">
+                <div className="settings-header">
+                    <h2 id="settings-title">Settings</h2>
+                    <button className="settings-close" onClick={close} aria-label="Close settings" title="Close">×</button>
                 </div>
+                {configLoading ? <div className="settings-loading">Loading settings…</div> : (
+                    <div className="options-grid">
+                        {fields.map((field) => (
+                            <React.Fragment key={field.key}>
+                                <label className="config-label" htmlFor={`setting-${field.key}`}>{field.label}</label>
+                                <div className="config-value settings-control">
+                                    {field.type === "boolean" ? (
+                                        <input id={`setting-${field.key}`} type="checkbox" checked={Boolean(config[field.key])}
+                                            onChange={(event) => change(field, event.target.checked)} />
+                                    ) : field.type === "select" ? (
+                                        <select id={`setting-${field.key}`} value={config[field.key] ?? ""}
+                                            onChange={(event) => change(field, event.target.value)}>
+                                            {field.options.map((option) => <option key={option} value={option}>{option}</option>)}
+                                        </select>
+                                    ) : (
+                                        <>
+                                            <input id={`setting-${field.key}`} type={field.type === "number" ? "number" : "text"}
+                                                min={field.min} max={field.max} required={field.required}
+                                                step={field.step}
+                                                value={config[field.key] ?? ""} onChange={(event) => change(field, event.target.value)} />
+                                            {field.type === "path" && <button type="button" onClick={() => chooseDirectory(field.key)}>Browse…</button>}
+                                        </>
+                                    )}
+                                </div>
+                            </React.Fragment>
+                        ))}
+                    </div>
+                )}
                 <div className="options-modal-footer">
-                    <button onClick={handleSave}>Save</button>
-                    <button onClick={onClose}>Cancel</button>
+                    <button onClick={save} disabled={configLoading}>Save</button>
+                    <button onClick={close}>Close</button>
                 </div>
             </div>
         </div>
-
-
     );
-
 }
 
 export default OptionsEditor;

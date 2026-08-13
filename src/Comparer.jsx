@@ -1,8 +1,8 @@
-import { invoke } from '@tauri-apps/api/tauri';
+import { discardActiveComparisonDocument, invoke } from './DocumentState';
 import React, { useEffect, useRef, useState } from 'react';
 import { useEditorContext } from './StateManager';
 
-import { DiffEditor, useMonaco } from '@monaco-editor/react';
+import { DiffEditor } from '@monaco-editor/react';
 
 const bigFileSize = 1 * 1024 * 1024;
 const MAX_COMPARE_SIZE = 9999 * 1024 * 1024;
@@ -27,7 +27,7 @@ const handleCompare = async (event) => {
   event.stopPropagation(); // Prevent click event from reaching parent
   closeMenu();
   try {
-    const content = await invoke('extract_folder_from_opened_sarc', {source_folder: ""});
+    const content = await invoke('extract_folder_from_opened_sarc', { sourceFolder: "" });
     console.log(content);
     if (content !== null && content.status_text !== undefined) {
       setStatusText(content.status_text);
@@ -61,6 +61,7 @@ export async function compareInternalFileWithOVanila(internalPath, setStatusText
     const text1 = data.file1.text ?? '';
     const text2 = data.file2.text ?? '';
     if (text1 === text2) {
+      await discardActiveComparisonDocument();
       setStatusText('Files are identical! Skipping comparison.');
       return;
     }
@@ -91,7 +92,7 @@ export async function compareInternalFileWithOVanila(internalPath, setStatusText
   }
 
 }
-export async function compareInternalFileWithOVanilaMonaco(setStatusText, setActiveTab, setCompareData, editorRef) {
+export async function compareInternalFileWithOVanilaMonaco(setStatusText, setActiveTab, setCompareData, editorRef, setLabelTextDisplay) {
   try {
     const isFromSarc = false;
     const isFromMonaco = !isFromSarc;
@@ -120,6 +121,7 @@ export async function compareInternalFileWithOVanilaMonaco(setStatusText, setAct
     const data = content.compare_data;
     const text2 = data.file2.text ?? '';
     if (text1 === text2) {
+      await discardActiveComparisonDocument();
       setStatusText('Files are identical! Skipping comparison.');
       return;
     }
@@ -155,6 +157,7 @@ export async function compareInternalFileWithOVanilaMonaco(setStatusText, setAct
 export async function compareFilesByDecision(setStatusText, setActiveTab, setCompareData, editorRef, isFromDisk, setLabelTextDisplay) {
   try {
     const isFromMonaco = !isFromDisk;
+    const editorText = editorRef.current?.getValue() ?? '';
     // const decision = compareData.decision ?? 'FilesFromDisk';
     // const path = compareData.filepath1 ?  '' : intOrRegularPath;
     const content = await invoke('compare_files', {
@@ -173,6 +176,13 @@ export async function compareFilesByDecision(setStatusText, setActiveTab, setCom
     }
     const data = content.compare_data;
     const text1 = data.file1.text ?? '';
+    const resolvedText1 = text1.length > 0 ? text1 : editorText;
+    const text2 = data.file2.text ?? '';
+    if (resolvedText1 === text2) {
+      await discardActiveComparisonDocument();
+      setStatusText('Files are identical! Skipping comparison.');
+      return;
+    }
 
     const full_path1 = data.file1.path.full_path.replace(/\\/g, '/');
     const full_path2 = data.file2.path.full_path.replace(/\\/g, '/');
@@ -183,15 +193,13 @@ export async function compareFilesByDecision(setStatusText, setActiveTab, setCom
     const lang = content.lang ?? 'yaml';
     setCompareData((prevData) => ({
       ...prevData,
-      content2: data.file2.text,
+      content2: text2,
       filepath1: full_path1,
       filepath2: full_path2,
       isInternal: data.file1.is_internal,
       label1: label1,
       label2: label2,
-      content1: data.file1.text.length > 0
-        ? data.file1.text
-        : editorRef.current?.getValue(),
+      content1: resolvedText1,
 
       isTiedToMonaco: isFromMonaco,
       lang: lang
@@ -215,55 +223,60 @@ const CompareFiles = () => {
     settings,
   } = useEditorContext();
 
-  const monaco = useMonaco();
   const diffEditorRef = useRef(null);
-  const diffNavigatorRef = useRef(null);
-  const [currentDiffIndex, setCurrentDiffIndex] = useState(0);
+  const diffChangesRef = useRef([]);
+  const currentDiffIndexRef = useRef(-1);
+  const [mountedDiffEditor, setMountedDiffEditor] = useState(null);
   const [totalDiffs, setTotalDiffs] = useState(0);
 
   useEffect(() => {
-    if (monaco && diffEditorRef.current) {
-      const navigator = monaco.editor.createDiffNavigator(diffEditorRef.current, {
-        followsCaret: true,
-        ignoreCharChanges: true,
-      });
-      diffNavigatorRef.current = navigator;
-  
-      const subscription = diffEditorRef.current.onDidUpdateDiff(() => {
-        const ranges = navigator._diffNavigator?.ranges || [];
-        setTotalDiffs(ranges.length);
-        setCurrentDiffIndex(0);
-        diffEditorRef.current.getModifiedEditor().revealLine(1);
-        diffEditorRef.current.getOriginalEditor().revealLine(1);
-      });
-  
-      return () => subscription.dispose();
+    if (mountedDiffEditor) {
+      const updateDiffCount = () => {
+        const changes = mountedDiffEditor.getLineChanges() ?? [];
+        diffChangesRef.current = changes;
+        currentDiffIndexRef.current = -1;
+        setTotalDiffs(changes.length);
+      };
+      updateDiffCount();
+      const subscription = mountedDiffEditor.onDidUpdateDiff(updateDiffCount);
+
+      return () => {
+        subscription.dispose();
+        diffChangesRef.current = [];
+        currentDiffIndexRef.current = -1;
+      };
     }
-  }, [monaco]);
+  }, [mountedDiffEditor]);
+
+  const revealDifference = (direction) => {
+    const editor = diffEditorRef.current;
+    if (!editor) return;
+    const changes = editor.getLineChanges() ?? diffChangesRef.current;
+    if (changes.length === 0) return;
+    diffChangesRef.current = changes;
+    const current = currentDiffIndexRef.current;
+    const index = direction > 0
+      ? (current + 1) % changes.length
+      : (current <= 0 ? changes.length - 1 : current - 1);
+    currentDiffIndexRef.current = index;
+    const change = changes[index];
+    const originalLine = change.originalStartLineNumber || change.originalEndLineNumber || 1;
+    const modifiedLine = change.modifiedStartLineNumber || change.modifiedEndLineNumber || 1;
+    const originalEditor = editor.getOriginalEditor();
+    const modifiedEditor = editor.getModifiedEditor();
+    originalEditor.revealLineInCenter(originalLine);
+    modifiedEditor.revealLineInCenter(modifiedLine);
+    originalEditor.setPosition({ lineNumber: originalLine, column: 1 });
+    modifiedEditor.setPosition({ lineNumber: modifiedLine, column: 1 });
+    modifiedEditor.focus();
+  };
 
   const handleNextDiff = () => {
-    console.log(currentDiffIndex, totalDiffs);
-    if (diffNavigatorRef.current) {
-      if (totalDiffs === 0 && diffNavigatorRef.current._editor._diffNavigator.ranges.length > 0) {
-        setTotalDiffs(diffNavigatorRef.current._editor._diffNavigator.ranges.length);
-      }
-      diffNavigatorRef.current.next();
-      if (currentDiffIndex+1 === totalDiffs) {
-        setCurrentDiffIndex(0);
-      } else {
-        setCurrentDiffIndex((prev) => Math.min(prev + 1, totalDiffs-1));//works terribly
-      }
-    }
+    revealDifference(1);
   };
 
   const handlePrevDiff = () => {
-    if (diffNavigatorRef.current) {
-      if (totalDiffs === 0 && diffNavigatorRef.current._editor._diffNavigator.ranges.length > 0) {
-        setTotalDiffs(diffNavigatorRef.current._editor._diffNavigator.ranges.length);
-      }
-      diffNavigatorRef.current.previous();
-      setCurrentDiffIndex((prev) => Math.max(prev - 1, 0));
-    }
+    revealDifference(-1);
   };
   const fontSize = 15;
   const padding = 4;
@@ -290,8 +303,8 @@ const CompareFiles = () => {
         fontWeight: 'bold',
         fontSize: fontSize,
       }}>
-        <div style={{marginLeft: margin}}>{compareData.label1.replace(/\/\//g, '/') || 'Modified File'}</div>
-        <div style={{marginRight: margin}}>{compareData.label2.replace(/\/\//g, '/') || 'Original File'}</div>
+        <div style={{marginLeft: margin}}>{(compareData.label1 ?? '').replace(/\/\//g, '/') || 'Modified File'}</div>
+        <div style={{marginRight: margin}}>{(compareData.label2 ?? '').replace(/\/\//g, '/') || 'Original File'}</div>
       </div>
 
       <div style={{ height: 'calc(100vh - 177px)', width: '100%', flexDirection: 'column' }}>
@@ -308,6 +321,11 @@ const CompareFiles = () => {
           }}
           onMount={(editor, monacoInstance) => {
             diffEditorRef.current = editor; // store the real DiffEditor instance
+            setMountedDiffEditor(editor);
+          }}
+          onUnmount={() => {
+            diffEditorRef.current = null;
+            setMountedDiffEditor(null);
           }}
         />
       </div>
@@ -400,9 +418,9 @@ const Comparer = ({ setStatusText, activeTab }) => {
     >
       <div  style={{ display: activeTab === 'COMPARER' ? "block" : "none" }}>
       {/* <DiffEditor
-        original={compareData.content1}
-        modified={compareData.content2}
-        language={compareData.lang} // Adjust language as needed
+        original={compareData.content1 ?? ''}
+        modified={compareData.content2 ?? ''}
+        language={compareData.lang ?? 'yaml'} // Adjust language as needed
         theme={settings.theme} // Choose between "vs-light", "vs-dark", etc.
         options={{
           readOnly: true, // Makes the editor read-only

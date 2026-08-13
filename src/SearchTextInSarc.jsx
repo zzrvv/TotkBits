@@ -1,13 +1,13 @@
-import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import { invoke } from './DocumentState';
 import React, { useState } from 'react';
 import {searchTextInSarcClick} from './ButtonClicks';
 
 function SearchTextInSarcPrompt({  setStatusText, setpaths,
     searchInSarcQuery, setSearchInSarcQuery,
-    isSearchInSarcOpened, setIsSearchInSarcOpened, }) {
+    isSearchInSarcOpened, setIsSearchInSarcOpened, documentSnapshots, }) {
 
     const handleSearchClick = () => {
-        searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened);
+        searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened, documentSnapshots);
     };
 
     const cancelClick = () => {

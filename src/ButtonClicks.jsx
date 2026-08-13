@@ -1,6 +1,8 @@
-import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import { getDocumentsSnapshot, invoke } from './DocumentState';
 import { set } from 'lodash';
 import { act } from 'react';
+import { flushSync } from 'react-dom';
+import * as monaco from 'monaco-editor';
 
 
 export async function addEmptyByml(fullPath,setStatusText, setpaths) {
@@ -85,7 +87,19 @@ export async function extractRootFolderClick(setStatusText) {
   return extractFolderClick("", setStatusText);
 }
 
-export async function searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened) {
+const persistArchiveSearch = (paths, query, documentSnapshots) => {
+  const { activeDocumentId } = getDocumentsSnapshot();
+  const snapshot = documentSnapshots?.current?.get(activeDocumentId);
+  if (snapshot) {
+    documentSnapshots.current.set(activeDocumentId, {
+      ...snapshot,
+      paths,
+      searchInSarcQuery: query,
+    });
+  }
+};
+
+export async function searchTextInSarcClick(searchInSarcQuery, setpaths, setStatusText, setSearchInSarcQuery, setIsSearchInSarcOpened, documentSnapshots) {
   try {
     if (searchInSarcQuery === "") {
       setStatusText("Search query is empty!");
@@ -105,13 +119,14 @@ export async function searchTextInSarcClick(searchInSarcQuery, setpaths, setStat
     } else {
       setStatusText(content.status_text);
       setpaths(content.sarc_paths);
+      persistArchiveSearch(content.sarc_paths, searchInSarcQuery, documentSnapshots);
     }
     setIsSearchInSarcOpened(false);
   } catch (error) {
     console.error("Error invoking 'add_click':", error);
   }
 }
-export async function clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery) {
+export async function clearSearchInSarcClick(setpaths, setStatusText, setSearchInSarcQuery, documentSnapshots) {
   try {
     const content = await invoke('clear_search_in_sarc');
     if (content !== null) {
@@ -119,6 +134,7 @@ export async function clearSearchInSarcClick(setpaths, setStatusText, setSearchI
     }
     setSearchInSarcQuery("");
     setpaths(content.sarc_paths);
+    persistArchiveSearch(content.sarc_paths, '', documentSnapshots);
   }
   catch (error) {
     console.error('Failed to clear search in sarc file:', error);
@@ -126,7 +142,7 @@ export async function clearSearchInSarcClick(setpaths, setStatusText, setSearchI
 }
 
 
-export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent) {
+export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
     if (fullPath === null || fullPath === undefined || fullPath === "") {
       setStatusText("Select some file first!");
@@ -142,12 +158,22 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
     }
     //  setStatusText(content.status_text);
     console.log('content.file_label', content.file_label);
-    if (content.tab === 'YAML') {
+    if (content.tab === 'SARC') {
+      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label.replace(/\/\//g, '/') }));
+      setpaths(content.sarc_paths);
+      setStatusText(content.status_text);
+      setActiveTab(content.tab);
+    } else if (content.tab === 'YAML') {
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
       updateEditorContent(content.text, content.lang);
       setStatusText(`Opened file: ${fullPath}`);
       setActiveTab(content.tab);
-      
+    } else if (content.tab === '3D') {
+      setStatusText(content.status_text || `Opened file: ${fullPath}`);
+      setActiveTab(content.tab);
+    } else if (content.tab === 'IMAGE') {
+      setStatusText(content.status_text || `Opened file: ${fullPath}`);
+      setActiveTab(content.tab);
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
       setStatusText("Unsupported file type");
@@ -162,42 +188,119 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
 
 
 }
-export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
+
+export async function openBphclLeaf(fullPath, parentDocumentId, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent, setReadOnly) {
   try {
-    setStatusText("Opening file...");
-    const content = await invoke('open_file_from_path', { path: argv1 });
-    if (content === null) {
-      console.log("No content returned from process_argv");
-      setStatusText("Error: unable to open file: " + argv1);
+    const content = await invoke('open_bphcl_leaf', { path: fullPath, parentDocumentId });
+    if (!content) {
+      setStatusText(`Unable to preview BPHCL node: ${fullPath}`);
       return;
     }
+    setLabelTextDisplay(prev => ({ ...prev, yaml: content.file_label }));
+    updateEditorContent(content.text, content.lang || 'yaml');
+    setReadOnly(content.read_only ?? true);
+    setActiveTab('YAML');
     setStatusText(content.status_text);
-    if (content.tab === 'SARC') {
-      setActiveTab(content.tab);
-      setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label.replace(/\/\//g, '/') }));
-      setpaths(content.sarc_paths);
-    } else if (content.tab === 'YAML') {
-      setActiveTab(content.tab);
-      updateEditorContent(content.text, content.lang);
-      setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
-    } else if (content.tab === 'RSTB') {
-      setActiveTab(content.tab);
-      setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label.replace(/\/\//g, '/') }));
+  } catch (error) {
+    setStatusText(`Unable to preview BPHCL node: ${String(error)}`);
+  }
+}
 
-    } else if (content.tab === 'ERROR') {
-      console.log("Error opening file, no tab set");
+export async function removeBphclNodeClick(fullPath, setStatusText, setpaths) {
+  try {
+    const content = await invoke('remove_bphcl_node', { path: fullPath });
+    setpaths(content.sarcPaths);
+    setStatusText(content.statusText);
+    return true;
+  } catch (error) {
+    setStatusText(`ERROR: ${String(error)}`);
+    return false;
+  }
+}
+
+export async function expandNestedSarc(outerPath, setStatusText, setpaths, setPathsFilters) {
+  const content = await invoke('expand_nested_sarc', { outerPath });
+  if (!content) return false;
+  setStatusText(content.status_text);
+  if (content.tab !== 'ERROR') {
+    setPathsFilters?.({ showAll: true, showAdded: false, showModded: false });
+    setpaths(content.sarc_paths);
+    return true;
+  }
+  return false;
+}
+
+export async function editNestedSarcFile(outerPath, innerPath, setStatusText, setActiveTab, setLabelTextDisplay, updateEditorContent) {
+  const content = await invoke('edit_nested_sarc_file', { outerPath, innerPath });
+  if (!content) return;
+  setStatusText(content.status_text);
+  if (content.tab === 'YAML') {
+    updateEditorContent(content.text, content.lang);
+    setLabelTextDisplay((previous) => ({ ...previous, yaml: content.file_label }));
+    setActiveTab('YAML');
+  } else if (content.tab === 'SARC') {
+    setActiveTab('SARC');
+  } else if (content.tab === '3D' || content.tab === 'IMAGE') {
+    setActiveTab(content.tab);
+  }
+}
+
+export async function extractNestedSarcFile(outerPath, innerPath, setStatusText) {
+  const content = await invoke('extract_nested_sarc_file', { outerPath, innerPath });
+  if (content) setStatusText(content.status_text);
+}
+export async function mutateNestedArchive(chain, path, action, setStatusText, setpaths, options = {}) {
+  const content = await invoke('mutate_nested_archive', { chain, path, action, newPath: options.newPath ?? null, sourcePath: options.sourcePath ?? null });
+  if (content) { setStatusText(content.status_text); if (content.tab !== 'ERROR') setpaths(content.sarc_paths); }
+  return content;
+}
+export async function OpenFileFromPath(argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent, silent = false) {
+  try {
+    setStatusText("Opening file...");
+    const content = await invoke('open_file_from_path', { path: argv1, suppressErrorDialog: silent });
+    if (content === null) {
+      console.log("No content returned from process_argv");
+      if (!silent) setStatusText("Error: unable to open file: " + argv1);
+      return false;
     }
+    flushSync(() => {
+      setStatusText(content.status_text);
+      if (content.tab === 'SARC') {
+        setActiveTab(content.tab);
+        setLabelTextDisplay(prevState => ({ ...prevState, sarc: content.file_label.replace(/\/\//g, '/') }));
+        setpaths(content.sarc_paths);
+      } else if (content.tab === 'YAML') {
+        setActiveTab(content.tab);
+        updateEditorContent(content.text, content.lang, content.read_only ?? false);
+        setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
+      } else if (content.tab === 'RSTB') {
+        setActiveTab(content.tab);
+        setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label.replace(/\/\//g, '/') }));
+      } else if (content.tab === '3D') {
+        setActiveTab(content.tab);
+      } else if (content.tab === 'IMAGE') {
+        setActiveTab(content.tab);
+      } else if (content.tab === 'ERROR') {
+        console.log("Error opening file, no tab set");
+      }
+    });
 
   } catch (error) {
     console.error('Failed to process argv[1]:', error);
-    setStatusText("Error: failed to open file: " + argv1);
+      if (!silent) setStatusText("Error: failed to open file: " + argv1);
+      return false;
   }
+  return true;
 }
 export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
   try {
     // setActiveTab("LOADING");
     setStatusText("Opening file...");
     const content = await invoke('open_file_struct');
+    if (!content) {
+      setStatusText("Ready");
+      return;
+    }
     setStatusText(content.status_text);
     if (content.tab === 'SARC') {
       setActiveTab(content.tab);
@@ -206,13 +309,16 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
       updateEditorContent("", content.lang);
     } else if (content.tab === 'YAML') {
       setActiveTab(content.tab);
-      updateEditorContent(content.text, content.lang);
+      updateEditorContent(content.text, content.lang, content.read_only ?? false);
       console.log(content.lang);
       setLabelTextDisplay(prevState => ({ ...prevState, yaml: content.file_label.replace(/\/\//g, '/') }));
     } else if (content.tab === 'RSTB') {
       setActiveTab(content.tab);
       setLabelTextDisplay(prevState => ({ ...prevState, rstb: content.file_label.replace(/\/\//g, '/') }));
-
+    } else if (content.tab === '3D') {
+      setActiveTab(content.tab);
+    } else if (content.tab === 'IMAGE') {
+      setActiveTab(content.tab);
     } else if (content.tab === 'ERROR') {
       // setActiveTab(activeTabBak);
       console.log("Error opening file, no tab set");
@@ -224,6 +330,22 @@ export async function fetchAndSetEditorContent(setStatusText, setActiveTab, setL
     setStatusText("");
   }
   // setActiveTab(activeTabBak);
+}
+
+export async function openFolderContent(setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent) {
+  try {
+    setStatusText('Opening folder...');
+    const content = await invoke('open_folder_struct');
+    if (!content) { setStatusText('Ready'); return; }
+    setStatusText(content.status_text);
+    setActiveTab('SARC');
+    setLabelTextDisplay((previous) => ({ ...previous, sarc: content.file_label.replace(/\/\//g, '/') }));
+    setpaths(content.sarc_paths);
+    updateEditorContent('', content.lang);
+  } catch (error) {
+    console.error('Failed to open folder:', error);
+    setStatusText(`Error: failed to open folder: ${error}`);
+  }
 }
 
 export async function closeAllFilesClick(setCompareData, setStatusText, setpaths, updateEditorContent, setLabelTextDisplay) {
@@ -350,8 +472,42 @@ export async function addFilesFromDirRecursively(internalPath, setStatusText, se
 
 }
 
-export async function saveFileClick(setStatusText, activeTab, setpaths, editorRef) {
+const refreshSavedArchivePaths = (sarcPaths, setpaths, documentSnapshots) => {
+  if (!sarcPaths || sarcPaths.paths.length === 0) return;
+  setpaths(sarcPaths);
+  const { documents, activeDocumentId } = getDocumentsSnapshot();
+  if (!activeDocumentId || !documentSnapshots?.current) return;
+  const activeSnapshot = documentSnapshots.current.get(activeDocumentId);
+  if (activeSnapshot) {
+    documentSnapshots.current.set(activeDocumentId, { ...activeSnapshot, paths: sarcPaths });
+  }
+  const activeDocument = documents.find((document) => document.id === activeDocumentId);
+  const parentId = activeDocument?.parentDocumentId;
+  if (parentId && activeDocument?.fileMetadata?.includes('[BPHCL] [AAMP]')) {
+    const parentSnapshot = documentSnapshots.current.get(parentId);
+    if (parentSnapshot) {
+      documentSnapshots.current.set(parentId, { ...parentSnapshot, paths: sarcPaths });
+    }
+  } else if (parentId && sarcPaths) {
+    const parentSnapshot = documentSnapshots.current.get(parentId);
+    if (parentSnapshot) {
+      documentSnapshots.current.set(parentId, {
+        ...parentSnapshot,
+        paths: sarcPaths,
+      });
+    }
+  }
+};
+
+const activeFileName = () => {
+  const { documents, activeDocumentId } = getDocumentsSnapshot();
+  return documents.find((document) => document.id === activeDocumentId)?.title || 'file';
+};
+
+export async function saveFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots) {
+  setSavingFile?.(activeFileName());
   try {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     // const editorText = editorRef.current ? editorRef.current.getValue() : "";
     setStatusText("Saving...");
     if (!editorRef.current) {
@@ -368,10 +524,11 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
     // console.log(content);
     if (content === null) {
       console.log("No content returned from save_file_struct");
+      setStatusText("Ready");
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
-      setpaths(content.sarc_paths);
+      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots);
       console.log(content.sarc_paths.added_paths);
       console.log(content.sarc_paths.modded_paths);
     }
@@ -383,11 +540,15 @@ export async function saveFileClick(setStatusText, activeTab, setpaths, editorRe
   } catch (error) {
     console.error('Failed save data:', error);
     setStatusText(`Failed to save data`);
+  } finally {
+    setSavingFile?.('');
   }
 }
 
-export async function saveAsFileClick(setStatusText, activeTab, setpaths, editorRef) {
+export async function saveAsFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots) {
+  setSavingFile?.(activeFileName());
   try {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     // const editorText = editorRef.current ? editorRef.current.getValue() : "";
     if (!editorRef.current) {
       console.log("Editor reference not found");
@@ -399,10 +560,11 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
     const content = await invoke('save_as_click', { saveData: save_data });
     if (content === null) {
       console.log("No content returned from save_as_click");
+      setStatusText("Ready");
       return;
     }
     if (content.sarc_paths.paths.length > 0) {
-      setpaths(content.sarc_paths);
+      refreshSavedArchivePaths(content.sarc_paths, setpaths, documentSnapshots);
       console.log(content.sarc_paths.added_paths);
       console.log(content.sarc_paths.modded_paths);
     }
@@ -413,21 +575,9 @@ export async function saveAsFileClick(setStatusText, activeTab, setpaths, editor
     }
   } catch (error) {
     console.error('Failed save as data: ', error);
+  } finally {
+    setSavingFile?.('');
   }
 }
 
 
-export const simulateEscapeKeyPress = () => {
-  // Create a new event
-  const event = new KeyboardEvent('keydown', {
-    key: 'Escape',
-    code: 'Escape',
-    keyCode: 27, // Deprecated, but included for compatibility with older browsers
-    which: 27, // Deprecated, but included for compatibility with older browsers
-    bubbles: true, // Event bubbles up through the DOM
-    cancelable: true, // Event can be canceled
-  });
-
-  // Dispatch the event on the document or a specific element
-  document.dispatchEvent(event);
-};

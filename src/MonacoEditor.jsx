@@ -1,6 +1,7 @@
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from './DocumentState';
 import * as monaco from "monaco-editor";
 import { OpenFileFromPath } from './ButtonClicks';
+import { getActiveDocumentId } from './DocumentState';
 
 
 const InitializeEditor = (props) => {
@@ -20,25 +21,35 @@ const InitializeEditor = (props) => {
 
   console.log("Initializing Monaco editor");
 
+  const initialDocumentId = getActiveDocumentId();
+  const initialModel = monaco.editor.createModel(
+    editorValue,
+    settings.lang,
+    monaco.Uri.parse(`inmemory://totkbits/${initialDocumentId}`),
+  );
   // Create the editor with default options
   editorRef.current = monaco.editor.create(editorContainerRef.current, {
-    value: editorValue,
-    language: settings.lang,
+    model: initialModel,
     theme: settings.theme,
     minimap: { enabled: settings.minimap },
     wordWrap: 'on',
     fontSize: settings.fontSize,
   });
+  if (props.documentModels) {
+    props.documentModels.current.set(initialDocumentId, initialModel);
+  }
 
   invoke('get_startup_data').then((data) => {
     // Use object spread to combine default settings with fetched data
     const updatedSettings = { ...settings, ...data };
-    // setSettings(updatedSettings);  // Update state for future re-renders
-    settings.argv1 = updatedSettings.argv1;  
+    setSettings(updatedSettings);
+    settings.argv1 = updatedSettings.argv1;
+    settings.argv = updatedSettings.argv;
     settings.fontSize = updatedSettings.fontSize;  
     settings.theme = updatedSettings.theme;  
     settings.minimap = updatedSettings.minimap;  
     settings.contextMenuFontSize = updatedSettings.contextMenuFontSize;  
+    settings.uiScale = updatedSettings.uiScale;
     settings.zstd_msg = data.zstd_msg;  
     
 
@@ -53,11 +64,18 @@ const InitializeEditor = (props) => {
       minimap: { enabled: settings.minimap }
     });
 
-    if (settings.argv1) {
-      console.log('Received command-line argument:', settings.argv1);
-      OpenFileFromPath(settings.argv1, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+    const startupPaths = Array.isArray(settings.argv) && settings.argv.length > 0
+      ? settings.argv
+      : settings.argv1 ? [settings.argv1] : [];
+    if (startupPaths.length > 0) {
+      console.log('Received command-line arguments:', startupPaths);
+      void (async () => {
+        for (const path of startupPaths) {
+          await OpenFileFromPath(path, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+        }
+      })();
     } else {
-      console.log('No command-line argument provided.');
+      console.log('No command-line arguments provided.');
     }
   }).catch((error) => {
     console.error('Error fetching startup data:', error);

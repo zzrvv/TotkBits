@@ -1,118 +1,50 @@
+use crate::Settings::Magic;
 use crate::{
     file_format::{
-        Ainb_py::Ainb_py, Asb_py::{Asb_py, ASB_SEPARATOR}, BinTextFile::{is_banc_path, replace_rotate_deg_to_rad, BymlFile, OpenedFile}, Esetb::Esetb, Evfl_cs::Evfl, Msbt::str_endian_to_roead, Pack::{PackComparer, PackFile, SarcPaths}, Rstb::Restbl, TagProduct::TagProduct, Wrapper::PythonWrapper, Xlink::Xlink_rs, SMO::SmoSaveFile::SmoSaveFile
-    }, Comparer::DiffComparer, Settings::Pathlib, TotkApp::InternalFile, Zstd::{is_aamp, is_ainb, is_ainb_path, is_asb_path, is_byml, is_byml_path, is_esetb_path, is_evfl_path, is_gamedatalist, is_msbt_path, is_msyt, is_rstb_path, is_tagproduct_path, is_xlink_path, TotkFileType, TotkZstd}
+        asb::AsbFile,
+        msbt::MsbtFile,
+        Ainb::AinbFile,
+        BfevFile::BfevFile,
+        BinTextFile::{replace_rotate_deg_to_rad, BymlFile, OpenedFile},
+        Esetb::Esetb,
+        GameDataList::GameDataList,
+        Pack::{PackComparer, SarcPaths},
+        Rstb::Restbl,
+        TagProduct::TagProduct,
+        Xlink::Xlink_rs,
+        SMO::SmoSaveFile::SmoSaveFile,
+    },
+    Comparer::DiffComparer,
+    InternalFile::InternalFile,
+    Settings::Pathlib,
+    Zstd::{is_esetb, is_gamedatalist, is_tagproduct, TotkFileType, TotkZstd, ZstdDictionary},
 };
-use msbt_bindings_rs::MsbtCpp::MsbtCpp;
 use rfd::{FileDialog, MessageDialog};
 use roead::{aamp::ParameterIO, byml::Byml};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    fs::{self, File},
-    io::{self, Read, Write},
+    fs::File,
+    io::{self, Write},
     path::Path,
     sync::Arc,
 };
 
-pub fn open_sarc<P: AsRef<Path>>(
-    file_name: P,
-    zstd: Arc<TotkZstd>,
-) -> Option<(PackComparer, SendData)> {
-    let mut data = SendData::default();
-    let path_ref = file_name.as_ref();
-    print!("Is {:?} a sarc? ", &path_ref.display());
-    let pathlib_var = Pathlib::new(path_ref); 
-    if let Ok(sarc) = PackFile::new(path_ref, zstd.clone()) {
-        let e_s = if sarc.endian==roead::Endian::Little {" [LE]"} else {" [BE]"};
-        let yaz0_s = if sarc.is_yaz0 {" [Yaz0] "} else {" "};
-        if let Some(pack) = PackComparer::from_pack(sarc, zstd.clone()) {
-            println!(" yes!");
-            data.get_sarc_paths(&pack);
-            data.status_text = format!("Opened {}", &path_ref.to_string_lossy().replace("\\","/"));
-            data.path = pathlib_var.clone();
-            data.tab = "SARC".to_string();
-            data.file_label = format!("{}{}[SARC]{}", &pathlib_var.name, yaz0_s, e_s);
-            return Some((pack, data));
-        }
-
-    }
-    println!(" no");
-
-    None
-}
-
-pub fn open_msbt<P:AsRef<Path>>(path: P) -> Option<(OpenedFile<'static>, SendData)> {
-    let file_name = path.as_ref().to_string_lossy().to_string().replace("\\", "/");
-    let mut opened_file = OpenedFile::default();
-    let mut data = SendData::default();
-    print!("Is {} a msbt?", &file_name);
-    opened_file.msyt = MsbtCpp::from_binary_file(&file_name).ok();
-    if let Some(m) = &opened_file.msyt {
-        // let m = opened_file.msyt.as_ref().unwrap();
-        println!(" yes!");
-        let endian = str_endian_to_roead(&m.endian.clone().unwrap_or("LE".to_string()));
-        opened_file.path = Pathlib::new(&file_name);
-        opened_file.endian = Some(endian);
-        opened_file.file_type = TotkFileType::Msbt;
-        data.status_text = format!("Opened {}", &file_name);
-        data.path = Pathlib::new(file_name.clone());
-        data.text = m.text.clone();
-        data.get_file_label(opened_file.file_type, Some(endian));
-        return Some((opened_file, data));
-    }
-    println!(" no");
-    None
-}
-
-
-pub fn open_text<P: AsRef<Path>>(path: P) -> Option<(OpenedFile<'static>, SendData)> {
-    let mut opened_file = OpenedFile::default();
-    let mut data = SendData::default();
-    let path_ref = path.as_ref();
-    let pathlib_var = Pathlib::new(path_ref);
-    print!("Is {} regular text file? ", &pathlib_var.full_path);
-    let mut file = fs::File::open(path_ref).ok()?;
-    let mut buffer = Vec::new();
-    if let Ok(x) = file.read_to_end(&mut buffer) {
-        if let Ok(text) = String::from_utf8(buffer) {
-            println!(" yes!");
-            opened_file.path = pathlib_var.clone();
-            opened_file.file_type = TotkFileType::Text;
-            data.status_text = format!("Opened {}", &pathlib_var.full_path);
-            data.path = pathlib_var;
-            data.text = text;
-            data.get_file_label(TotkFileType::Text, None);
-            return Some((opened_file, data));
-        }
-    }
-    println!(" no");
-    None
-}
-
-pub fn open_aamp<P: AsRef<Path>>(path: P) -> Option<(OpenedFile<'static>, SendData)> {
-    let mut opened_file = OpenedFile::default();
-    let mut data = SendData::default();
-    let path_ref = path.as_ref();
-    let pathlib_var = Pathlib::new(path_ref);
-    print!("Is {} an aamp? ", &pathlib_var.full_path);
-    let raw_data = std::fs::read(path_ref).ok()?;
-    if is_aamp(&raw_data) {
-        let pio = ParameterIO::from_binary(&raw_data).ok()?; // Parse AAMP from binary data
-        println!(" yes!");
-        opened_file.path = pathlib_var.clone();
-        opened_file.file_type = TotkFileType::Aamp;
-        data.status_text = format!("Opened {}", &pathlib_var.full_path);
-        data.path = pathlib_var;
-        data.text = pio.to_text();
-        data.get_file_label(TotkFileType::Aamp, None);
-        return Some((opened_file, data));
-    }
-    println!(" no");
-    None
-}
-
 pub fn get_string_from_data<P: AsRef<Path>>(
+    filepath: P,
+    data: Vec<u8>,
+    zstd: Arc<TotkZstd>,
+) -> Option<(InternalFile, String)> {
+    let path = filepath.as_ref().to_string_lossy().into_owned();
+    let yaz0_alignment = Magic::is_yaz0(&data)
+        .then(|| TotkZstd::yaz0_alignment(&data))
+        .unwrap_or_default();
+    let (mut internal_file, text) = get_string_from_decoded_data(&path, data, zstd)?;
+    internal_file.yaz0_alignment = yaz0_alignment;
+    Some((internal_file, text))
+}
+
+fn get_string_from_decoded_data<P: AsRef<Path>>(
     filepath: P,
     data: Vec<u8>,
     zstd: Arc<TotkZstd>,
@@ -122,117 +54,114 @@ pub fn get_string_from_data<P: AsRef<Path>>(
         return None;
     }
     let path = filepath.as_ref().to_string_lossy().into_owned();
-    if is_esetb_path(&filepath) {
-        if let Ok(esetb) = Esetb::from_binary(&data, zstd.clone()) {
+    let (rawdata, compression) = zstd.try_decompress_all_ordered_safe(&data, &path);
+    // .try_decompress_all_ordered(&data, &path)
+    // .unwrap_or((data.clone(), ZstdDictionary::None));
+    println!("[COMPRESSION] {:?} for file {}", compression, &path);
+    let compression = (compression != ZstdDictionary::None).then_some(compression);
+
+    // Archive entries must be dispatched by their full, lower-cased name before
+    // generic magic checks. Several specialized TOTK formats are BYML containers.
+    if is_tagproduct(&path) {
+        if let Some(mut tag) = TagProduct::from_binary(&rawdata, &path, zstd.clone()) {
+            internal_file.endian = Some(roead::Endian::Little);
+            internal_file.path = Pathlib::new(path.clone());
+            internal_file.file_type = TotkFileType::TagProduct;
+            let text = tag.to_text();
+            internal_file.tag = Some(tag);
+            internal_file.compression = compression;
+            return Some((internal_file, text));
+        }
+        println!("Unable to parse {path} as TagProduct; falling back to generic BYML handling");
+    }
+
+    if is_esetb(&filepath) {
+        if let Ok(esetb) = Esetb::from_binary(&rawdata, zstd.clone()) {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
             internal_file.file_type = TotkFileType::Esetb;
             let text = esetb.to_string();
             internal_file.esetb = Some(esetb);
+            internal_file.compression = compression;
             return Some((internal_file, text));
         }
     }
 
-
-
-    if let Ok(asb) = Asb_py::from_binary(&data, zstd.clone(), filepath.as_ref()) {
-        if let Ok(text) = asb.binary_to_text() {
+    if Magic::is_byml(&rawdata) {
+        if let Ok(byml_file) = BymlFile::from_binary(&rawdata, zstd.clone(), path.clone()) {
+            let text = byml_file.to_string();
+            internal_file.endian = byml_file.endian;
+            internal_file.path = Pathlib::new(path.clone());
+            internal_file.file_type = byml_file.file_data.file_type;
+            internal_file.byml = Some(byml_file);
+            internal_file.compression = compression;
+            return Some((internal_file, text));
+        }
+        println!("Unable to parse named BYML archive entry {path}");
+        return None;
+    }
+    if Magic::is_asb(&rawdata) {
+        if let Ok(asb) = AsbFile::from_binary(&rawdata) {
+            let text = asb.to_yaml().ok()?;
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
             internal_file.file_type = TotkFileType::ASB;
+            internal_file.asb = Some(asb.document);
+            internal_file.compression = compression;
             return Some((internal_file, text));
         }
     }
 
-    if is_ainb(&data) {
-        if let Ok(text) = Ainb_py::new().binary_to_text(&data) {
+    if Magic::is_ainb(&rawdata) {
+        if let Ok(text) = AinbFile::binary_to_text(&rawdata) {
             internal_file.endian = Some(roead::Endian::Little);
             internal_file.path = Pathlib::new(path.clone());
             internal_file.file_type = TotkFileType::AINB;
+            internal_file.compression = compression;
             return Some((internal_file, text));
         }
     }
-    if is_byml(&data) {
-        if let Ok(file_data) = BymlFile::byml_data_to_bytes(&data, zstd.clone()) {
-            if let Ok(byml_file) = BymlFile::from_binary(file_data, zstd.clone(), path.clone()) {
-                // let text = Byml::to_text(&byml_file.pio);
-                let text = byml_file.to_string();
-                internal_file.byml = Some(byml_file);
-                let byml_ref = internal_file.byml.as_ref().unwrap(); // Safe due to the line above
-                internal_file.endian = byml_ref.endian.clone();
-                internal_file.path = Pathlib::new(path);
-                internal_file.file_type = byml_ref.file_data.file_type.clone(); // Set file type
-                return Some((internal_file, text));
-            }
+    if Magic::is_evfl(&rawdata) {
+        if let Ok(text) = BfevFile::binary_to_text(&rawdata) {
+            internal_file.endian = Some(roead::Endian::Little);
+            internal_file.path = Pathlib::new(path.clone());
+            internal_file.file_type = TotkFileType::Evfl;
+            internal_file.compression = compression;
+            return Some((internal_file, text));
         }
     }
+    if let Some(xlink) = Xlink_rs::open_internal(&path, &rawdata, zstd.clone(), compression) {
+        return Some(xlink);
+    }
 
-    if is_aamp(&data) {
-        let text = ParameterIO::from_binary(&data).ok()?.to_text();
+    if Magic::is_aamp(&rawdata) {
+        let pio = ParameterIO::from_binary(&rawdata).ok()?;
+        let text = crate::file_format::bphcl::safe_aamp_yaml(&pio).ok()?;
         internal_file.endian = None;
         internal_file.path = Pathlib::new(path.clone());
         internal_file.file_type = TotkFileType::Aamp;
+        internal_file.compression = compression;
         return Some((internal_file, text));
     }
-    if is_msyt(&data) {
-        // let msbt = MsbtFile::from_binary(data, Some(path.clone()))?;
-        // internal_file.endian = Some(msbt.endian.clone());
-        // internal_file.path = Pathlib::new(path.clone());
-        // internal_file.file_type = TotkFileType::Msbt;
-        let msbt = MsbtCpp::from_binary(&data).ok()?;
-
-        internal_file.endian = Some(str_endian_to_roead(&msbt.endian.unwrap_or("LE".to_string())));
-        internal_file.path = Pathlib::new(path.clone());
-        internal_file.file_type = TotkFileType::Msbt;
-        return Some((internal_file, msbt.text));
+    if let Some(msbt) = MsbtFile::open_internal(&path, &rawdata, compression) {
+        return Some(msbt);
     }
-    if let Ok(text) = String::from_utf8(data) {
+    if let Ok(text) = String::from_utf8(rawdata) {
         internal_file.endian = None;
         internal_file.path = Pathlib::new(path.clone());
         internal_file.file_type = TotkFileType::Text;
+        internal_file.compression = compression;
         return Some((internal_file, text));
     }
 
     None
 }
 
-#[allow(dead_code)]
-fn write_data_to_file<P: AsRef<Path>>(path: P, data: Vec<u8>) -> io::Result<()> {
-    let path = path.as_ref();
-
-    // Ensure the parent directory exists.
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    // Open the file in write mode, creating it if it doesn't exist.
-    let mut file = File::create(path)?;
-
-    // Write the data to the file.
-    file.write_all(&data)?;
-
-    Ok(())
-}
-
-#[allow(dead_code)]
-pub fn save_file_dialog(file_name: Option<String>) -> String {
-    let name = file_name.unwrap_or_default();
-    let file = FileDialog::new().set_file_name(name).save_file();
-    match file {
-        Some(res) => {
-            return res.to_string_lossy().into_owned();
-        }
-        None => {
-            return "".to_string();
-        }
-    }
-}
-
 pub fn check_if_save_in_romfs(dest_file: &str, zstd: Arc<TotkZstd>) -> bool {
     if !dest_file.is_empty() {
         //check if file is saved in romfs
         // if dest_file.starts_with(&zstd.totk_config.romfs.to_string_lossy().to_string()) {
-        if dest_file.starts_with(&zstd.totk_config.romfs) {
+        if !&zstd.totk_config.romfs.is_empty() && dest_file.starts_with(&zstd.totk_config.romfs) {
             let m = format!(
                 "About to save file:\n{}\nin romfs dump. Continue?",
                 &dest_file
@@ -258,144 +187,92 @@ pub fn get_binary_by_filetype(
     zstd: Arc<TotkZstd>,
     file_path: &str,
     opened_file: &mut OpenedFile<'_>,
+    compression: Option<ZstdDictionary>,
+    yaz0_alignment: u32,
+    internal_msbt: Option<&crate::parser::msbt::Msbt>,
+    internal_ainb: Option<&crate::parser::ainb::AinbDocument>,
+    internal_asb: Option<&crate::parser::asb::Asb>,
+    internal_tag: Option<&TagProduct<'_>>,
+    is_internal: bool,
 ) -> Option<Vec<u8>> {
     let mut rawdata: Vec<u8> = Vec::new();
-    let endian_str = match endian {
-        roead::Endian::Big => "BE",
-        roead::Endian::Little => "LE",
-    };
-    let is_zs = file_path.to_lowercase().ends_with(".zs");
-    let is_bcett = file_path.to_lowercase().ends_with(".bcett.byml.zs");
     match file_type {
+        TotkFileType::Bphcl => {
+            rawdata = opened_file.bphcl.as_ref()?.raw_binary();
+        }
+        TotkFileType::Hkcl => return None,
+        TotkFileType::Bphhb => return None,
         TotkFileType::Xlink => {
-            let xlink = Xlink_rs::new(zstd.clone()).ok()?;
-            if let Ok(new_data) = xlink.yaml_to_binary(text) {
-                rawdata = new_data;
-                if is_zs {
-                    rawdata = zstd.compress_zs(&rawdata).ok()?;
-                }
-            }
+            rawdata = Xlink_rs::text_to_binary(text, file_path, zstd.clone(), None)?;
         }
         TotkFileType::Evfl => {
-          let evfl = Evfl::new(zstd.clone());
-          if let Ok(new_data) = evfl.string_to_binary(text) {
-            if is_zs {
-                if let Ok(compressed_data) = zstd.compress_zs(&new_data) {
-                    rawdata = compressed_data;
-                }
-            } else {
-                rawdata = new_data;
-            }
-              
-          }
+            rawdata = BfevFile::text_to_binary(text).ok()?;
         }
         TotkFileType::Esetb => {
             if let Some(esetb) = &mut opened_file.esetb {
                 esetb.update_from_text(text).ok()?;
                 rawdata = esetb.to_binary();
-                if file_path.to_lowercase().ends_with(".zs") {
-                    rawdata = zstd.compress_zs(&rawdata).ok()?;
-                }
             }
         }
         TotkFileType::ASB => {
-            //asb is never an internal file, so i can just save baev here
-            let asb = Asb_py::new(zstd.clone());
-            if let Ok(some_data) = asb.text_to_binary(text) {
+            let cached_asb = internal_asb.or(opened_file.asb.as_ref());
+            if let Ok(some_data) = AsbFile::text_to_binary(text, Some(opened_file), cached_asb) {
                 rawdata = some_data;
-                let p = Pathlib::new(file_path);
-                let name = &p.stem;
-                let rawdata_clone = rawdata.clone(); // Clone rawdata to avoid borrowing issues
-                let parts: Vec<&[u8]> = if let Some(pos) = rawdata_clone.windows(ASB_SEPARATOR.len()).position(|window| window == ASB_SEPARATOR) {
-                    vec![&rawdata_clone[..pos], &rawdata_clone[pos + ASB_SEPARATOR.len()..]]
-                } else {
-                    vec![&rawdata_clone[..], &[]]
-                };
-
-                rawdata = parts.get(0).copied().unwrap_or(&[]).to_vec(); //asb data
-                let mut baev_data = parts.get(1).copied().unwrap_or(&[]).to_vec();
-                
-
-                if is_zs {
-                    rawdata = zstd.compress_zs(&rawdata).ok()?;
-                }
-                //save baev
-                if !baev_data.is_empty() {
-                    let baev_path = Path::new(&p.parent).join(format!("{}.root.baev.zs", name));
-                    baev_data = zstd.compress_zs(&baev_data).ok()?;
-                    if let Ok(mut file) = File::create(&baev_path) {
-                        if let Err(e) = file.write_all(&baev_data) {
-                            println!("Error writing baev data: {}", e);
-                        } else {
-                            println!("Baev data saved successfully to {}", baev_path.display());
-                        }
-                    } else {
-                        println!("Error creating baev file");
-                    }
-                }
             }
         }
         TotkFileType::AINB => {
-            if let Ok(some_data) = Ainb_py::new().text_to_binary(text) {
+            let _ = internal_ainb;
+            if let Ok(some_data) = AinbFile::text_to_binary(text) {
                 rawdata = some_data;
             }
         }
         TotkFileType::TagProduct => {
-            if let Ok(some_data) = TagProduct::to_binary(text) {
+            let rank_table = if is_internal {
+                internal_tag?.rank_table_bytes()
+            } else {
+                opened_file.tag.as_ref()?.rank_table_bytes()
+            };
+            if let Ok(some_data) = TagProduct::to_binary(text, rank_table) {
                 rawdata = some_data;
-                if is_zs {
-                    rawdata = zstd.compress_zs(&rawdata).ok()?;
-                }
             }
         }
         TotkFileType::Byml => {
-            if (is_gamedatalist(file_path)) {
-                println!("is_gamedatalist, attempting to use oead python");
-                let p_wrap = PythonWrapper::new();
-                match p_wrap.text_to_binary(&text.as_bytes().to_vec(), "byml_text_to_binary".to_string()) {
-                    Ok(some_data) => {
-                        rawdata = some_data;
-                        println!("it worked");
-                    }
-                    Err(e) => {
-                        println!("Error: {}", e);
-                    }
-                }
+            if is_gamedatalist(file_path) {
+                rawdata = GameDataList::text_to_binary(text)
+                    .map_err(|e| println!("Unable to encode GameDataList: {e}"))
+                    .ok()?;
             }
-            if (rawdata.is_empty()) {
-                let processed_text = if is_banc_path(&file_path) && zstd.totk_config.rotation_deg {
-                    &replace_rotate_deg_to_rad(&text)
-                } else {
-                    text
-                };
-                
+            if rawdata.is_empty() {
+                let processed_text =
+                    if Pathlib::is_banc_path(&file_path) && zstd.totk_config.rotation_deg {
+                        &replace_rotate_deg_to_rad(&text)
+                    } else {
+                        text
+                    };
+
                 let pio = Byml::from_text(processed_text).ok()?;
                 rawdata = pio.to_binary(endian);
             }
-            if (!rawdata.is_empty()) {
-                if is_bcett {
-                    rawdata = zstd.compress_bcett(&rawdata).ok()?;
-                } else if is_zs {
-                    rawdata = zstd.compress_zs(&rawdata).ok()?;
-                }
-            }
         }
         TotkFileType::Bcett => {
-            let processed_text = if zstd.totk_config.rotation_deg {&replace_rotate_deg_to_rad(&text)} else {text};
+            let processed_text = if zstd.totk_config.rotation_deg {
+                &replace_rotate_deg_to_rad(&text)
+            } else {
+                text
+            };
             let pio = Byml::from_text(processed_text).ok()?;
             rawdata = pio.to_binary(endian);
-            if is_zs {
-                rawdata = zstd.compress_bcett(&rawdata).ok()?;
-            }
         }
         TotkFileType::Msbt => {
-            let result = MsbtCpp::from_text(text, endian_str.to_string());
-            if let Ok(msbt) = result {
-                rawdata = msbt.binary;
-            }
+            rawdata = MsbtFile::text_to_binary(
+                text,
+                file_path,
+                internal_msbt.or(opened_file.msyt.as_ref()),
+                is_internal,
+            )?;
         }
         TotkFileType::Aamp => {
-            let pio = ParameterIO::from_text(text).ok()?;
+            let pio = crate::file_format::bphcl::aamp_from_yaml(text).ok()?;
             rawdata = pio.to_binary();
         }
         TotkFileType::SmoSaveFile => {
@@ -409,7 +286,26 @@ pub fn get_binary_by_filetype(
         _ => {}
     }
 
+    if rawdata.is_empty() {
+        return None;
+    }
+    if let Some(dictionary) = compression {
+        rawdata = apply_remembered_compression(&rawdata, &zstd, dictionary, yaz0_alignment).ok()?;
+    }
     Some(rawdata)
+}
+
+fn apply_remembered_compression(
+    data: &[u8],
+    zstd: &TotkZstd<'_>,
+    compression: ZstdDictionary,
+    yaz0_alignment: u32,
+) -> io::Result<Vec<u8>> {
+    if compression == ZstdDictionary::Yaz0 {
+        TotkZstd::compress_yaz0_with_alignment(data, yaz0_alignment)
+    } else {
+        zstd.compress_with_dictionary(data, compression)
+    }
 }
 
 pub struct SaveFileDialog<'a> {
@@ -442,7 +338,9 @@ impl SaveFileDialog<'_> {
         self.name = None;
         match self.tab.as_str() {
             "SARC" => {
-                if let Some(pack) = self.pack {
+                if self.opened_file.bphcl.is_some() {
+                    self.name = Some(self.opened_file.path.name.clone());
+                } else if let Some(pack) = self.pack {
                     if let Some(opened) = &pack.opened {
                         self.name = Some(opened.path.name.clone());
                     }
@@ -475,15 +373,19 @@ impl SaveFileDialog<'_> {
         let mut filters: BTreeMap<String, Vec<String>> = BTreeMap::new();
         match self.tab.as_str() {
             "SARC" => {
-                filters.insert(
-                    "SARC".to_string(),
-                    vec![
-                        "pack".to_string(),
-                        "sarc".to_string(),
-                        "pack.zs".to_string(),
-                        "sarc.zs".to_string(),
-                    ],
-                );
+                if self.opened_file.bphcl.is_some() {
+                    filters.insert("BPHCL".to_string(), vec!["bphcl".to_string()]);
+                } else {
+                    filters.insert(
+                        "SARC".to_string(),
+                        vec![
+                            "pack".to_string(),
+                            "sarc".to_string(),
+                            "pack.zs".to_string(),
+                            "sarc.zs".to_string(),
+                        ],
+                    );
+                }
             }
             "YAML" => {
                 let exts = if self.opened_file.path.ext_last.is_empty() {
@@ -535,7 +437,9 @@ impl SaveFileDialog<'_> {
         if let Some(res) = file {
             result = res.to_string_lossy().into_owned();
         }
-        self.isText = vec![".txt", ".yaml", ".json", ".yml"].iter().any(|ext| result.to_lowercase().ends_with(ext));
+        self.isText = vec![".txt", ".yaml", ".json", ".yml"]
+            .iter()
+            .any(|ext| result.to_lowercase().ends_with(ext));
         result.replace("\\", "/")
     }
 }
@@ -545,12 +449,17 @@ pub struct SendData {
     pub text: String,
     pub path: Pathlib,
     pub file_label: String,
+    pub file_metadata: String,
+    pub file_type: TotkFileType,
     pub status_text: String,
     pub tab: String,
     pub rstb_paths: Vec<serde_json::Value>,
     pub sarc_paths: SarcPaths,
     pub lang: String,
-    pub compare_data: DiffComparer
+    pub compare_data: DiffComparer,
+    pub read_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_modded_path: Option<String>,
 }
 
 impl Default for SendData {
@@ -559,17 +468,22 @@ impl Default for SendData {
             text: "".to_string(),
             path: Pathlib::default(),
             file_label: "".to_string(),
+            file_metadata: "".to_string(),
+            file_type: TotkFileType::None,
             status_text: "".to_string(),
             tab: "YAML".to_string(),
             rstb_paths: Vec::default(),
             sarc_paths: SarcPaths::default(),
             lang: "yaml".to_string(),
-            compare_data: DiffComparer::default()
+            compare_data: DiffComparer::default(),
+            read_only: false,
+            parent_modded_path: None,
         }
     }
 }
 impl SendData {
     pub fn get_file_label(&mut self, filetype: TotkFileType, endian: Option<roead::Endian>) {
+        self.set_file_metadata(filetype, None);
         let mut e = String::new();
         if let Some(endian) = endian {
             e = match endian {
@@ -582,6 +496,20 @@ impl SendData {
         } else {
             self.file_label = format!("{} [{:?}]", self.path.name, filetype)
         }
+    }
+
+    pub fn set_file_metadata(
+        &mut self,
+        filetype: TotkFileType,
+        dictionary: Option<ZstdDictionary>,
+    ) {
+        self.file_type = filetype;
+        self.file_metadata = match dictionary {
+            Some(ZstdDictionary::Yaz0) => format!("[{filetype:?}] [Yaz0]"),
+            Some(ZstdDictionary::None) => format!("[{filetype:?}]"),
+            Some(dictionary) => format!("[{filetype:?}] [ZSTD: {dictionary:?}]"),
+            None => format!("[{filetype:?}]"),
+        };
     }
     pub fn get_sarc_paths(&mut self, pack: &PackComparer<'_>) {
         if let Some(opened) = &pack.opened {
@@ -617,66 +545,295 @@ impl SendData {
     }
 }
 
+pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
+    path: P,
+    zstd: Arc<TotkZstd>,
+) -> Option<(OpenedFile, SendData)> {
+    let path = path.as_ref();
+    let file_name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
+    let uncompressed_name = file_name.strip_suffix(".zs").unwrap_or(&file_name);
 
-pub fn file_from_disk_to_senddata_determine_ext<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
-    //Instead of checking each file type, we check the extension and call the appropriate function
-    let file_name = path.as_ref();//.to_string_lossy().to_string().replace("\\", "/");
-    let mut p = path.as_ref().to_string_lossy().to_string().to_lowercase();
-    if p.ends_with(".zs") {
-        p = p[0..p.len()-3].to_string();
+    let result = if file_name.starts_with("tag.product") {
+        TagProduct::open_tag(path, zstd)
+    } else if file_name.ends_with(".belnk") || file_name.ends_with(".belnk.zs") {
+        Xlink_rs::open_xlink(path, zstd)
+    } else if file_name.ends_with(".esetb.byml") || file_name.ends_with(".esetb.byml.zs") {
+        Esetb::open_esetb(path, zstd)
+    } else if uncompressed_name.ends_with(".rsizetable") {
+        Restbl::open_restbl(path, zstd)
+    } else if Pathlib::is_banc_path(&uncompressed_name) || Pathlib::is_byml_path(&uncompressed_name)
+    {
+        BymlFile::open_byml(path, zstd)
+    } else if uncompressed_name.ends_with(".asb") {
+        AsbFile::open_asb(path, zstd)
+    } else if uncompressed_name.ends_with(".ainb") {
+        AinbFile::open_ainb(path, zstd)
+    } else if uncompressed_name.ends_with(".bfevfl") {
+        BfevFile::open_bfev(path, zstd)
+    } else if uncompressed_name.ends_with(".msbt") || uncompressed_name.ends_with(".msyt") {
+        MsbtFile::open_mstb(path)
+    } else if uncompressed_name.ends_with(".bphcl") {
+        crate::file_format::bphcl::BphclFile::open(path)
+    } else if uncompressed_name.ends_with(".hkcl") {
+        crate::file_format::hkcl::HkclFile::open(path)
+    } else if uncompressed_name.ends_with(".bphhb") {
+        crate::file_format::bphhb::BphhbFile::open(path)
+    } else if uncompressed_name.ends_with(".bfres") || file_name.ends_with(".bfres.mc") {
+        crate::file_format::Model3D::bfres::BfresFile::open(path, zstd)
+    } else if uncompressed_name.ends_with(".g1m") {
+        crate::parser::AOC::g1m::G1mFile::open(path)
+    } else if uncompressed_name.ends_with(".g1t") {
+        crate::file_format::Image::ImageDocument::open(path, &zstd)
+    } else if uncompressed_name.ends_with(".fbx") {
+        crate::parser::fbx::FbxFile::open(path)
+    } else if uncompressed_name.ends_with(".bntx")
+        || uncompressed_name.ends_with(".dds")
+        || uncompressed_name.ends_with(".png")
+        || uncompressed_name.ends_with(".jpg")
+        || uncompressed_name.ends_with(".jpeg")
+        || uncompressed_name.ends_with(".tga")
+        || uncompressed_name.ends_with(".bmp")
+    {
+        crate::file_format::Image::ImageDocument::open(path, &zstd)
+    } else if uncompressed_name.ends_with(".baamp")
+        || uncompressed_name.ends_with(".bparam")
+        || uncompressed_name.ends_with(".aamp")
+    {
+        crate::file_format::SimpleOpeners::AampFile::open_aamp(path)
+    } else if uncompressed_name.ends_with(".byml")
+        || uncompressed_name.ends_with(".bgyml")
+        || uncompressed_name.ends_with(".sbyml")
+        || uncompressed_name.starts_with("gamedatalist")
+    {
+        BymlFile::open_byml(path, zstd)
+    } else if uncompressed_name.ends_with(".yaml")
+        || uncompressed_name.ends_with(".yml")
+        || uncompressed_name.ends_with(".json")
+        || uncompressed_name.ends_with(".txt")
+    {
+        crate::file_format::SimpleOpeners::TextFile::open_text(path)
+    } else {
+        None
+    };
+
+    if let Some((opened_file, _)) = &result {
+        println!(
+            "[GUESS] [OPEN] {} type: {:?}",
+            opened_file.path.full_path, opened_file.file_type
+        );
+    } else {
+        println!("[GUESS] [OPEN] FAILED TO OPEN {}", path.display());
     }
-    let path = Pathlib::new(&p);
-    if is_tagproduct_path(&file_name) {
-        return TagProduct::open_tag(&file_name, zstd.clone());
-    }
-    if is_esetb_path(&file_name) {
-        return Esetb::open_esetb(&file_name, zstd.clone());
-    }
-    if is_xlink_path(&p) {
-        return Xlink_rs::open_xlink(&file_name, zstd.clone());
-    }
-    if is_ainb_path(&p) {
-        return Ainb_py::open_ainb(&file_name, zstd.clone());
-    }
-    if is_rstb_path(&p) {
-        return Restbl::open_restbl(&file_name, zstd.clone());
-    }
-    if is_asb_path(&p) {
-        return Asb_py::open_asb(&file_name, zstd.clone());
-    }
-    if is_byml_path(&p) {
-        return BymlFile::open_byml(&file_name, zstd.clone());
-    }
-    if is_msbt_path(&p) {
-        return open_msbt(&file_name);
-    }
-    if is_evfl_path(&p) {
-        return Evfl::open_file(&file_name, zstd.clone());
-    }
-    
-    None // if fails, proceed to regular file open
+
+    result
 }
 
-pub fn file_from_disk_to_senddata<P: AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile, SendData)> {
-    let file_name = path.as_ref();//.to_string_lossy().to_string().replace("\\", "/");
-    // let res = open_tag(&file_name, zstd.clone())
-    let res = file_from_disk_to_senddata_determine_ext(&file_name, zstd.clone())
-                .or_else(|| TagProduct::open_tag(&file_name, zstd.clone()))
-                .or_else(|| Esetb::open_esetb(&file_name, zstd.clone()))
-                .or_else(|| Xlink_rs::open_xlink(&file_name, zstd.clone()))
-                .or_else(|| Restbl::open_restbl(&file_name, zstd.clone()))
-                .or_else(|| Asb_py::open_asb(&file_name, zstd.clone()))
-                .or_else(|| Ainb_py::open_ainb(&file_name, zstd.clone()))
-                .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
-                .or_else(|| open_msbt(&file_name))
-                .or_else(|| open_aamp(&file_name))
-                .or_else(|| Evfl::open_file(&file_name, zstd.clone()))
-                .or_else(|| SmoSaveFile::open_smo_save_file(&file_name, zstd.clone()))
-                .or_else(|| open_text(&file_name))
-                .map(|(opened_file, data)| {
-                    // self.opened_file = opened_file;
-                    // self.internal_file = None;
-                    (opened_file, data)
-                });
-    res
+pub fn file_from_bytes_to_senddata<'a>(
+    path_hint: &str,
+    bytes: &[u8],
+    zstd: Arc<TotkZstd<'a>>,
+) -> Option<(OpenedFile<'a>, SendData)> {
+    let (mut opened, data) = file_from_bytes_name_guess(path_hint, bytes, zstd)?;
+    if matches!(data.tab.as_str(), "IMAGE" | "3D") {
+        opened.visual_data = Some(bytes.to_vec());
+    }
+    Some((opened, data))
+}
+
+fn file_from_bytes_name_guess<'a>(
+    path_hint: &str,
+    bytes: &[u8],
+    zstd: Arc<TotkZstd<'a>>,
+) -> Option<(OpenedFile<'a>, SendData)> {
+    let file_path = Path::new(path_hint);
+    let file_name = file_path
+        .file_name()?
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    let uncompressed_name = file_name.strip_suffix(".zs").unwrap_or(&file_name);
+    let path_ref = file_path;
+
+    if is_tagproduct(path_ref) {
+        return TagProduct::open_tag_binary(bytes, path_ref, zstd);
+    }
+    if file_name.ends_with(".belnk") || file_name.ends_with(".belnk.zs") {
+        if let Some(result) = Xlink_rs::open_xlink_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if file_name.ends_with(".esetb.byml") || file_name.ends_with(".esetb.byml.zs") {
+        if let Some(result) = Esetb::open_esetb_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".rsizetable") || file_name.ends_with(".rsizetable.byml") {
+        if let Some(result) = Restbl::open_restbl_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if Pathlib::is_banc_path(&uncompressed_name) || Pathlib::is_byml_path(&uncompressed_name) {
+        if let Some(result) = BymlFile::open_byml_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".asb") {
+        if let Some(result) = AsbFile::open_asb_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".ainb") {
+        if let Some(result) = AinbFile::open_ainb_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".bfevfl") {
+        if let Some(result) = BfevFile::open_bfev_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".msbt") || uncompressed_name.ends_with(".msyt") {
+        if let Some(result) = MsbtFile::open_mstb_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".bfres") || file_name.ends_with(".bfres.mc") {
+        if let Some(result) =
+            crate::file_format::Model3D::bfres::BfresFile::open_binary(bytes, path_ref, zstd.clone())
+        {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".g1m") {
+        if let Some(result) = crate::parser::AOC::g1m::G1mFile::open_binary(path_ref, bytes) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".g1t") {
+        if let Some(result) = crate::file_format::Image::ImageDocument::open_binary(
+            bytes, path_ref, &zstd,
+        ) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".fbx") {
+        if let Some(result) = crate::parser::fbx::FbxFile::open_binary(path_ref, bytes) {
+            return Some(result);
+        }
+    }
+    if let Some(result) = crate::file_format::Image::ImageDocument::open_binary(bytes, path_ref, &zstd) {
+        return Some(result);
+    }
+    if let Some(result) = crate::file_format::SimpleOpeners::AampFile::open_aamp_binary(
+        bytes,
+        path_ref,
+        zstd.clone(),
+    ) {
+        return Some(result);
+    }
+    if let Some(result) = SmoSaveFile::open_smo_save_file_binary(bytes, path_ref, zstd.clone()) {
+        return Some(result);
+    }
+    if let Some(result) =
+        crate::file_format::SimpleOpeners::TextFile::open_text_binary(bytes, path_ref, zstd.clone())
+    {
+        return Some(result);
+    }
+    None
+}
+
+#[cfg(test)]
+mod remembered_compression_tests {
+    use super::*;
+
+    #[test]
+    fn send_data_serializes_file_type_as_uppercase() {
+        let mut data = SendData::default();
+        data.set_file_metadata(TotkFileType::TagProduct, None);
+        let json = serde_json::to_value(data).unwrap();
+        assert_eq!(json["file_type"], "TAGPRODUCT");
+    }
+
+    #[test]
+    fn reapplies_yaz0_with_remembered_alignment() {
+        let app = crate::TotkApp::TotkBitsApp::default();
+        let raw = b"YB\x07\x00remembered compression";
+        let compressed =
+            apply_remembered_compression(raw, &app.zstd, ZstdDictionary::Yaz0, 0x80).unwrap();
+
+        assert!(Magic::is_yaz0(&compressed));
+        assert_eq!(TotkZstd::yaz0_alignment(&compressed), 0x80);
+        assert_eq!(TotkZstd::decompress_yaz0(&compressed).unwrap(), raw);
+    }
+
+    #[test]
+    fn opens_png_and_g1m_archive_children_from_memory() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/1");
+        let app = crate::TotkApp::TotkBitsApp::default();
+
+        let png = std::fs::read(root.join("0.png")).unwrap();
+        let (png_opened, png_data) =
+            file_from_bytes_to_senddata("0.png", &png, app.zstd.clone()).unwrap();
+        assert_eq!(png_data.tab, "IMAGE");
+        assert_eq!(png_opened.visual_data.as_deref(), Some(png.as_slice()));
+        crate::file_format::Image::ImageDocument::render_bytes_selection_with_zstd(
+            png_opened.visual_data.as_deref().unwrap(),
+            "0.png",
+            0,
+            0,
+            0,
+            Some(&app.zstd),
+        )
+        .unwrap();
+
+        let g1m = std::fs::read(root.join("231ccec8.g1m")).unwrap();
+        let (g1m_opened, g1m_data) =
+            file_from_bytes_to_senddata("231ccec8.g1m", &g1m, app.zstd.clone()).unwrap();
+        assert_eq!(g1m_data.tab, "3D");
+        assert_eq!(g1m_opened.visual_data.as_deref(), Some(g1m.as_slice()));
+        crate::parser::AOC::g1m::G1mFile::parse(&g1m, "231ccec8").unwrap();
+    }
+}
+
+pub fn file_from_disk_to_senddata<P: AsRef<Path>>(
+    path: P,
+    zstd: Arc<TotkZstd>,
+) -> Option<(OpenedFile, SendData)> {
+    let file_name = path.as_ref(); //.to_string_lossy().to_string().replace("\\", "/");
+    println!(
+        "[OPEN ROUTER] beginning disk opener chain for {} (RSTB follows Xlink, TagProduct, and Esetb)",
+        file_name.display()
+    );
+    open_file_from_disk_name_guess(file_name, zstd.clone())
+        .or_else(|| Xlink_rs::open_xlink(file_name, zstd.clone()))
+        // .or_else(|| GameDataList::open(&file_name, zstd.clone()))
+        .or_else(|| TagProduct::open_tag(&file_name, zstd.clone()))
+        .or_else(|| Esetb::open_esetb(&file_name, zstd.clone()))
+        .or_else(|| Restbl::open_restbl(&file_name, zstd.clone()))
+        .or_else(|| AsbFile::open_asb(&file_name, zstd.clone()))
+        .or_else(|| AinbFile::open_ainb(&file_name, zstd.clone()))
+        .or_else(|| BymlFile::open_byml(&file_name, zstd.clone()))
+        .or_else(|| MsbtFile::open_mstb(file_name))
+        .or_else(|| crate::file_format::Model3D::bfres::BfresFile::open(file_name, zstd.clone()))
+        .or_else(|| crate::parser::AOC::g1m::G1mFile::open(file_name))
+        .or_else(|| crate::parser::fbx::FbxFile::open(file_name))
+        // Structured formats must run before the generic image detector. In
+        // particular, many BFEVFL files use the shared `.zs` compres2sion suffix.
+        .or_else(|| BfevFile::open_bfev(&file_name, zstd.clone()))
+        .or_else(|| crate::file_format::Image::ImageDocument::open(file_name, &zstd))
+        .or_else(|| crate::file_format::bphcl::BphclFile::open(file_name))
+        .or_else(|| crate::file_format::hkcl::HkclFile::open(file_name))
+        .or_else(|| crate::file_format::bphhb::BphhbFile::open(file_name))
+        .or_else(|| crate::file_format::SimpleOpeners::AampFile::open_aamp(&file_name))
+        .or_else(|| SmoSaveFile::open_smo_save_file(&file_name, zstd.clone()))
+        .or_else(|| crate::file_format::SimpleOpeners::TextFile::open_text(&file_name))
+        .map(|(opened_file, data)| {
+            println!(
+                "[OPEN ROUTER] opener chain accepted {} as {:?}",
+                file_name.display(),
+                opened_file.file_type
+            );
+            // self.opened_file = opened_file;
+            // self.internal_file = None;
+            (opened_file, data)
+        })
 }

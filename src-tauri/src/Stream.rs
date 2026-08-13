@@ -95,8 +95,12 @@ impl Endian {
 }
 
 fn get_string(data: &[u8], offset: usize) -> io::Result<String> {
-    let end = data[offset..].iter().position(|&b| b == 0).unwrap_or(data.len() - offset);
-    Ok(String::from_utf8(data[offset..offset + end].to_vec()).unwrap())
+    let tail = data.get(offset..).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidData, "string offset is out of bounds")
+    })?;
+    let end = tail.iter().position(|&b| b == 0).unwrap_or(tail.len());
+    String::from_utf8(tail[..end].to_vec())
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
 struct Stream<T: Seek + Read> {
@@ -343,12 +347,40 @@ fn vec3f(values: &[f32], endian: Endian) -> Vec<u8> {
     values.iter().flat_map(|&v| f32(v, endian)).collect()
 }
 
-fn byte_custom(value: &[u8], size: usize) -> Vec<u8> {
+fn byte_custom(value: &[u8], size: usize) -> io::Result<Vec<u8>> {
+    if value.len() > size {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "custom byte value exceeds its fixed field size",
+        ));
+    }
     let mut buffer = vec![0; size];
     buffer[..value.len()].copy_from_slice(value);
-    buffer
+    Ok(buffer)
 }
 
 fn padding() -> Vec<u8> {
     vec![0]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{byte_custom, get_string};
+
+    #[test]
+    fn rejects_out_of_bounds_string_offsets() {
+        let error = get_string(b"abc\0", 5).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn byte_custom_truncates_oversized_values() {
+        let error = byte_custom(&[1, 2, 3], 2).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn string_offset_at_end_is_an_empty_string() {
+        assert_eq!(get_string(b"abc", 3).unwrap(), "");
+    }
 }

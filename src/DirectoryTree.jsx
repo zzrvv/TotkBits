@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import DirectoryNode from './DirectoryNode';
 import { extractFileClick, editInternalSarcFile, fetchAndSetEditorContent, saveAsFileClick, saveFileClick } from './ButtonClicks';
+import { useEditorContext } from './StateManager';
 
 const fontsize = '15px';
 
@@ -19,12 +20,12 @@ const buildTree = (paths) => {
 //{ editorRef, updateEditorContent, setStatusText, activeTab, setActiveTab, setLabelTextDisplay, setpaths, selectedPath, changeModal }
 const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) => {
   const [selectedNode, setSelectedNode] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const { treeFilterQuery: searchQuery, setTreeFilterQuery: setSearchQuery } = useEditorContext();
   const tree = buildTree(sarcPaths);
   // setStatusText("Directory Tree Loaded  ");
-  const handleSelectNode = (fullPath, isFile) => {
-    setSelectedNode(fullPath,isFile);
-    onNodeSelect(fullPath, isFile);
+  const handleSelectNode = (fullPath, isFile, identity = fullPath, updateRootSelection = true) => {
+    setSelectedNode(identity);
+    if (updateRootSelection) onNodeSelect(fullPath, isFile);
   };
 
   const handleContextMenu = (fullPath) => {
@@ -57,8 +58,8 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) =>
   return (
     <>
       <ul className="directory-tree" 
-        style={{ marginBottom: '88px', paddingBottom: '200px', //width: activeTab === 'SARC' ? "100%" : "0%", 
-        ...activeTab !== 'SARC' ? { height: '0%', width: '0%', marginLeft: '-50px' } : {}
+        style={{ //width: activeTab === 'SARC' ? "100%" : "0%", 
+        ...activeTab !== 'SARC' && activeTab !== 'AUDIO' ? { height: '0%', width: '0%', marginLeft: '-50px' } : {}
          }}//robust solution to hide tree when not active. This way collapsed nodes states are not lost
       >
         {Object.entries(renderTree).map(([key, value]) => (
@@ -74,11 +75,11 @@ const DirectoryTree = ({ onNodeSelect, sarcPaths , setStatusText, activeTab}) =>
           />
         ))}
       </ul>
-      {activeTab === 'SARC' && <div className='textsearch' style={{ padding: '10px' }}>
+      {(activeTab === 'SARC' || activeTab === 'AUDIO') && <div className='textsearch' style={{ padding: '10px' }}>
         <input
           className='inputtext'
           type="text"
-          placeholder="Type here to filter SARC files"
+          placeholder="Type here to filter files"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{ width: '100%', padding: '5px' }}

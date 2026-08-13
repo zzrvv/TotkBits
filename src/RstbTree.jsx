@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import { invoke } from './DocumentState';
 import React, { useState } from 'react';
 
 const marg = '10px';

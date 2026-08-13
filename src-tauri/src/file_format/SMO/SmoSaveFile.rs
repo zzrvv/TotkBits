@@ -1,10 +1,21 @@
-use std::{fs::OpenOptions, io::{self, Write}, path::Path, sync::Arc};
+use crate::file_format::BinTextFile::OpenedFile;
+use crate::Open_and_Save::SendData;
+use crate::Settings::Pathlib;
+use crate::{
+    file_format::BinTextFile::{BymlFile, FileData},
+    Settings::Magic,
+    Zstd::{TotkFileType, TotkZstd},
+};
 use roead::byml::Byml;
-use crate::{file_format::BinTextFile::{BymlFile, FileData, OpenedFile}, Open_and_Save::SendData, Settings::Pathlib, Zstd::{is_byml, TotkFileType, TotkZstd}};
+use std::{
+    fs::OpenOptions,
+    io::{self, Write},
+    path::Path,
+    sync::Arc,
+};
 
-
-const SMO_SAVE_FILE_SIZE : usize = 0x20000C;
-const SMO_HEADER_SIZE : usize = 16;
+const SMO_SAVE_FILE_SIZE: usize = 0x20000C;
+const SMO_HEADER_SIZE: usize = 16;
 
 //zstd isnt needed here but BymlFile demands it
 //Lots of data after byml section
@@ -17,9 +28,18 @@ pub struct SmoSaveFile<'a> {
 }
 
 impl<'a> SmoSaveFile<'a> {
-
-    pub fn open_smo_save_file<P:AsRef<Path>>(path: P, zstd: Arc<TotkZstd>) -> Option<(OpenedFile<'static>, SendData)> {
-        let file_name = path.as_ref().to_string_lossy().to_string().replace("\\", "/");
+    pub fn open_smo_save_file<P: AsRef<Path>>(
+        path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(
+        crate::file_format::BinTextFile::OpenedFile<'a>,
+        crate::Open_and_Save::SendData,
+    )> {
+        let file_name = path
+            .as_ref()
+            .to_string_lossy()
+            .to_string()
+            .replace("\\", "/");
         let mut opened_file = OpenedFile::default();
         let mut data = SendData::default();
         let pathlib_var = Pathlib::new(&file_name);
@@ -41,26 +61,53 @@ impl<'a> SmoSaveFile<'a> {
         println!(" no");
         None
     }
-
-    pub fn from_binary<P: AsRef<Path>>(data: &[u8], zstd: Arc<TotkZstd<'a>>, path: P) -> io::Result<Self> {
+    pub fn open_smo_save_file_binary<P: AsRef<Path>>(
+        binary: &[u8],
+        display_path: P,
+        zstd: Arc<TotkZstd<'a>>,
+    ) -> Option<(OpenedFile<'a>, SendData)> {
+        let path = display_path.as_ref();
+        let mut smo = Self::from_binary(binary, zstd, path).ok()?;
+        let text = smo.to_string().ok()?;
+        let mut opened = OpenedFile::default();
+        opened.path = Pathlib::new(path);
+        opened.endian = Some(smo.endian);
+        opened.file_type = TotkFileType::SmoSaveFile;
+        let mut data = SendData::default();
+        data.path = Pathlib::new(path);
+        data.text = text;
+        data.status_text = format!("Opened {}", path.display());
+        data.get_file_label(TotkFileType::SmoSaveFile, Some(smo.endian));
+        Some((opened, data))
+    }
+    pub fn from_binary<P: AsRef<Path>>(
+        data: &[u8],
+        zstd: Arc<TotkZstd<'a>>,
+        path: P,
+    ) -> io::Result<Self> {
         if !Self::is_smo_save_binary(data) {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Data is not a valid SMO save file"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Data is not a valid SMO save file",
+            ));
         }
-        let header  = data[0..SMO_HEADER_SIZE].to_vec();
-        let file_data = FileData{
-            file_type: TotkFileType::SmoSaveFile,
-            data: data[SMO_HEADER_SIZE..].to_vec()
-        };
-        let byml_file = BymlFile::from_binary(file_data, zstd.clone(), path.as_ref())?;
+        let header = data[0..SMO_HEADER_SIZE].to_vec();
+        let mut byml_file =
+            BymlFile::from_binary(&data[SMO_HEADER_SIZE..], zstd.clone(), path.as_ref())?;
+        byml_file.file_type = TotkFileType::SmoSaveFile;
+        byml_file.file_data.file_type = TotkFileType::SmoSaveFile;
         if let Some(endian) = byml_file.endian {
             if endian != roead::Endian::Little {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "SMO save file must be little endian"));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "SMO save file must be little endian",
+                ));
             }
         }
         Ok(Self {
             header,
             byml_file,
-            endian: roead::Endian::Little
+            endian: roead::Endian::Little,
         })
     }
 
@@ -72,7 +119,10 @@ impl<'a> SmoSaveFile<'a> {
         //padding
         let written_size = SMO_HEADER_SIZE + byml_binary_data.len();
         if written_size > SMO_SAVE_FILE_SIZE {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "SMO save file size exceeded"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "SMO save file size exceeded",
+            ));
         }
         let size_to_write = (SMO_SAVE_FILE_SIZE - written_size) as usize;
         let padding: Vec<u8> = vec![0u8; size_to_write];
@@ -91,44 +141,66 @@ impl<'a> SmoSaveFile<'a> {
     }
 
     pub fn to_string(&mut self) -> io::Result<String> {
-        
-        let pio_map = self.byml_file.pio.as_mut_map().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        let header_array: [u8; SMO_HEADER_SIZE] = self.header[..SMO_HEADER_SIZE].try_into().map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Header size mismatch"))?;
+        let pio_map = self
+            .byml_file
+            .pio
+            .as_mut_map()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let header_array: [u8; SMO_HEADER_SIZE] = self.header[..SMO_HEADER_SIZE]
+            .try_into()
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Header size mismatch"))?;
         let header_hex_str = bytes_to_hex_uppercase(&header_array);
         pio_map.insert("_Header".into(), header_hex_str.into());
         // let pio = byml::Byml::Map(pio_map);
         let pio = Byml::Map(pio_map.clone());
         Ok(Byml::to_text(&pio))
     }
-    pub fn from_string(text: &str,zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
+    pub fn from_string(text: &str, zstd: Arc<TotkZstd<'a>>) -> io::Result<Self> {
         let mut byml_file = BymlFile::from_text(&text, zstd.clone())?;
-        let pio_map = byml_file.pio.as_mut_map().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        if !pio_map.contains_key("_Header")  {
-            return Err(io::Error::new(io::ErrorKind::Other, "SMO save file does not contain Header key"));
+        let pio_map = byml_file
+            .pio
+            .as_mut_map()
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        if !pio_map.contains_key("_Header") {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "SMO save file does not contain Header key",
+            ));
         }
         let mut header_hex_str = String::new();
         if let Some(pio_hdr) = pio_map.get("_Header") {
-            header_hex_str = pio_hdr.clone().into_string().unwrap_or_default().as_str().to_string();
+            header_hex_str = pio_hdr
+                .clone()
+                .into_string()
+                .unwrap_or_default()
+                .as_str()
+                .to_string();
         }
         let header = hex_to_bytes(&header_hex_str)?.to_vec();
         pio_map.remove("_Header");
         // byml_file.pio = byml::Byml::Map(pio_map);
         if let Some(endian) = byml_file.endian {
             if endian != roead::Endian::Little {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "SMO save file must be little endian"));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "SMO save file must be little endian",
+                ));
             }
         }
         Ok(Self {
             header,
             byml_file,
-            endian: roead::Endian::Little
+            endian: roead::Endian::Little,
         })
     }
     pub fn save<P: AsRef<Path>>(&mut self, path: P) -> io::Result<()> {
         let mut buffer: Vec<u8> = Vec::new();
         //header
         if self.header.len() != SMO_HEADER_SIZE {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Header size mismatch"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Header size mismatch",
+            ));
         }
         buffer.extend_from_slice(&self.header);
         //byml data
@@ -137,15 +209,18 @@ impl<'a> SmoSaveFile<'a> {
         //padding
         let written_size = SMO_HEADER_SIZE + byml_binary_data.len();
         if written_size > SMO_SAVE_FILE_SIZE {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "SMO save file size exceeded"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "SMO save file size exceeded",
+            ));
         }
         let size_to_write = (SMO_SAVE_FILE_SIZE - written_size) as usize;
-        
+
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
             .open(path.as_ref())?;
-        
+
         file.write_all(&buffer)?;
         let padding: Vec<u8> = vec![0u8; size_to_write];
         file.write_all(&padding)?;
@@ -154,11 +229,15 @@ impl<'a> SmoSaveFile<'a> {
 
     #[inline]
     pub fn is_smo_save_binary(data: &[u8]) -> bool {
-        data.len() == SMO_SAVE_FILE_SIZE && is_byml(&data[SMO_HEADER_SIZE..])
+        data.len() == SMO_SAVE_FILE_SIZE && Magic::is_byml(&data[SMO_HEADER_SIZE..])
     }
 
     pub fn backup_file<P: AsRef<Path>>(path: P) -> io::Result<()> {
-        let backup_path = path.as_ref().with_extension("bak").to_string_lossy().to_string();
+        let backup_path = path
+            .as_ref()
+            .with_extension("bak")
+            .to_string_lossy()
+            .to_string();
         for i in 0..100 {
             let backup_path = if i == 0 {
                 backup_path.clone()
@@ -176,17 +255,20 @@ impl<'a> SmoSaveFile<'a> {
     }
 }
 
-
 fn bytes_to_hex_uppercase(bytes: &[u8; SMO_HEADER_SIZE]) -> String {
-    bytes.iter()
-         .map(|b| format!("{:02X}", b)) // Format each byte as two-digit uppercase hex
-         .collect::<Vec<_>>()
-         .join("")
+    bytes
+        .iter()
+        .map(|b| format!("{:02X}", b)) // Format each byte as two-digit uppercase hex
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 fn hex_to_bytes(hex: &str) -> io::Result<[u8; SMO_HEADER_SIZE]> {
     if hex.len() != 32 {
-        return Err(io::Error::new(io::ErrorKind::InvalidData, "Hex string must be 32 characters long"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Hex string must be 32 characters long",
+        ));
     }
 
     let mut bytes = [0u8; SMO_HEADER_SIZE];

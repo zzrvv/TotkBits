@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/tauri'; // Import Tauri invoke method
+import { invoke } from './DocumentState';
 import React, { useState, useEffect } from 'react';
 
 function AddOrRenameFilePrompt({
@@ -15,10 +15,11 @@ function AddOrRenameFilePrompt({
 
   // Update internalPath when the dialog opens or selectedPath changes
   useEffect(() => {
-    if (isOpen && selectedPath?.path) {
-      setInternalPath(selectedPath.path);
+    if (isOpen) {
+      const originalPath = renamePromptMessage?.nestedPath || selectedPath?.path || '';
+      setInternalPath(originalPath.replace(/\\/g, '/').split('/').pop() || '');
     }
-  }, [isOpen, selectedPath]);
+  }, [isOpen, selectedPath, renamePromptMessage]);
 
   const cancelClick = () => {
     setInternalPath('');
@@ -28,17 +29,29 @@ function AddOrRenameFilePrompt({
 
   const handleRenameOkClick = async (internalPath) => {
     try {
-      const content = await invoke('rename_internal_sarc_file', {
-        internalPath: selectedPath.path,
-        newInternalPath: internalPath,
-      });
+      const originalPath = renamePromptMessage?.nestedPath || selectedPath.path;
+      const normalizedPath = originalPath.replace(/\\/g, '/');
+      const separatorIndex = normalizedPath.lastIndexOf('/');
+      const newInternalPath = `${separatorIndex >= 0 ? normalizedPath.slice(0, separatorIndex + 1) : ''}${internalPath}`;
+      const content = renamePromptMessage?.nestedChain
+        ? await invoke('mutate_nested_archive', {
+            chain: renamePromptMessage.nestedChain,
+            path: renamePromptMessage.nestedPath,
+            action: 'rename',
+            newPath: newInternalPath,
+            sourcePath: null,
+          })
+        : await invoke('rename_internal_sarc_file', {
+            internalPath: selectedPath.path,
+            newInternalPath,
+          });
       if (!content) {
         console.log("No content returned from rename_internal_sarc_file");
         cancelClick();
         return;
       }
       setStatusText(content.status_text);
-      if (content.sarc_paths.paths.length > 0) {
+      if (content.sarc_paths?.paths?.length > 0) {
         setpaths(content.sarc_paths);
       }
       cancelClick();
@@ -156,7 +169,7 @@ function AddOrRenameFilePrompt({
           <div className="modal-row">
             <input
               type="text"
-              placeholder="Full path inside sarc"
+              placeholder="Base name"
               className="modal-input"
               value={internalPath}
               onChange={(e) => setInternalPath(e.target.value)}
