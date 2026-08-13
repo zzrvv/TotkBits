@@ -130,6 +130,31 @@ impl FbxFile {
         send.read_only = true;
         Some((opened, send))
     }
+
+    pub fn open_binary<P: AsRef<Path>>(
+        path: P,
+        bytes: &[u8],
+    ) -> Option<(
+        crate::file_format::BinTextFile::OpenedFile<'static>,
+        crate::Open_and_Save::SendData,
+    )> {
+        if !crate::Settings::Magic::is_fbx(bytes) {
+            return None;
+        }
+        let path_ref = path.as_ref();
+        let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
+        opened.path = crate::Settings::Pathlib::new(path_ref);
+        opened.file_type = crate::Zstd::TotkFileType::Other;
+        let mut send = crate::Open_and_Save::SendData::default();
+        send.path = crate::Settings::Pathlib::new(path_ref);
+        send.file_label = format!("{} [FBX]", send.path.name);
+        send.file_metadata = "[3D MODEL] [READ ONLY]".into();
+        send.file_type = crate::Zstd::TotkFileType::Fbx;
+        send.status_text = format!("Opened FBX {}", path_ref.display());
+        send.tab = "3D".into();
+        send.read_only = true;
+        Some((opened, send))
+    }
 }
 
 fn mesh_dom(handle: fbxcel_dom::v7400::object::geometry::MeshHandle<'_>) -> io::Result<BfresMesh> {

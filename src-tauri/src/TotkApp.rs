@@ -7,7 +7,7 @@ use crate::InternalFile::InternalFile;
 use crate::NestedSarc::{NestedArchive, NestedArchives};
 use crate::Open_and_Save::{
     check_if_save_in_romfs, file_from_disk_to_senddata, get_binary_by_filetype,
-    get_string_from_data, SaveFileDialog, SendData,
+    file_from_bytes_to_senddata, get_string_from_data, SaveFileDialog, SendData,
 };
 use crate::Settings::{list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
@@ -379,9 +379,27 @@ impl<'a> TotkBitsApp<'a> {
         let Some((internal, text)) =
             get_string_from_data(path.clone(), bytes.clone(), self.zstd.clone())
         else {
-            return self
-                .initialization_error_data()
-                .or_else(|| Some(internal_open_error(&path, &bytes, &self.zstd)));
+            let status_text = match &outer_path {
+                Some(outer) => format!("Opened {path} inside {outer}"),
+                None => format!("Opened {path} from archive"),
+            };
+            let Some((opened, data)) =
+                file_from_bytes_to_senddata(&path, &bytes, self.zstd.clone())
+            else {
+                return self
+                    .initialization_error_data()
+                    .or_else(|| Some(internal_open_error(&path, &bytes, &self.zstd)));
+            };
+            self.opened_file = opened;
+            self.internal_file = None;
+            let mut data = data;
+            data.status_text = status_text;
+            self.internal_parent = Some(InternalParentLink {
+                document_id: parent_document_id,
+                outer_path,
+                inner_path: path,
+            });
+            return Some(data);
         };
         let mut data = SendData::default();
         data.text = text;

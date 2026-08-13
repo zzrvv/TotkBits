@@ -546,6 +546,10 @@ impl SizeRule {
             | TotkFileType::Hkcl
             | TotkFileType::Image
             | TotkFileType::Msbt
+            | TotkFileType::Bwav
+            | TotkFileType::Bfwav
+            | TotkFileType::Amta
+            | TotkFileType::Riff
             | TotkFileType::Other
             | TotkFileType::SmoSaveFile => rule_from_path(resource_path),
         };

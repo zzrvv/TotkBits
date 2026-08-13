@@ -622,7 +622,7 @@ pub struct OpenedFile<'a> {
     pub bfres: Option<crate::file_format::Model3D::bfres::BfresFile>,
     pub bfres_data: Option<Vec<u8>>,
     pub custom_g1m: Option<Vec<u8>>,
-    pub bfev: Option<crate::file_format::BfevFile::BfevFile>,
+    pub visual_data: Option<Vec<u8>>,
     pub bphcl: Option<crate::file_format::bphcl::BphclFile>,
     pub bphhb: Option<crate::file_format::bphhb::BphhbFile>,
     pub hkcl: Option<crate::file_format::hkcl::HkclFile>,
@@ -648,7 +648,7 @@ impl Default for OpenedFile<'_> {
             bfres: None,
             bfres_data: None,
             custom_g1m: None,
-            bfev: None,
+            visual_data: None,
             bphcl: None,
             bphhb: None,
             hkcl: None,
@@ -682,7 +682,7 @@ impl<'a> OpenedFile<'_> {
             bfres: None,
             bfres_data: None,
             custom_g1m: None,
-            bfev: None,
+            visual_data: None,
             bphcl: None,
             bphhb: None,
             hkcl: None,
@@ -708,7 +708,7 @@ impl<'a> OpenedFile<'_> {
             bfres: None,
             bfres_data: None,
             custom_g1m: None,
-            bfev: None,
+            visual_data: None,
             bphcl: None,
             bphhb: None,
             hkcl: None,
@@ -729,7 +729,6 @@ impl<'a> OpenedFile<'_> {
         self.msyt = None;
         // self.aamp = None;
         self.bfres = None;
-        self.bfev = None;
         self.bphcl = None;
         self.bphhb = None;
         self.hkcl = None;

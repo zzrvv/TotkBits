@@ -183,9 +183,11 @@ export const invoke = async (command, args = {}) => {
     const documentId = isComparison ? sourceDocumentId
         : isOpen ? allocateOpenDocument(command, args)
             : isChildOpen ? allocateChildDocument(args, parentDocumentId) : activeDocumentId;
-    const openOperationId = isOpen ? `open:${documentId}:${crypto.randomUUID()}` : null;
+    const openOperationId = (isOpen || isChildOpen)
+        ? `open:${documentId}:${crypto.randomUUID()}`
+        : null;
     if (openOperationId) {
-        const name = args?.path?.replace(/\\/g, '/').split('/').pop();
+        const name = (args?.innerPath || args?.path)?.replace(/\\/g, '/').split('/').pop();
         window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
             detail: { id: openOperationId, label: name ? `Opening ${name}…` : 'Opening file…' },
         }));

@@ -541,6 +541,47 @@ impl BfresFile {
         Self::from_bytes(&data)
     }
 
+    pub fn open_binary<P: AsRef<Path>>(
+        bytes: &[u8],
+        path: P,
+        zstd: Arc<TotkZstd>,
+    ) -> Option<(
+        crate::file_format::BinTextFile::OpenedFile<'static>,
+        crate::Open_and_Save::SendData,
+    )> {
+        let path_ref = path.as_ref();
+        let (source, compression) = if crate::Settings::Magic::is_mcpk(bytes) {
+            (
+                zstd.decompress_mcpk(bytes).ok()?,
+                crate::Zstd::ZstdDictionary::Mcpk,
+            )
+        } else {
+            zstd.try_decompress_all_ordered_safe(bytes, path_ref)
+        };
+        if !crate::Settings::Magic::is_bfres(&source) {
+            return None;
+        }
+        let file = Self::from_bytes(&source).ok()?;
+        let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
+        opened.file_type = crate::Zstd::TotkFileType::Bfres;
+        opened.path = crate::Settings::Pathlib::new(path_ref);
+        opened.bfres = Some(file);
+        opened.bfres_data = Some(source);
+        opened.compression = (compression != ZstdDictionary::None).then_some(compression);
+        let mut data = crate::Open_and_Save::SendData::default();
+        data.path = crate::Settings::Pathlib::new(path_ref);
+        data.file_label = format!("{} [BFRES]", data.path.name);
+        data.file_metadata = "[BFRES] [3D]".into();
+        data.file_type = crate::Zstd::TotkFileType::Bfres;
+        if compression != ZstdDictionary::None {
+            data.file_metadata += &format!(" [{:?}]", compression);
+        }
+        data.status_text = format!("Opened BFRES {}", path_ref.display());
+        data.tab = "3D".into();
+        data.read_only = true;
+        Some((opened, data))
+    }
+
     pub fn from_bytes(data: &[u8]) -> Result<Self, BfresError> {
         if crate::Settings::Magic::is_mcpk(data) {
             let decompressed =

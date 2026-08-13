@@ -7,7 +7,7 @@ use tauri::Manager;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct BfresResolvedTexture {
+pub(crate) struct BfresResolvedTexture {
     name: String,
     path: String,
     source: String,
@@ -57,11 +57,12 @@ pub fn inspect_3d_model(
 ) -> Result<serde_json::Value, String> {
     require_experimental_visuals()?;
     let documents = app_handle.state::<DocumentState>();
-    let (internal_bfres, internal_bfres_data, romfs, aoc_path) =
+    let (internal_bfres, internal_bfres_data, visual_data, romfs, aoc_path) =
         documents.with(&documentId, |app| {
             (
                 app.opened_file.bfres.clone(),
                 app.opened_file.bfres_data.clone(),
+                app.opened_file.visual_data.clone(),
                 app.zstd.totk_config.romfs.clone(),
                 app.zstd.totk_config.aoc_path.clone(),
             )
@@ -85,7 +86,10 @@ pub fn inspect_3d_model(
         }
         return Ok(value);
     }
-    let source_data = std::fs::read(&path).map_err(|error| error.to_string())?;
+    let source_data = match visual_data {
+        Some(data) => data,
+        None => std::fs::read(&path).map_err(|error| error.to_string())?,
+    };
     let data = documents.with(&documentId, |app| {
         app.zstd.try_decompress_safe(&source_data)
     });
@@ -359,7 +363,7 @@ pub fn list_batch_render_files(
     )
 }
 
-fn resolve_bfres_textures(
+pub(crate) fn resolve_bfres_textures(
     bfres: &crate::file_format::Model3D::bfres::BfresFile,
     source: &Path,
     source_data: Option<&[u8]>,
@@ -505,13 +509,17 @@ pub fn render_image(
     require_experimental_visuals()?;
     let documents = app_handle.state::<DocumentState>();
     documents.with(&documentId, |app| {
-        crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
-            path,
-            texture_index.unwrap_or(0),
-            array_index.unwrap_or(0),
-            mip_index.unwrap_or(0),
-            Some(&app.zstd),
-        )
+        let texture_index = texture_index.unwrap_or(0);
+        let array_index = array_index.unwrap_or(0);
+        let mip_index = mip_index.unwrap_or(0);
+        match app.opened_file.visual_data.as_deref() {
+            Some(data) => crate::file_format::Image::ImageDocument::render_bytes_selection_with_zstd(
+                data, &path, texture_index, array_index, mip_index, Some(&app.zstd),
+            ),
+            None => crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
+                path, texture_index, array_index, mip_index, Some(&app.zstd),
+            ),
+        }
         .map_err(|error| error.to_string())
     })
 }

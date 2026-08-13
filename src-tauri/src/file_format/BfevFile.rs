@@ -34,10 +34,6 @@ impl BfevFile {
         document.to_binary()
     }
 
-    pub fn save_text(&self, text: &str) -> io::Result<Vec<u8>> {
-        Self::text_to_binary(text)
-    }
-
     pub fn open_bfev<'a, P: AsRef<Path>>(
         path: P,
         zstd: Arc<TotkZstd<'a>>,
@@ -64,7 +60,6 @@ impl BfevFile {
         opened_file.path = Pathlib::new(path);
         opened_file.endian = Some(roead::Endian::Little);
         opened_file.file_type = TotkFileType::Evfl;
-        opened_file.bfev = Some(bfev);
         let mut data = SendData {
             status_text: format!("Opened: {}", opened_file.path.full_path),
             path: Pathlib::new(path),
@@ -96,7 +91,7 @@ mod tests {
         let original = std::fs::read(path).expect("read SageOfZora corpus file");
         let file = BfevFile::from_binary(&original).expect("parse SageOfZora");
         let text = file.document.to_json().expect("serialize SageOfZora text");
-        let saved = file.save_text(&text).expect("save unchanged SageOfZora");
+        let saved = BfevFile::text_to_binary(&text).expect("save unchanged SageOfZora");
         assert_eq!(saved, original);
     }
 

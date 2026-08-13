@@ -8,7 +8,9 @@ pub struct Magic {
 
 impl Magic {
     pub fn format_name(data: &[u8]) -> Option<&'static str> {
-        if Self::is_byml(data) {
+        if Self::is_smo_save(data) {
+            Some("SMO SAVE")
+        } else if Self::is_byml(data) {
             Some("BYML")
         } else if Self::is_sarc(data) {
             Some("SARC")
@@ -38,6 +40,12 @@ impl Magic {
             Some("DDS")
         } else if Self::is_png(data) {
             Some("PNG")
+        } else if Self::is_g1t(data) {
+            Some("G1T")
+        } else if Self::is_g1m(data) {
+            Some("G1M")
+        } else if Self::is_fbx(data) {
+            Some("FBX")
         } else if Self::is_zip(data) {
             Some("ZIP")
         } else if Self::is_seven_zip(data) {
@@ -46,19 +54,31 @@ impl Magic {
             Some("RAR")
         } else if Self::is_bars(data) {
             Some("BARS")
+        } else if Self::is_bwav(data) {
+            Some("BWAV")
+        } else if Self::is_bfwav(data) {
+            Some("BFWAV")
+        } else if Self::is_amta(data) {
+            Some("AMTA")
+        } else if Self::is_riff(data) {
+            Some("RIFF")
         } else if Self::is_yaz0(data) {
             Some("Yaz0")
         } else if Self::is_zstd(data) {
             Some("Zstandard")
         } else if Self::is_mcpk(data) {
             Some("MCPK")
+        } else if Self::is_valid_utf8(data) {
+            Some("TEXT")
         } else {
             None
         }
     }
 
     pub fn from_binary(data: &[u8]) -> TotkFileType {
-        if Self::is_ainb(data) {
+        if Self::is_smo_save(data) {
+            TotkFileType::SmoSaveFile
+        } else if Self::is_ainb(data) {
             TotkFileType::AINB
         } else if Self::is_asb(data) {
             TotkFileType::ASB
@@ -72,11 +92,9 @@ impl Magic {
             TotkFileType::Aamp
         } else if Self::is_bfres(data) {
             TotkFileType::Bfres
-        } else if Self::is_bntx(data)
-            || Self::is_dds(data)
-            || Self::is_png(data)
-            || Self::is_g1t(data)
-        {
+        } else if Self::is_bntx(data) {
+            TotkFileType::Bntx
+        } else if Self::is_dds(data) || Self::is_png(data) || Self::is_g1t(data) {
             TotkFileType::Image
         } else if Self::is_bphcl(data) {
             TotkFileType::Bphcl
@@ -98,14 +116,16 @@ impl Magic {
             TotkFileType::G1M
         } else if Self::is_fbx(data) {
             TotkFileType::Fbx
+        } else if Self::is_bwav(data) {
+            TotkFileType::Bwav
+        } else if Self::is_bfwav(data) {
+            TotkFileType::Bfwav
+        } else if Self::is_amta(data) {
+            TotkFileType::Amta
+        } else if Self::is_riff(data) {
+            TotkFileType::Riff
         } else if Self::is_valid_utf8(data) {
             TotkFileType::Text
-        } else if Self::is_bwav(data)
-            || Self::is_bfwav(data)
-            || Self::is_amta(data)
-            || Self::is_riff(data)
-        {
-            TotkFileType::Other
         } else {
             TotkFileType::None
         }
@@ -159,12 +179,19 @@ impl Magic {
 
     pub fn is_valid_utf8(data: &[u8]) -> bool {
         const MAX_UTF8_CHECK_BYTES: usize = 1024 * 1024;
-        std::str::from_utf8(&data[..data.len().min(MAX_UTF8_CHECK_BYTES)]).is_ok()
+        !data.is_empty()
+            && std::str::from_utf8(&data[..data.len().min(MAX_UTF8_CHECK_BYTES)]).is_ok()
     }
 
     #[inline]
     pub fn is_compressed(data: &[u8]) -> bool {
         Self::is_mcpk(data) || Self::is_zstd(data) || Self::is_yaz0(data)
+    }
+    #[inline]
+    pub fn is_smo_save(data: &[u8]) -> bool {
+        const SMO_HEADER_SIZE: usize = 16;
+        const SMO_SAVE_FILE_SIZE: usize = 0x20000C;
+        data.len() == SMO_SAVE_FILE_SIZE && Self::is_byml(&data[SMO_HEADER_SIZE..])
     }
     #[inline]
     pub fn is_byml(data: &[u8]) -> bool {
@@ -322,7 +349,12 @@ mod tests {
         );
         assert_eq!(Magic::from_binary(b"BARSpayload"), TotkFileType::Bars);
         assert_eq!(Magic::from_binary(b"G1M_payload"), TotkFileType::G1M);
-        assert_eq!(Magic::from_binary(b"unknown"), TotkFileType::None);
+        assert_eq!(Magic::from_binary(b"unknown"), TotkFileType::Text);
+        assert_eq!(Magic::from_binary(b"BWAVpayload"), TotkFileType::Bwav);
+        assert_eq!(Magic::from_binary(b"FWAVpayload"), TotkFileType::Bfwav);
+        assert_eq!(Magic::from_binary(b"AMTApayload"), TotkFileType::Amta);
+        assert_eq!(Magic::from_binary(b"RIFFpayload"), TotkFileType::Riff);
+        assert_eq!(Magic::from_binary(b"BNTXpayload"), TotkFileType::Bntx);
 
         let unique = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)

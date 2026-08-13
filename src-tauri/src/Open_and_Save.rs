@@ -24,7 +24,7 @@ use roead::{aamp::ParameterIO, byml::Byml};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
-    fs::{self, File},
+    fs::File,
     io::{self, Write},
     path::Path,
     sync::Arc,
@@ -203,10 +203,7 @@ pub fn get_binary_by_filetype(
             rawdata = Xlink_rs::text_to_binary(text, file_path, zstd.clone(), None)?;
         }
         TotkFileType::Evfl => {
-            rawdata = match opened_file.bfev.as_ref() {
-                Some(file) => file.save_text(text).ok()?,
-                None => BfevFile::text_to_binary(text).ok()?,
-            };
+            rawdata = BfevFile::text_to_binary(text).ok()?;
         }
         TotkFileType::Esetb => {
             if let Some(esetb) = &mut opened_file.esetb {
@@ -627,6 +624,119 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
     result
 }
 
+pub fn file_from_bytes_to_senddata<'a>(
+    path_hint: &str,
+    bytes: &[u8],
+    zstd: Arc<TotkZstd<'a>>,
+) -> Option<(OpenedFile<'a>, SendData)> {
+    let (mut opened, data) = file_from_bytes_name_guess(path_hint, bytes, zstd)?;
+    if matches!(data.tab.as_str(), "IMAGE" | "3D") {
+        opened.visual_data = Some(bytes.to_vec());
+    }
+    Some((opened, data))
+}
+
+fn file_from_bytes_name_guess<'a>(
+    path_hint: &str,
+    bytes: &[u8],
+    zstd: Arc<TotkZstd<'a>>,
+) -> Option<(OpenedFile<'a>, SendData)> {
+    let file_path = Path::new(path_hint);
+    let file_name = file_path
+        .file_name()?
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    let uncompressed_name = file_name.strip_suffix(".zs").unwrap_or(&file_name);
+    let path_ref = file_path;
+
+    if is_tagproduct(path_ref) {
+        return TagProduct::open_tag_binary(bytes, path_ref, zstd);
+    }
+    if file_name.ends_with(".belnk") || file_name.ends_with(".belnk.zs") {
+        if let Some(result) = Xlink_rs::open_xlink_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if file_name.ends_with(".esetb.byml") || file_name.ends_with(".esetb.byml.zs") {
+        if let Some(result) = Esetb::open_esetb_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".rsizetable") || file_name.ends_with(".rsizetable.byml") {
+        if let Some(result) = Restbl::open_restbl_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if Pathlib::is_banc_path(&uncompressed_name) || Pathlib::is_byml_path(&uncompressed_name) {
+        if let Some(result) = BymlFile::open_byml_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".asb") {
+        if let Some(result) = AsbFile::open_asb_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".ainb") {
+        if let Some(result) = AinbFile::open_ainb_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".bfevfl") {
+        if let Some(result) = BfevFile::open_bfev_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".msbt") || uncompressed_name.ends_with(".msyt") {
+        if let Some(result) = MsbtFile::open_mstb_binary(bytes, path_ref, zstd.clone()) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".bfres") || file_name.ends_with(".bfres.mc") {
+        if let Some(result) =
+            crate::file_format::Model3D::bfres::BfresFile::open_binary(bytes, path_ref, zstd.clone())
+        {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".g1m") {
+        if let Some(result) = crate::parser::AOC::g1m::G1mFile::open_binary(path_ref, bytes) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".g1t") {
+        if let Some(result) = crate::file_format::Image::ImageDocument::open_binary(
+            bytes, path_ref, &zstd,
+        ) {
+            return Some(result);
+        }
+    }
+    if uncompressed_name.ends_with(".fbx") {
+        if let Some(result) = crate::parser::fbx::FbxFile::open_binary(path_ref, bytes) {
+            return Some(result);
+        }
+    }
+    if let Some(result) = crate::file_format::Image::ImageDocument::open_binary(bytes, path_ref, &zstd) {
+        return Some(result);
+    }
+    if let Some(result) = crate::file_format::SimpleOpeners::AampFile::open_aamp_binary(
+        bytes,
+        path_ref,
+        zstd.clone(),
+    ) {
+        return Some(result);
+    }
+    if let Some(result) = SmoSaveFile::open_smo_save_file_binary(bytes, path_ref, zstd.clone()) {
+        return Some(result);
+    }
+    if let Some(result) =
+        crate::file_format::SimpleOpeners::TextFile::open_text_binary(bytes, path_ref, zstd.clone())
+    {
+        return Some(result);
+    }
+    None
+}
+
 #[cfg(test)]
 mod remembered_compression_tests {
     use super::*;
@@ -649,6 +759,34 @@ mod remembered_compression_tests {
         assert!(Magic::is_yaz0(&compressed));
         assert_eq!(TotkZstd::yaz0_alignment(&compressed), 0x80);
         assert_eq!(TotkZstd::decompress_yaz0(&compressed).unwrap(), raw);
+    }
+
+    #[test]
+    fn opens_png_and_g1m_archive_children_from_memory() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/1");
+        let app = crate::TotkApp::TotkBitsApp::default();
+
+        let png = std::fs::read(root.join("0.png")).unwrap();
+        let (png_opened, png_data) =
+            file_from_bytes_to_senddata("0.png", &png, app.zstd.clone()).unwrap();
+        assert_eq!(png_data.tab, "IMAGE");
+        assert_eq!(png_opened.visual_data.as_deref(), Some(png.as_slice()));
+        crate::file_format::Image::ImageDocument::render_bytes_selection_with_zstd(
+            png_opened.visual_data.as_deref().unwrap(),
+            "0.png",
+            0,
+            0,
+            0,
+            Some(&app.zstd),
+        )
+        .unwrap();
+
+        let g1m = std::fs::read(root.join("231ccec8.g1m")).unwrap();
+        let (g1m_opened, g1m_data) =
+            file_from_bytes_to_senddata("231ccec8.g1m", &g1m, app.zstd.clone()).unwrap();
+        assert_eq!(g1m_data.tab, "3D");
+        assert_eq!(g1m_opened.visual_data.as_deref(), Some(g1m.as_slice()));
+        crate::parser::AOC::g1m::G1mFile::parse(&g1m, "231ccec8").unwrap();
     }
 }
 

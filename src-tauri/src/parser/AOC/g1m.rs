@@ -376,6 +376,36 @@ impl G1mFile {
         Some((opened, send))
     }
 
+    pub fn open_binary<P: AsRef<Path>>(
+        path: P,
+        bytes: &[u8],
+    ) -> Option<(
+        crate::file_format::BinTextFile::OpenedFile<'static>,
+        crate::Open_and_Save::SendData,
+    )> {
+        if !crate::Settings::Magic::is_g1m(bytes) {
+            return None;
+        }
+        let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
+        opened.path = crate::Settings::Pathlib::new(&path);
+        opened.file_type = crate::Zstd::TotkFileType::Other;
+        let mut send = crate::Open_and_Save::SendData::default();
+        send.path = crate::Settings::Pathlib::new(path.as_ref());
+        send.file_label = send
+            .path
+            .name
+            .split_once('.')
+            .map(|(stem, _)| stem)
+            .map(|stem| format!("{stem} [G1M]"))
+            .unwrap_or_else(|| format!("{} [G1M]", send.path.name));
+        send.file_metadata = "[G1M]".into();
+        send.file_type = crate::Zstd::TotkFileType::G1M;
+        send.status_text = format!("Opened G1M {}", send.path.full_path);
+        send.tab = "3D".into();
+        send.read_only = false;
+        Some((opened, send))
+    }
+
     pub fn resolve_textures(&self, source: &Path, aoc_path: &Path) -> G1mTextureResolution {
         self.resolve_textures_internal(source, aoc_path, true)
     }

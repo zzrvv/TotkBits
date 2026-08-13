@@ -54,6 +54,10 @@ pub enum TotkFileType {
     Image,
     Archive,
     Bars,
+    Bwav,
+    Bfwav,
+    Amta,
+    Riff,
     Compressed,
     None,
 }

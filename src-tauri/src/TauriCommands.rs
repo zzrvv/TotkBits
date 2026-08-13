@@ -73,7 +73,7 @@ mod rstb;
 #[path = "commands/settings.rs"]
 mod settings;
 #[path = "commands/visuals.rs"]
-mod visuals;
+pub(crate) mod visuals;
 
 pub use archives::*;
 pub use audio::*;

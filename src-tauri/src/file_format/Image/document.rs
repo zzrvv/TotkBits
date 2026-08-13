@@ -377,6 +377,53 @@ impl ImageDocument {
         Some((opened, send))
     }
 
+    pub fn open_binary<P: AsRef<Path>>(
+        bytes: &[u8],
+        path: P,
+        zstd: &crate::Zstd::TotkZstd<'_>,
+    ) -> Option<(
+        crate::file_format::BinTextFile::OpenedFile<'static>,
+        crate::Open_and_Save::SendData,
+    )> {
+        let path_ref = path.as_ref();
+        if !Self::supports(path_ref, bytes, Some(zstd)) {
+            return None;
+        };
+        let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
+        opened.path = crate::Settings::Pathlib::new(path_ref);
+        let mut bntx_dictionary = None;
+        let mut is_bntx = crate::Settings::Magic::is_bntx(bytes);
+        if !is_bntx {
+            if let Ok((decoded, dictionary)) = decode_compressed_bntx(bytes, Some(zstd)) {
+                is_bntx = crate::Settings::Magic::is_bntx(&decoded);
+                bntx_dictionary = dictionary;
+            }
+        } else if let Ok((_, dictionary)) = decode_compressed_bntx(bytes, Some(zstd)) {
+            bntx_dictionary = dictionary;
+        }
+        opened.file_type = if is_bntx {
+            crate::Zstd::TotkFileType::Bntx
+        } else {
+            crate::Zstd::TotkFileType::Other
+        };
+        let mut send = crate::Open_and_Save::SendData::default();
+        send.path = crate::Settings::Pathlib::new(path_ref);
+        send.file_label = if opened.file_type == crate::Zstd::TotkFileType::Bntx {
+            format!("{} [BNTX]", send.path.name)
+        } else {
+            format!("{} [IMAGE]", send.path.name)
+        };
+        if opened.file_type == crate::Zstd::TotkFileType::Bntx {
+            send.set_file_metadata(opened.file_type, bntx_dictionary);
+        } else {
+            send.file_type = opened.file_type;
+        }
+        send.status_text = format!("Opened image {}", path_ref.display());
+        send.tab = "IMAGE".into();
+        send.read_only = true;
+        Some((opened, send))
+    }
+
     pub fn render_path(path: impl AsRef<Path>) -> io::Result<RenderedImage> {
         Self::render_path_selection(path, 0, 0, 0)
     }
@@ -399,6 +446,25 @@ impl ImageDocument {
     ) -> io::Result<RenderedImage> {
         let path = path.as_ref();
         let source = std::fs::read(path)?;
+        Self::render_bytes_selection_with_zstd(
+            &source,
+            path,
+            texture_index,
+            array_index,
+            mip_index,
+            zstd,
+        )
+    }
+
+    pub fn render_bytes_selection_with_zstd(
+        source: &[u8],
+        path: impl AsRef<Path>,
+        texture_index: usize,
+        array_index: u32,
+        mip_index: u32,
+        zstd: Option<&crate::Zstd::TotkZstd<'_>>,
+    ) -> io::Result<RenderedImage> {
+        let path = path.as_ref();
         let data = maybe_zstd(&source, zstd)?;
         let mut entries = Vec::new();
         let (rgba, format, mip_count, dds_type) = if crate::Settings::Magic::is_g1t(&data) {

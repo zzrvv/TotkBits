@@ -171,6 +171,9 @@ export async function editInternalSarcFile(fullPath, setStatusText, setActiveTab
     } else if (content.tab === '3D') {
       setStatusText(content.status_text || `Opened file: ${fullPath}`);
       setActiveTab(content.tab);
+    } else if (content.tab === 'IMAGE') {
+      setStatusText(content.status_text || `Opened file: ${fullPath}`);
+      setActiveTab(content.tab);
     } else if (content.tab === 'ERROR') {
       console.log("Error opening file, no tab set");
       setStatusText("Unsupported file type");
@@ -235,6 +238,10 @@ export async function editNestedSarcFile(outerPath, innerPath, setStatusText, se
     updateEditorContent(content.text, content.lang);
     setLabelTextDisplay((previous) => ({ ...previous, yaml: content.file_label }));
     setActiveTab('YAML');
+  } else if (content.tab === 'SARC') {
+    setActiveTab('SARC');
+  } else if (content.tab === '3D' || content.tab === 'IMAGE') {
+    setActiveTab(content.tab);
   }
 }
 
