@@ -293,8 +293,9 @@ impl G1mFile {
             .map(|slot| slot.name.clone())
             .collect();
         let task = G1mImportTask::new(data.len(), geometry.submeshes.len());
-        let texture_task = texture_paths
-            .map(|(source, aoc_path)| move || resolve_texture_slots(source, aoc_path, &all_slots));
+        let texture_task = texture_paths.map(|(source, aoc_path)| {
+            move || resolve_texture_slots(source, aoc_path, &all_slots, true)
+        });
         let (meshes, texture_resolution) = task.run(
             |worker, workers| {
                 build_meshes(
@@ -376,13 +377,32 @@ impl G1mFile {
     }
 
     pub fn resolve_textures(&self, source: &Path, aoc_path: &Path) -> G1mTextureResolution {
+        self.resolve_textures_internal(source, aoc_path, true)
+    }
+
+    /// Resolves textures at their original dimensions for file export. The
+    /// regular resolver intentionally limits preview images to 384 pixels.
+    pub fn resolve_textures_for_export(
+        &self,
+        source: &Path,
+        aoc_path: &Path,
+    ) -> G1mTextureResolution {
+        self.resolve_textures_internal(source, aoc_path, false)
+    }
+
+    fn resolve_textures_internal(
+        &self,
+        source: &Path,
+        aoc_path: &Path,
+        preview: bool,
+    ) -> G1mTextureResolution {
         let all_slots: BTreeSet<_> = self
             .materials
             .iter()
             .flat_map(|material| material.texture_slots.iter())
             .map(|slot| slot.name.clone())
             .collect();
-        resolve_texture_slots(source, aoc_path, &all_slots)
+        resolve_texture_slots(source, aoc_path, &all_slots, preview)
     }
 }
 
@@ -390,6 +410,7 @@ fn resolve_texture_slots(
     source: &Path,
     aoc_path: &Path,
     all_slots: &BTreeSet<String>,
+    preview: bool,
 ) -> G1mTextureResolution {
     let total = all_slots.len();
     let Some(pair) = paired_texture_info(source) else {
@@ -399,7 +420,7 @@ fn resolve_texture_slots(
             skipped: 0,
         };
     };
-    let resolved = resolve_kidsobj_textures(source, aoc_path, &pair, &all_slots);
+    let resolved = resolve_kidsobj_textures(source, aoc_path, &pair, &all_slots, preview);
     if !resolved.is_empty() {
         return G1mTextureResolution {
             textures: resolved,
@@ -411,7 +432,7 @@ fn resolve_texture_slots(
     // the model as a G1T without KTID/KidsObj metadata.
     pair.ktid_hash
         .as_deref()
-        .and_then(|hash| resolve_direct_g1t(source, aoc_path, hash, &all_slots))
+        .and_then(|hash| resolve_direct_g1t(source, aoc_path, hash, &all_slots, preview))
         .unwrap_or(G1mTextureResolution {
             textures: Vec::new(),
             total,
@@ -1456,6 +1477,7 @@ fn resolve_kidsobj_textures(
     aoc: &Path,
     pair: &PairedTextureInfo,
     slot_ids: &BTreeSet<String>,
+    preview: bool,
 ) -> Vec<ResolvedG1tTexture> {
     let Some(ktid_path) = find_adjacent_companion(source, "ktid").or_else(|| {
         pair.ktid_hash
@@ -1491,7 +1513,13 @@ fn resolve_kidsobj_textures(
     }
     let mut textures = Vec::new();
     for (path, slot_ids) in archives {
-        let Ok(g1t) = G1tFile::parse_preview(&std::fs::read(&path).unwrap_or_default()) else {
+        let data = std::fs::read(&path).unwrap_or_default();
+        let parsed = if preview {
+            G1tFile::parse_preview(&data)
+        } else {
+            G1tFile::parse(&data)
+        };
+        let Ok(g1t) = parsed else {
             continue;
         };
         for texture in g1t.textures {
@@ -1525,11 +1553,18 @@ fn resolve_direct_g1t(
     aoc: &Path,
     hash: &str,
     slot_ids: &BTreeSet<String>,
+    preview: bool,
 ) -> Option<G1mTextureResolution> {
     let Some(path) = find_g1t(source, aoc, hash) else {
         return None;
     };
-    let Ok(g1t) = G1tFile::parse_preview(&std::fs::read(&path).unwrap_or_default()) else {
+    let data = std::fs::read(&path).unwrap_or_default();
+    let parsed = if preview {
+        G1tFile::parse_preview(&data)
+    } else {
+        G1tFile::parse(&data)
+    };
+    let Ok(g1t) = parsed else {
         return None;
     };
     let total = g1t.textures.len();
@@ -2180,6 +2215,37 @@ mod tests {
             .bone_weights
             .iter()
             .all(|weights| { (weights.iter().sum::<f32>() - 1.0).abs() < 1.0e-4 }));
+    }
+
+    #[test]
+    fn supplied_4d_model_export_keeps_full_texture_dimensions() {
+        use base64::Engine;
+
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/4d58bba9.g1m");
+        if !path.is_file() {
+            return;
+        }
+        let config = crate::TotkConfig::TotkConfig::safe_new(false).unwrap();
+        if config.aoc_path.is_empty() {
+            return;
+        }
+        let model = G1mFile::from_path(&path).unwrap();
+        let decode_dimensions = |texture: &ResolvedG1tTexture| {
+            let encoded = texture.data_url.split_once(',').unwrap().1;
+            let png = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .unwrap();
+            let image = crate::file_format::Image::raster::decode(&png).unwrap();
+            (image.width(), image.height())
+        };
+
+        let export = model.resolve_textures_for_export(&path, Path::new(&config.aoc_path));
+        let export_texture = export
+            .textures
+            .iter()
+            .find(|texture| texture.width == 1024 && texture.height == 2048)
+            .expect("missing expected 1024x2048 texture");
+        assert_eq!(decode_dimensions(export_texture), (1024, 2048));
     }
 
     #[test]

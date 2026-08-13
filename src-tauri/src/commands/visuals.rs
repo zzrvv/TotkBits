@@ -176,7 +176,9 @@ pub fn export_g1m_fbx(
                 .unwrap_or("G1M"),
         )
         .map_err(|error| format!("{}: {error}", path.display()))?;
-        let textures = model.resolve_textures(path, Path::new(&aoc_path)).textures;
+        let textures = model
+            .resolve_textures_for_export(path, Path::new(&aoc_path))
+            .textures;
         let prefix = if source_paths.len() > 1 {
             format!(
                 "{}: ",
@@ -287,7 +289,9 @@ pub fn export_g1m_glb(
                 .unwrap_or("G1M"),
         )
         .map_err(|error| format!("{}: {error}", path.display()))?;
-        let textures = model.resolve_textures(path, Path::new(&aoc_path)).textures;
+        let textures = model
+            .resolve_textures_for_export(path, Path::new(&aoc_path))
+            .textures;
         let prefix = if source_paths.len() > 1 {
             format!(
                 "{}: ",

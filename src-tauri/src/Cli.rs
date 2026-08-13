@@ -486,7 +486,14 @@ impl CliCommand {
         let model = crate::parser::AOC::g1m::G1mFile::parse_for_export(&source, name)
             .map_err(|error| error.to_string())?;
         let textures = model
-            .resolve_textures(&self.input, self.input.parent().unwrap_or(Path::new("")))
+            .resolve_textures_for_export(
+                &self.input,
+                Path::new(
+                    &crate::TotkConfig::TotkConfig::safe_new(false)
+                        .map_err(|error| error.to_string())?
+                        .aoc_path,
+                ),
+            )
             .textures;
         crate::parser::fbx::export_g1m(
             &[(&model, textures.as_slice(), String::new())],

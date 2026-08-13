@@ -63,6 +63,7 @@ struct TextureLink {
 }
 
 struct ExportedTexture {
+    name: String,
     relative_path: String,
     has_transparency: bool,
 }
@@ -302,7 +303,7 @@ fn export_textures(
             if paths.contains_key(&key) {
                 continue;
             }
-            let base = safe_name(&format!("{}{}", input.prefix, texture.name));
+            let base = texture_export_base(input, texture);
             let mut filename = format!("{base}.{extension}");
             let mut suffix = 2;
             while !used.insert(filename.to_ascii_lowercase()) {
@@ -320,6 +321,10 @@ fn export_textures(
             paths.insert(
                 key,
                 ExportedTexture {
+                    name: filename
+                        .strip_suffix(&format!(".{extension}"))
+                        .unwrap_or(&filename)
+                        .to_owned(),
                     relative_path: filename,
                     has_transparency,
                 },
@@ -327,6 +332,41 @@ fn export_textures(
         }
     }
     Ok(paths)
+}
+
+fn texture_export_base(input: &ModelInput<'_>, texture: &ResolvedG1tTexture) -> String {
+    let texture_names: BTreeSet<_> = std::iter::once(texture.name.as_str())
+        .chain(texture.aliases.iter().map(String::as_str))
+        .collect();
+    let kind = input
+        .model
+        .materials
+        .iter()
+        .flat_map(|material| &material.texture_slots)
+        .find(|slot| texture_names.contains(slot.name.as_str()))
+        .map(|slot| texture_kind_prefix(&slot.texture_type))
+        .unwrap_or("tex");
+    let (archive_path, archive_index) = texture
+        .path
+        .rsplit_once('#')
+        .unwrap_or((texture.path.as_str(), texture.name.as_str()));
+    let archive_hash = Path::new(archive_path)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("g1t");
+    safe_name(&format!("{kind}_{archive_hash}_{archive_index}"))
+}
+
+fn texture_kind_prefix(kind: &str) -> &'static str {
+    match kind {
+        "Diffuse" => "alb",
+        "Normal" => "nrm",
+        "Emission" => "emm",
+        "AmbientOcclusion" => "aoo",
+        "Specular" => "spm",
+        _ => "tex",
+    }
 }
 
 fn has_fully_transparent_pixel(data: &[u8]) -> io::Result<bool> {
@@ -448,7 +488,7 @@ fn build_ascii(
                     video_id: ids.take(),
                     material_id: material_ids[model_index][index],
                     property,
-                    name: format!("{}{}", input.prefix, slot.name),
+                    name: exported_texture.name.clone(),
                     relative_path: exported_texture.relative_path.clone(),
                     uv_set: format!("UVChannel_{}", slot.uv_layer as usize + 1),
                     has_transparency: property == "DiffuseColor"
@@ -1153,6 +1193,16 @@ fn escaped(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uses_g1m_importer_texture_prefixes() {
+        assert_eq!(texture_kind_prefix("Diffuse"), "alb");
+        assert_eq!(texture_kind_prefix("Normal"), "nrm");
+        assert_eq!(texture_kind_prefix("Emission"), "emm");
+        assert_eq!(texture_kind_prefix("AmbientOcclusion"), "aoo");
+        assert_eq!(texture_kind_prefix("Specular"), "spm");
+        assert_eq!(texture_kind_prefix("Unknown"), "tex");
+    }
 
     #[test]
     fn transparency_requires_a_fully_transparent_pixel() {
