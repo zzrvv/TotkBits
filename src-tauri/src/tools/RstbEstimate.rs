@@ -543,6 +543,8 @@ impl SizeRule {
             | TotkFileType::Compressed
             | TotkFileType::Fbx
             | TotkFileType::G1M
+            | TotkFileType::Glb
+            | TotkFileType::Mii
             | TotkFileType::Hkcl
             | TotkFileType::Image
             | TotkFileType::Msbt

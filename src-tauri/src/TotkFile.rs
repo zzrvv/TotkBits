@@ -1,4 +1,8 @@
-use std::{io, path::{Path, PathBuf}, sync::Arc};
+use std::{
+    io,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use roead::aamp::ParameterIO;
 
@@ -184,8 +188,6 @@ impl<'a> TotkFile<'a> {
         Magic::from_binary(&self.binary_raw)
     }
 
-    
-
     pub fn parent(&self) -> String {
         self.parent_uuid.clone()
     }
@@ -197,6 +199,8 @@ impl<'a> TotkFile<'a> {
     pub fn update_properties_from_file_type(&mut self) {
         self.properties = match self.file_type {
             TotkFileType::Fbx
+            | TotkFileType::Glb
+            | TotkFileType::Mii
             | TotkFileType::Image
             | TotkFileType::Bntx
             | TotkFileType::Bphhb
@@ -232,7 +236,8 @@ impl<'a> TotkFile<'a> {
                 }
             }
             TotkFileType::Bfres | TotkFileType::Fbx | TotkFileType::G1M => "3D",
-            TotkFileType::Bntx | TotkFileType::Image => "IMAGE",
+            TotkFileType::Glb => "3D",
+            TotkFileType::Bntx | TotkFileType::Image | TotkFileType::Mii => "IMAGE",
             TotkFileType::Amta => "AMTA",
             TotkFileType::Bwav | TotkFileType::Bfwav | TotkFileType::Riff => "AUDIO",
             TotkFileType::Compressed | TotkFileType::None | TotkFileType::Other => "ERROR",
@@ -363,13 +368,12 @@ impl<'a> TotkFile<'a> {
             )?,
             TotkFileType::AINB => AinbFile::text_to_binary(text)?,
             TotkFileType::Evfl => BfevFile::text_to_binary(text)?,
-            TotkFileType::Xlink => Xlink_rs::text_to_binary(
-                text,
-                &self.path.full_path,
-                self.zstd.clone(),
-                None,
-            )
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid XLink text"))?,
+            TotkFileType::Xlink => {
+                Xlink_rs::text_to_binary(text, &self.path.full_path, self.zstd.clone(), None)
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "invalid XLink text")
+                    })?
+            }
             TotkFileType::Aamp => crate::file_format::bphcl::aamp_from_yaml(text)?.to_binary(),
             TotkFileType::Msbt => MsbtFile::text_to_binary(
                 text,
@@ -408,9 +412,10 @@ impl<'a> TotkFile<'a> {
                 let opened = self.cache_arc.sarc.opened.as_ref().ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "missing SARC cache")
                 })?;
-                let entries = opened.sarc.files().filter_map(|file| {
-                    file.name.map(|name| (name.to_owned(), file.data.to_vec()))
-                });
+                let entries = opened
+                    .sarc
+                    .files()
+                    .filter_map(|file| file.name.map(|name| (name.to_owned(), file.data.to_vec())));
                 return opened.rebuild_binary(entries);
             }
             TotkFileType::Archive | TotkFileType::Bars => {
@@ -439,20 +444,21 @@ impl<'a> TotkFile<'a> {
                     .as_ref()
                     .or(self.cache_3d.source_data.as_ref())
                     .cloned()
-                    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing G1M source"));
+                    .ok_or_else(|| {
+                        io::Error::new(io::ErrorKind::InvalidData, "missing G1M source")
+                    });
             }
             TotkFileType::Bfres
             | TotkFileType::Fbx
+            | TotkFileType::Glb
+            | TotkFileType::Mii
             | TotkFileType::Image
             | TotkFileType::Bntx => {
                 return self.cache_3d.source_data.clone().ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "missing visual source")
                 });
             }
-            TotkFileType::Bwav
-            | TotkFileType::Bfwav
-            | TotkFileType::Amta
-            | TotkFileType::Riff => {
+            TotkFileType::Bwav | TotkFileType::Bfwav | TotkFileType::Amta | TotkFileType::Riff => {
                 return self.cache_misc.audio_data.clone().ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidData, "missing audio source")
                 });
@@ -469,7 +475,10 @@ impl<'a> TotkFile<'a> {
                 });
             }
             TotkFileType::Compressed | TotkFileType::None => {
-                return Err(io::Error::new(io::ErrorKind::InvalidData, "file is not parsed"));
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "file is not parsed",
+                ));
             }
         };
         self.apply_compression(raw)
@@ -506,9 +515,9 @@ impl<'a> TotkFile<'a> {
         array_index: u32,
         mip_index: u32,
     ) -> io::Result<crate::file_format::Image::RenderedImage> {
-        let source = self.visual_source().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "missing image source")
-        })?;
+        let source = self
+            .visual_source()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing image source"))?;
         ImageDocument::render_bytes_selection_with_zstd(
             source,
             &self.path.full_path,
@@ -629,7 +638,8 @@ impl<'a> TotkFile<'a> {
         let new_size = encoded.len();
         let sample_rate = crate::file_format::Audio::decode(&encoded)?.sample_rate;
         if !dry_run {
-            self.set_entry(path, encoded).map_err(|error| error.to_string())?;
+            self.set_entry(path, encoded)
+                .map_err(|error| error.to_string())?;
         }
         Ok(crate::TauriCommands::BfwavReplacement {
             old_size,
@@ -648,7 +658,10 @@ impl<'a> TotkFile<'a> {
     ) -> Result<crate::TauriCommands::BarsFolderReplacement, String> {
         use std::collections::HashMap;
         if !folder.is_dir() {
-            return Err(format!("audio replacement folder does not exist: {}", folder.display()));
+            return Err(format!(
+                "audio replacement folder does not exist: {}",
+                folder.display()
+            ));
         }
         let mut sources = HashMap::new();
         for item in std::fs::read_dir(folder).map_err(|error| error.to_string())? {
@@ -672,8 +685,7 @@ impl<'a> TotkFile<'a> {
             .paths()
             .into_iter()
             .filter(|path| {
-                path.starts_with("Audio/")
-                    && (path.ends_with(".bfwav") || path.ends_with(".bwav"))
+                path.starts_with("Audio/") && (path.ends_with(".bfwav") || path.ends_with(".bwav"))
             })
             .collect();
         let mut result = crate::TauriCommands::BarsFolderReplacement {
@@ -693,13 +705,7 @@ impl<'a> TotkFile<'a> {
                 continue;
             };
             let maximum = self.entry_bytes(&target).map(<[u8]>::len);
-            match self.replace_audio_entry(
-                &target,
-                source,
-                fit_to_original,
-                maximum,
-                dry_run,
-            ) {
+            match self.replace_audio_entry(&target, source, fit_to_original, maximum, dry_run) {
                 Ok(replacement) => {
                     if replacement.increased {
                         result.oversized.push(target.clone());
@@ -732,7 +738,10 @@ impl<'a> TotkFile<'a> {
         path: impl AsRef<Path>,
     ) -> io::Result<crate::file_format::Animation::g1a::G1aFile> {
         if self.cache_3d.g1m.is_none() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "file is not G1M"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "file is not G1M",
+            ));
         }
         crate::file_format::Animation::g1a::G1aFile::from_path(path)
     }
@@ -825,22 +834,27 @@ impl<'a> TotkFile<'a> {
                 node_id: format!("cloth:{index}"),
                 kind: "cloth".into(),
                 index,
-                name: cloth.name.clone().unwrap_or_else(|| format!("Cloth {index}")),
+                name: cloth
+                    .name
+                    .clone()
+                    .unwrap_or_else(|| format!("Cloth {index}")),
                 section_index: cloth.key.section_index,
                 data_offset: cloth.key.offset,
             })
             .chain(file.document.physics.collidables.iter().enumerate().map(
-                |(index, collidable)| crate::DocumentState::HkclSelectableNode {
-                    document_id: document_id.into(),
-                    node_id: format!("collidable:{index}"),
-                    kind: "collidable".into(),
-                    index,
-                    name: collidable
-                        .name
-                        .clone()
-                        .unwrap_or_else(|| format!("Collidable {index}")),
-                    section_index: collidable.key.section_index,
-                    data_offset: collidable.key.offset,
+                |(index, collidable)| {
+                    crate::DocumentState::HkclSelectableNode {
+                        document_id: document_id.into(),
+                        node_id: format!("collidable:{index}"),
+                        kind: "collidable".into(),
+                        index,
+                        name: collidable
+                            .name
+                            .clone()
+                            .unwrap_or_else(|| format!("Collidable {index}")),
+                        section_index: collidable.key.section_index,
+                        data_offset: collidable.key.offset,
+                    }
                 },
             ))
             .collect()
@@ -862,7 +876,10 @@ impl<'a> TotkFile<'a> {
 
     pub fn replace_g1m_source(&mut self, data: Vec<u8>) -> io::Result<()> {
         if !Magic::is_g1m(&data) {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid G1M source"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "invalid G1M source",
+            ));
         }
         let name = self
             .path
@@ -878,7 +895,9 @@ impl<'a> TotkFile<'a> {
     }
 
     pub fn replace_bfres_source(&mut self, data: Vec<u8>) -> io::Result<()> {
-        let (raw, _) = self.zstd.try_decompress_all_ordered_safe(&data, &self.path.full_path);
+        let (raw, _) = self
+            .zstd
+            .try_decompress_all_ordered_safe(&data, &self.path.full_path);
         let bfres = BfresFile::from_bytes(&raw)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         self.cache_3d.bfres = Some(bfres);
@@ -889,10 +908,16 @@ impl<'a> TotkFile<'a> {
 
     pub fn save_asb_baev(&self, destination: impl AsRef<Path>) -> io::Result<()> {
         if self.file_type != TotkFileType::ASB {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "file is not ASB"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "file is not ASB",
+            ));
         }
         let data = self.cache_text.asb_baev_data.as_ref().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::NotFound, "ASB has no selected BAEV companion")
+            io::Error::new(
+                io::ErrorKind::NotFound,
+                "ASB has no selected BAEV companion",
+            )
         })?;
         std::fs::write(destination, data)
     }
@@ -910,9 +935,10 @@ impl<'a> TotkFile<'a> {
                 .set(path, bytes)
                 .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error));
         }
-        let pack = self.cache_arc.sarc.opened.as_mut().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "file is not an archive")
-        })?;
+        let pack =
+            self.cache_arc.sarc.opened.as_mut().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "file is not an archive")
+            })?;
         let existed = pack.sarc.get_data(path).is_some();
         let hash = crate::Zstd::sha256(bytes.clone());
         pack.mutate_writer(|writer| writer.add_file(path, bytes))?;
@@ -933,11 +959,15 @@ impl<'a> TotkFile<'a> {
                 .then_some(())
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "archive entry not found"));
         }
-        let pack = self.cache_arc.sarc.opened.as_mut().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "file is not an archive")
-        })?;
+        let pack =
+            self.cache_arc.sarc.opened.as_mut().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "file is not an archive")
+            })?;
         if pack.sarc.get_data(path).is_none() {
-            return Err(io::Error::new(io::ErrorKind::NotFound, "SARC entry not found"));
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "SARC entry not found",
+            ));
         }
         pack.mutate_writer(|writer| writer.remove_file(path))?;
         self.cache_arc.sarc.added.remove(path);
@@ -954,17 +984,15 @@ impl<'a> TotkFile<'a> {
                 .then_some(())
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "archive entry not found"));
         }
-        let pack = self.cache_arc.sarc.opened.as_mut().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "file is not an archive")
-        })?;
+        let pack =
+            self.cache_arc.sarc.opened.as_mut().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "file is not an archive")
+            })?;
         pack.rename(from, to)?;
         if let Some(value) = self.cache_arc.sarc.added.remove(from) {
             self.cache_arc.sarc.added.insert(to.into(), value);
         } else {
-            self.cache_arc
-                .sarc
-                .modded
-                .insert(to.into(), String::new());
+            self.cache_arc.sarc.modded.insert(to.into(), String::new());
         }
         self.cache_arc.sarc.modded.remove(from);
         Ok(())
@@ -1089,14 +1117,11 @@ impl<'a> TotkFile<'a> {
             result.cache_text.asb = Some(AsbFile::from_binary(&binary)?);
         }
         if result.file_type == TotkFileType::AINB && !result.text.is_empty() {
-            result.cache_text.ainb = Some(crate::parser::ainb::AinbDocument::from_yaml(
-                &result.text,
-            )?);
+            result.cache_text.ainb =
+                Some(crate::parser::ainb::AinbDocument::from_yaml(&result.text)?);
         }
         if result.file_type == TotkFileType::Aamp && !result.text.is_empty() {
-            result.cache_text.aamp = Some(crate::file_format::bphcl::aamp_from_yaml(
-                &result.text,
-            )?);
+            result.cache_text.aamp = Some(crate::file_format::bphcl::aamp_from_yaml(&result.text)?);
         }
         result.update_properties_from_file_type();
         Ok(result)
@@ -1389,7 +1414,8 @@ impl<'a> TotkFile<'a> {
                 res.cache_arc.sarc = magic_option!(PackComparer::from_pack(pack, zstd.clone()));
             }
             TotkFileType::Archive | TotkFileType::Bars => {
-                let dictionary = (res.compression != ZstdDictionary::None).then_some(res.compression);
+                let dictionary =
+                    (res.compression != ZstdDictionary::None).then_some(res.compression);
                 let archive = ArchiveDocument::from_binary(&res.binary_raw, path, dictionary)
                     .map_err(|_| ())
                     .ok()
@@ -1403,14 +1429,20 @@ impl<'a> TotkFile<'a> {
                 res.file_type = TotkFileType::Bfres;
             }
             TotkFileType::Fbx => {
-                let name = path.file_stem().and_then(|value| value.to_str()).unwrap_or("FBX");
+                let name = path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("FBX");
                 res.cache_3d.fbx = Some(magic_result!(FbxFile::parse(&res.binary_raw, name)));
                 res.cache_3d.source_data = Some(data.to_vec());
                 res.file_type = TotkFileType::Fbx;
                 res.update_properties_from_file_type();
             }
             TotkFileType::G1M => {
-                let name = path.file_stem().and_then(|value| value.to_str()).unwrap_or("G1M");
+                let name = path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("G1M");
                 res.cache_3d.g1m = Some(magic_result!(G1mFile::parse(&res.binary_raw, name)));
                 res.cache_3d.source_data = Some(data.to_vec());
                 res.file_type = TotkFileType::G1M;
@@ -1440,10 +1472,7 @@ impl<'a> TotkFile<'a> {
                 res.cache_misc.physics_data = Some(data.to_vec());
                 res.update_properties_from_file_type();
             }
-            TotkFileType::Bwav
-            | TotkFileType::Bfwav
-            | TotkFileType::Amta
-            | TotkFileType::Riff => {
+            TotkFileType::Bwav | TotkFileType::Bfwav | TotkFileType::Amta | TotkFileType::Riff => {
                 res.file_type = filetype_magic;
                 res.update_properties_from_file_type();
                 res.cache_misc.audio_data = Some(data.to_vec());
@@ -1538,8 +1567,15 @@ mod tests {
         let mut file = TotkFile::default(test_zstd());
         file.file_type = TotkFileType::Byml;
         file.compression = ZstdDictionary::Pack;
-        let debug_suffix = if cfg!(debug_assertions) { " [Debug]" } else { "" };
-        assert_eq!(file.metadata(), format!("[BYML] [Zstd: PACK]{debug_suffix}"));
+        let debug_suffix = if cfg!(debug_assertions) {
+            " [Debug]"
+        } else {
+            ""
+        };
+        assert_eq!(
+            file.metadata(),
+            format!("[BYML] [Zstd: PACK]{debug_suffix}")
+        );
 
         file.compression = ZstdDictionary::Yaz0;
         assert_eq!(file.metadata(), format!("[BYML] [YAZ0]{debug_suffix}"));
@@ -1599,23 +1635,15 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/1");
 
         let png_path = root.join("0.png");
-        let png = TotkFile::from_binary(
-            &std::fs::read(&png_path).unwrap(),
-            test_zstd(),
-            &png_path,
-        )
-        .unwrap();
+        let png = TotkFile::from_binary(&std::fs::read(&png_path).unwrap(), test_zstd(), &png_path)
+            .unwrap();
         assert_eq!(png.file_type, TotkFileType::Image);
         assert!(png.cache_3d.image.is_some());
         assert!(png.is_read_only());
 
         let g1m_path = root.join("231ccec8.g1m");
-        let g1m = TotkFile::from_binary(
-            &std::fs::read(&g1m_path).unwrap(),
-            test_zstd(),
-            &g1m_path,
-        )
-        .unwrap();
+        let g1m = TotkFile::from_binary(&std::fs::read(&g1m_path).unwrap(), test_zstd(), &g1m_path)
+            .unwrap();
         assert_eq!(g1m.file_type, TotkFileType::G1M);
         assert!(g1m.cache_3d.g1m.is_some());
 
@@ -1637,17 +1665,17 @@ mod tests {
 
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tmp/1");
         let png_path = root.join("0.png");
-        let mut png_file = TotkFile::from_binary(
-            &std::fs::read(&png_path).unwrap(),
-            test_zstd(),
-            &png_path,
-        )
-        .unwrap();
+        let mut png_file =
+            TotkFile::from_binary(&std::fs::read(&png_path).unwrap(), test_zstd(), &png_path)
+                .unwrap();
         let png = png_file.send_data();
         assert_eq!(png.tab, "IMAGE");
         assert!(png.read_only);
         assert!(png_file.render_image(0, 0, 0).is_ok());
-        assert_eq!(png_file.to_binary(None).unwrap(), std::fs::read(&png_path).unwrap());
+        assert_eq!(
+            png_file.to_binary(None).unwrap(),
+            std::fs::read(&png_path).unwrap()
+        );
 
         let mut folder_file = TotkFile::from_folder(&root, test_zstd()).unwrap();
         let folder = folder_file.send_data();
@@ -1706,11 +1734,18 @@ mod tests {
             modified: Default::default(),
             dictionary: None,
         });
-        file.set_entry("totkfile-test.bin", b"test".to_vec()).unwrap();
-        assert_eq!(file.entry_bytes("totkfile-test.bin"), Some(b"test".as_slice()));
+        file.set_entry("totkfile-test.bin", b"test".to_vec())
+            .unwrap();
+        assert_eq!(
+            file.entry_bytes("totkfile-test.bin"),
+            Some(b"test".as_slice())
+        );
         file.rename_entry("totkfile-test.bin", "totkfile-renamed.bin")
             .unwrap();
-        assert_eq!(file.entry_bytes("totkfile-renamed.bin"), Some(b"test".as_slice()));
+        assert_eq!(
+            file.entry_bytes("totkfile-renamed.bin"),
+            Some(b"test".as_slice())
+        );
         assert!(!file.to_binary(None).unwrap().is_empty());
         file.remove_entry("totkfile-renamed.bin").unwrap();
         assert!(file.entry_bytes("totkfile-renamed.bin").is_none());
@@ -1721,8 +1756,7 @@ mod tests {
         let mut opened = crate::file_format::BinTextFile::OpenedFile::default();
         opened.file_type = TotkFileType::Text;
         opened.path = Pathlib::new("disk.txt");
-        let converted =
-            TotkFile::from_opened_file(opened, "disk".into(), test_zstd()).unwrap();
+        let converted = TotkFile::from_opened_file(opened, "disk".into(), test_zstd()).unwrap();
         assert_eq!(converted.text, "disk");
         assert_eq!(converted.path.name, "disk.txt");
 
@@ -1742,7 +1776,10 @@ mod tests {
         let png = TotkFile::from_file(&png_path, test_zstd()).unwrap();
         let rendered = png.render_image(0, 0, 0).unwrap();
         let rendered_json = serde_json::to_value(rendered).unwrap();
-        assert!(rendered_json["dataUrl"].as_str().unwrap().starts_with("data:image/png"));
+        assert!(rendered_json["dataUrl"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/png"));
 
         let g1m_path = root.join("231ccec8.g1m");
         let g1m = TotkFile::from_file(&g1m_path, test_zstd()).unwrap();

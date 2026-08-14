@@ -553,7 +553,16 @@ pub fn open_file_from_disk_name_guess<P: AsRef<Path>>(
     let file_name = path.file_name()?.to_string_lossy().to_ascii_lowercase();
     let uncompressed_name = file_name.strip_suffix(".zs").unwrap_or(&file_name);
 
-    let result = if file_name.starts_with("tag.product") {
+    let mii_result = if uncompressed_name.ends_with(".glb") {
+        None
+    } else {
+        crate::tools::mii::open(path)
+    };
+    let result = if uncompressed_name.ends_with(".glb") {
+        crate::tools::mii::open_glb(path).ok()
+    } else if let Some(result) = mii_result {
+        Some(result)
+    } else if file_name.starts_with("tag.product") {
         TagProduct::open_tag(path, zstd)
     } else if file_name.ends_with(".belnk") || file_name.ends_with(".belnk.zs") {
         Xlink_rs::open_xlink(path, zstd)
@@ -697,9 +706,11 @@ fn file_from_bytes_name_guess<'a>(
         }
     }
     if uncompressed_name.ends_with(".bfres") || file_name.ends_with(".bfres.mc") {
-        if let Some(result) =
-            crate::file_format::Model3D::bfres::BfresFile::open_binary(bytes, path_ref, zstd.clone())
-        {
+        if let Some(result) = crate::file_format::Model3D::bfres::BfresFile::open_binary(
+            bytes,
+            path_ref,
+            zstd.clone(),
+        ) {
             return Some(result);
         }
     }
@@ -709,9 +720,9 @@ fn file_from_bytes_name_guess<'a>(
         }
     }
     if uncompressed_name.ends_with(".g1t") {
-        if let Some(result) = crate::file_format::Image::ImageDocument::open_binary(
-            bytes, path_ref, &zstd,
-        ) {
+        if let Some(result) =
+            crate::file_format::Image::ImageDocument::open_binary(bytes, path_ref, &zstd)
+        {
             return Some(result);
         }
     }
@@ -720,14 +731,14 @@ fn file_from_bytes_name_guess<'a>(
             return Some(result);
         }
     }
-    if let Some(result) = crate::file_format::Image::ImageDocument::open_binary(bytes, path_ref, &zstd) {
+    if let Some(result) =
+        crate::file_format::Image::ImageDocument::open_binary(bytes, path_ref, &zstd)
+    {
         return Some(result);
     }
-    if let Some(result) = crate::file_format::SimpleOpeners::AampFile::open_aamp_binary(
-        bytes,
-        path_ref,
-        zstd.clone(),
-    ) {
+    if let Some(result) =
+        crate::file_format::SimpleOpeners::AampFile::open_aamp_binary(bytes, path_ref, zstd.clone())
+    {
         return Some(result);
     }
     if let Some(result) = SmoSaveFile::open_smo_save_file_binary(bytes, path_ref, zstd.clone()) {

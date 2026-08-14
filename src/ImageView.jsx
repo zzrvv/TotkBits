@@ -35,6 +35,7 @@ export default function ImageView({ activeTab, setStatusText }) {
     const [loading, setLoading] = useState(false);
     const [renameValue, setRenameValue] = useState('');
     const [replacementFormat, setReplacementFormat] = useState('ORIGINAL');
+    const [miiName, setMiiName] = useState('');
     const canvasRef = useRef(null);
 
     const fitImageToCanvas = useCallback(() => {
@@ -57,7 +58,17 @@ export default function ImageView({ activeTab, setStatusText }) {
         setImage(null);
         setError('');
         setReplacementFormat('ORIGINAL');
+        setMiiName('');
     }, [document?.fullPath]);
+
+    useEffect(() => {
+        if (activeTab !== 'IMAGE' || document?.fileType !== 'MII') return;
+        let cancelled = false;
+        invoke('read_mii_name', { documentId: document.id })
+            .then((name) => { if (!cancelled) setMiiName(name); })
+            .catch(() => { if (!cancelled) setMiiName(''); });
+        return () => { cancelled = true; };
+    }, [activeTab, document?.id, document?.fileType, document?.fullPath]);
 
     useEffect(() => {
         if (activeTab !== 'IMAGE' || !document?.fullPath) return;
@@ -176,7 +187,9 @@ export default function ImageView({ activeTab, setStatusText }) {
                     <span className="image-tree-caret">▾</span><span className="image-tree-container-icon">▣</span><span>{entry.name}</span>
                 </button>
                 <div className="image-tree-children">{arrayImages(entry).map((subimage) => <button type="button" key={`${subimage.arrayIndex}`} className={textureIndex === index && arrayIndex === subimage.arrayIndex ? 'selected' : ''} onClick={() => selectSubimage(index, subimage)} title={subimage.name}>
-                    <span className="image-tree-image-icon">▧</span><span className="image-tree-label">{entry.arrayCount > 1 ? `${entry.name} [${subimage.arrayIndex}]` : entry.name}</span><small>{subimage.width} × {subimage.height}</small>
+                    <span className="image-tree-image-icon">▧</span><span className="image-tree-label">{document?.fileType === 'MII'
+                        ? (miiName || fileName)
+                        : (entry.arrayCount > 1 ? `${entry.name} [${subimage.arrayIndex}]` : entry.name)}</span><small>{subimage.width} × {subimage.height}</small>
                 </button>)}</div>
             </div>)}</div>
         </nav>}

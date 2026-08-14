@@ -513,11 +513,22 @@ pub fn render_image(
         let array_index = array_index.unwrap_or(0);
         let mip_index = mip_index.unwrap_or(0);
         match app.opened_file.visual_data.as_deref() {
-            Some(data) => crate::file_format::Image::ImageDocument::render_bytes_selection_with_zstd(
-                data, &path, texture_index, array_index, mip_index, Some(&app.zstd),
-            ),
+            Some(data) => {
+                crate::file_format::Image::ImageDocument::render_bytes_selection_with_zstd(
+                    data,
+                    &path,
+                    texture_index,
+                    array_index,
+                    mip_index,
+                    Some(&app.zstd),
+                )
+            }
             None => crate::file_format::Image::ImageDocument::render_path_selection_with_zstd(
-                path, texture_index, array_index, mip_index, Some(&app.zstd),
+                path,
+                texture_index,
+                array_index,
+                mip_index,
+                Some(&app.zstd),
             ),
         }
         .map_err(|error| error.to_string())

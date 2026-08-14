@@ -25,6 +25,7 @@ mod compression;
 mod file_format;
 mod parser;
 pub mod tools;
+use crate::tools::mii::{download_mii_glb, read_glb_preview, read_mii_name};
 use crate::DocumentState::DocumentState as Documents;
 use crate::Settings::{get_startup_data, StartupData};
 use crate::TauriCommands::{
@@ -87,6 +88,9 @@ fn main() -> io::Result<()> {
             export_g1m_fbx,
             replace_g1m_meshes,
             export_g1m_glb,
+            download_mii_glb,
+            read_glb_preview,
+            read_mii_name,
             export_viewport_png,
             list_batch_render_files,
             render_image,

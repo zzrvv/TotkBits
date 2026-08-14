@@ -4,6 +4,7 @@ import { Grid, OrbitControls, PerspectiveCamera } from '@react-three/drei';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { getDocumentsSnapshot, invoke, subscribeDocuments } from './DocumentState';
 import './Bfres3DView.css';
 
@@ -31,6 +32,165 @@ const importDuration = (milliseconds) => {
 const playbackTime = (seconds) => `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
 const cacheModelInspection = (path, value) => {
     modelInspectionCache.set(path, value);
+};
+
+const attributeRows = (attribute, width) => {
+    if (!attribute) return [];
+    return Array.from({ length: attribute.count }, (_, index) =>
+        Array.from({ length: width }, (__, component) => attribute.array[index * attribute.itemSize + component] ?? 0));
+};
+
+const textureDataUrl = async (texture) => {
+    const image = texture?.source?.data || texture?.image;
+    if (!image) return null;
+    const width = image.width || image.videoWidth;
+    const height = image.height || image.videoHeight;
+    if (!width || !height) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0, width, height);
+    return {
+        dataUrl: canvas.toDataURL('image/png'),
+        width,
+        height,
+        wrapS: texture.wrapS,
+        wrapT: texture.wrapT,
+        repeat: texture.repeat?.toArray() || [1, 1],
+        offset: texture.offset?.toArray() || [0, 0],
+        center: texture.center?.toArray() || [0, 0],
+        rotation: texture.rotation || 0,
+        magFilter: texture.magFilter,
+        minFilter: texture.minFilter,
+    };
+};
+
+const inspectGlb = async (title, documentId) => {
+    const encoded = await invoke('read_glb_preview', { documentId });
+    const binary = atob(encoded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const gltf = await new Promise((resolve, reject) => {
+        new GLTFLoader().parse(bytes.buffer, '', resolve, reject);
+    });
+    gltf.scene.updateMatrixWorld(true);
+
+    const textureKinds = [
+        ['map', 'BaseColor', '_a0'],
+        ['normalMap', 'Normal', '_n0'],
+        ['roughnessMap', 'Roughness', '_r0'],
+        ['metalnessMap', 'Metalness', '_m0'],
+        ['emissiveMap', 'Emission', '_e0'],
+        ['alphaMap', 'Mask', '_a1'],
+        ['aoMap', 'AmbientOcclusion', '_o0'],
+    ];
+    const materialMap = new Map();
+    const textureMap = new Map();
+    const materials = [];
+    const registerMaterial = (material) => {
+        if (materialMap.has(material.uuid)) return materialMap.get(material.uuid);
+        const textureSlots = [];
+        textureKinds.forEach(([property, textureType, sampler], slotIndex) => {
+            const texture = material[property];
+            if (!texture) return;
+            const name = texture.name || texture.source?.name || `${material.name || 'Material'} ${textureType}`;
+            textureMap.set(texture.uuid, { texture, name });
+            textureSlots.push({ index: slotIndex, name, texture_type: textureType, sampler, uv_layer: texture.channel || 0 });
+        });
+        const index = materials.length;
+        materials.push({
+            name: material.name || `Material ${index}`,
+            offset: index,
+            texture_slots: textureSlots,
+            color: material.color?.toArray() || [1, 1, 1],
+            emissive: material.emissive?.toArray() || [0, 0, 0],
+            opacity: material.opacity ?? 1,
+            transparent: Boolean(material.transparent),
+            roughness: material.roughness ?? null,
+            metalness: material.metalness ?? null,
+        });
+        materialMap.set(material.uuid, index);
+        return index;
+    };
+
+    const meshes = [];
+    gltf.scene.traverse((object) => {
+        if (!object.isMesh || !object.geometry?.attributes?.position) return;
+        const sourceMaterials = Array.isArray(object.material) ? object.material : [object.material];
+        sourceMaterials.filter(Boolean).forEach(registerMaterial);
+        const geometry = object.geometry;
+        const positionAttribute = geometry.attributes.position;
+        const normalAttribute = geometry.attributes.normal;
+        const colorAttribute = geometry.attributes.color;
+        const uvMaps = Object.entries(geometry.attributes)
+            .filter(([name]) => /^uv\d*$/.test(name))
+            .sort(([left], [right]) => left.localeCompare(right, undefined, { numeric: true }))
+            .map(([, attribute]) => attributeRows(attribute, 2));
+        const positions = attributeRows(positionAttribute, 3);
+        const normals = attributeRows(normalAttribute, 3);
+        const normalMatrix = new THREE.Matrix3().getNormalMatrix(object.matrixWorld);
+        positions.forEach((position) => new THREE.Vector3().fromArray(position).applyMatrix4(object.matrixWorld).toArray(position));
+        normals.forEach((normal) => new THREE.Vector3().fromArray(normal).applyMatrix3(normalMatrix).normalize().toArray(normal));
+        const allIndices = geometry.index
+            ? Array.from(geometry.index.array)
+            : Array.from({ length: positionAttribute.count }, (_, index) => index);
+        const groups = geometry.groups.length
+            ? geometry.groups
+            : [{ start: 0, count: allIndices.length, materialIndex: 0 }];
+        groups.forEach((group, groupIndex) => {
+            const material = sourceMaterials[group.materialIndex] || sourceMaterials[0];
+            const fallbackColor = material?.color?.toArray() || [0.68, 0.72, 0.76];
+            const colors = colorAttribute
+                ? attributeRows(colorAttribute, Math.min(4, colorAttribute.itemSize))
+                : positions.map(() => [...fallbackColor, material?.opacity ?? 1]);
+            meshes.push({
+                name: groups.length > 1 ? `${object.name || 'Mesh'} [${groupIndex}]` : object.name || `Mesh ${meshes.length}`,
+                positions: positions.map((value) => [...value]),
+                normals: normals.map((value) => [...value]),
+                indices: allIndices.slice(group.start, group.start + group.count),
+                uv0: uvMaps[0] || [],
+                uv_maps: uvMaps,
+                colors,
+                material_index: material ? registerMaterial(material) : 0,
+                use_vertex_colors: true,
+                bone_index: 0,
+                vertex_skin_count: 0,
+                bone_indices: positions.map(() => []),
+                bone_weights: positions.map(() => []),
+                source_node: object.parent?.name || gltf.scene.name || 'Scene',
+            });
+        });
+    });
+
+    const resolvedTextures = [];
+    for (const [uuid, entry] of textureMap) {
+        const rendered = await textureDataUrl(entry.texture);
+        if (!rendered) continue;
+        resolvedTextures.push({
+            name: entry.name,
+            aliases: [],
+            path: `glb://${uuid}`,
+            source: 'embedded',
+            renderable: true,
+            colorSpace: 'srgb',
+            ...rendered,
+        });
+    }
+    const modelName = gltf.scene.name || title?.replace(/\.glb$/i, '') || 'GLB Model';
+    const animations = gltf.animations.map((animation, index) => ({
+        name: animation.name || `Animation ${index}`,
+        duration: animation.duration,
+        tracks: animation.tracks.length,
+    }));
+    return {
+        format: 'GLB',
+        name: modelName,
+        sections: [{ signature: [70, 77, 68, 76], name: modelName, offset: 0 }],
+        materials,
+        resolvedTextures,
+        animations,
+        render: { meshes, bones: [], scale_mode: 'none' },
+    };
 };
 
 // TextureLoader otherwise decodes identical data URLs every time a cached
@@ -290,9 +450,18 @@ function useResolvedTextures(entries, cacheTextures = true) {
                     }
                     texture.name = `${entry.name}${suffix}`;
                     texture.flipY = false;
-                    texture.colorSpace = THREE.NoColorSpace;
-                    texture.wrapS = THREE.RepeatWrapping;
-                    texture.wrapT = THREE.RepeatWrapping;
+                    texture.colorSpace = entry.colorSpace === 'srgb'
+                        ? THREE.SRGBColorSpace
+                        : THREE.NoColorSpace;
+                    texture.wrapS = entry.wrapS ?? THREE.RepeatWrapping;
+                    texture.wrapT = entry.wrapT ?? THREE.RepeatWrapping;
+                    if (entry.repeat) texture.repeat.fromArray(entry.repeat);
+                    if (entry.offset) texture.offset.fromArray(entry.offset);
+                    if (entry.center) texture.center.fromArray(entry.center);
+                    texture.rotation = entry.rotation || 0;
+                    texture.magFilter = entry.magFilter ?? texture.magFilter;
+                    texture.minFilter = entry.minFilter ?? texture.minFilter;
+                    texture.needsUpdate = true;
                     texture.userData.renderable = entry.renderable !== false;
                     assign(texture);
                     if (cacheTextures) resolvedTextureCache.set(cacheKey, texture);
@@ -451,7 +620,7 @@ function RenderMesh({ mesh, bones, scaleMode, applyRigidTransform, animation, re
                     ? new THREE.Color().setHSL((1 - Math.min(strength, 1)) * 0.66, 1, 0.5)
                     : new THREE.Color(0, 0, 0);
             }
-            else if (viewMode === 'vertColor' && mesh.colors[vertex]) color = new THREE.Color(mesh.colors[vertex][0], mesh.colors[vertex][1], mesh.colors[vertex][2]);
+            else if ((viewMode === 'vertColor' || (viewMode === 'default' && mesh.use_vertex_colors)) && mesh.colors[vertex]) color = new THREE.Color(mesh.colors[vertex][0], mesh.colors[vertex][1], mesh.colors[vertex][2]);
             else if (viewMode === 'normal' || viewMode === 'normalMap') color = new THREE.Color(normal[0] * 0.5 + 0.5, normal[1] * 0.5 + 0.5, normal[2] * 0.5 + 0.5);
             else if (viewMode === 'uvCoords') color = new THREE.Color(Math.abs(uv[0] % 1), Math.abs(uv[1] % 1), 0.2);
             else if (viewMode === 'uvTestPattern') {
@@ -748,6 +917,7 @@ function ResourceTree({ bfres, title, onSection, onMesh, onBone, onModel, onCont
     const treeTextures = naturally([...embeddedTextures, ...g1tTextures]);
     const texToGoTextures = naturally(isG1m ? [] : resolvedTextures.filter((texture) => texture.source !== 'embedded'));
     const bones = bfres?.render?.bones || [];
+    const animations = naturally(bfres?.animations || []);
     const node = (name, detail, action, key, kind) => <button type="button" className="bfres-tree-node" onClick={action} onContextMenu={(event) => onContext(event, kind, name)} key={key} title={name}>
         {kind === 'object' && <input type="checkbox" checked={!hiddenMeshes.includes(name)} onClick={(event) => event.stopPropagation()} onChange={() => onToggleMesh(name)} />}<span>{name || 'Unnamed'}</span><small>{detail}</small>
     </button>;
@@ -760,7 +930,7 @@ function ResourceTree({ bfres, title, onSection, onMesh, onBone, onModel, onCont
         </details>;
     });
     const modelName = sections.find((section) => String.fromCharCode(...section.signature) === 'FMDL')?.name || bfres?.name || 'Model';
-    return <nav className="bfres-resource-tree" aria-label="BFRES resources">
+    return <nav className="bfres-resource-tree" aria-label="3D resources">
         <div className="bfres-tree-actions"><button type="button" title="Expand resources">＋</button><span>Resources</span></div>
         <Folder label={title || bfres?.name || 'BFRES'} open>
             <Folder label="Models" open detail="1">
@@ -776,7 +946,9 @@ function ResourceTree({ bfres, title, onSection, onMesh, onBone, onModel, onCont
                 {textures.map((section) => node(section.name, 'Texture', () => onSection(section), `texture-${section.offset}`))}
                 {treeTextures.map((texture) => node(texture.name, `${texture.width} × ${texture.height}`, () => onSection(texture, 'texture'), `resolved-texture-${texture.path}`))}
             </Folder>
-            <Folder label="Animations" detail={(bfres?.sections || []).filter((section) => ['FSKA', 'FSHU', 'FSHA', 'FVIS', 'FMAA'].includes(String.fromCharCode(...section.signature))).length} />
+            <Folder label="Animations" detail={animations.length + (bfres?.sections || []).filter((section) => ['FSKA', 'FSHU', 'FSHA', 'FVIS', 'FMAA'].includes(String.fromCharCode(...section.signature))).length}>
+                {animations.map((animation, index) => node(animation.name, `${animation.duration?.toFixed?.(2) || 0}s`, () => onSection(animation, 'animation'), `animation-${index}`, 'animation'))}
+            </Folder>
             <Folder label="Embedded Files" />
             {!isG1m && <Folder label="TexToGo" detail={texToGoTextures.length}>{texToGoTextures.map((texture) => node(texture.name, `${texture.width} × ${texture.height}`, () => onSection(texture, 'texture'), `textogo-${texture.name}`))}</Folder>}
         </Folder>
@@ -932,6 +1104,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         resolve?.();
     }, []);
     const isG1m = bfres?.format === 'G1M';
+    const isGlb = bfres?.format === 'GLB';
     const hasGlow = useMemo(() => {
         const renderableTextures = new Set((bfres?.resolvedTextures || [])
             .filter((texture) => texture.renderable !== false)
@@ -1159,7 +1332,9 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     if (pathCached && hasCompleteTextureResolution(pathCached)) {
                         return { path, value: pathCached };
                     }
-                    const value = await invoke('inspect_3d_model', { path });
+                    const value = document.fileType === 'GLB'
+                        ? await inspectGlb(document.title, document.id)
+                        : await invoke('inspect_3d_model', { path });
                     if (hasCompleteTextureResolution(value)) {
                         cacheModelInspection(pathKey, value);
                     }
@@ -1430,7 +1605,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
         <header className="bfres-viewport-toolbar">
             <div className="bfres-toolbar-row bfres-toolbar-tabs">
                 <button type="button" onClick={() => setPanel('resources')} className={panel === 'resources' ? 'active' : ''}>Resources</button>
-                <button type="button" onClick={() => { if (!isG1m) setPanel('parameters'); }} className={panel === 'parameters' ? 'active' : ''}>Parameters</button>
+                <button type="button" onClick={() => { if (!isG1m && !isGlb) setPanel('parameters'); }} className={panel === 'parameters' ? 'active' : ''} disabled={isG1m || isGlb}>Parameters</button>
                 <button type="button" onClick={() => setPanel('animations')} className={panel === 'animations' ? 'active' : ''}>Animations <small>{embeddedAnimations.length + parsedG1aAnimations.length}</small></button>
                 {hasGlow && <button type="button" onClick={() => setGlow((value) => !value)} className={glow ? 'active' : ''} aria-pressed={glow}>Glow</button>}
                 <button type="button" onClick={() => setViewResetKey((value) => value + 1)}>Reset View</button>
@@ -1501,7 +1676,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     setSelectedMaterial(usedBy.length > 0 ? materialIndex : null);
                 } else setSelectedMaterial(null);
                 setWeightBone(-2);
-                if (type === 'material' || type === 'texture') {
+                if (type === 'material' || type === 'texture' || type === 'animation') {
                     setSelected(value);
                     setDetail({ type, value });
                     setYaml(JSON.stringify(value, null, 2));
@@ -1567,7 +1742,7 @@ export default function Bfres3DView({ activeTab, setStatusText }) {
                     
                 </section>}
                 {panel === 'resources' && <NodeInspector detail={detail} textures={bfres?.resolvedTextures} />}
-                {panel === 'parameters' && bfres && !isG1m && <dl className="bfres-parameters">
+                {panel === 'parameters' && bfres && !isG1m && !isGlb && <dl className="bfres-parameters">
                     <dt>Version</dt><dd>{bfres.header.version.join('.')}</dd>
                     <dt>Endian</dt><dd>{bfres.header.endian}</dd>
                     <dt>Address size</dt><dd>{bfres.header.target_address_size || 8} bytes</dd>

@@ -6,8 +6,8 @@ use crate::Comparer::DiffComparer;
 use crate::InternalFile::InternalFile;
 use crate::NestedSarc::{NestedArchive, NestedArchives};
 use crate::Open_and_Save::{
-    check_if_save_in_romfs, file_from_disk_to_senddata, get_binary_by_filetype,
-    file_from_bytes_to_senddata, get_string_from_data, SaveFileDialog, SendData,
+    check_if_save_in_romfs, file_from_bytes_to_senddata, file_from_disk_to_senddata,
+    get_binary_by_filetype, get_string_from_data, SaveFileDialog, SendData,
 };
 use crate::Settings::{list_files_recursively, write_string_to_file, Pathlib};
 use crate::TotkConfig::TotkConfig;
@@ -848,8 +848,7 @@ impl<'a> TotkBitsApp<'a> {
         zstd: Arc<TotkZstd>,
         dest_file: &str,
     ) -> Option<Vec<u8>> {
-        let compression =
-            compression_for_save_as(self.opened_file.compression, Some(dest_file));
+        let compression = compression_for_save_as(self.opened_file.compression, Some(dest_file));
         let yaz0_alignment = self.opened_file.yaz0_alignment;
         let name = self.opened_file.path.name.clone();
         let bytes = get_binary_by_filetype(

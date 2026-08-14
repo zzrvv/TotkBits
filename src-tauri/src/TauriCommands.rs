@@ -8,6 +8,11 @@ fn show_open_error(data: &SendData) {
     } else {
         &data.status_text
     };
+    // The Mii request layer already shows a native connection dialog. Avoid
+    // immediately presenting the same failure a second time in the open flow.
+    if message.contains("Mii renderer request failed") {
+        return;
+    }
     MessageDialog::new()
         .set_title("TotkBits - Open error")
         .set_description(message)

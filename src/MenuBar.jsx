@@ -77,6 +77,29 @@ function MenuBarDisplay({ updateButton = null }) {
     saveAsFileClick(setStatusText, activeTab, setpaths, editorRef, setSavingFile, documentSnapshots);
   };
 
+  const handleDownloadMiiGlb = async (event) => {
+    event.stopPropagation();
+    closeMenu();
+    if (activeDocument?.fileType !== 'MII') return;
+    const operationId = `mii-glb:${activeDocument.id}:${crypto.randomUUID()}`;
+    window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+      detail: { id: operationId, label: `Downloading ${activeDocument.title || 'Mii'} GLB…` },
+    }));
+    try {
+      setStatusText('Downloading Mii GLB...');
+      // Let React commit the overlay before the native network request begins.
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+      const path = await invoke('download_mii_glb', { documentId: activeDocument.id });
+      await OpenFileFromPath(path, setStatusText, setActiveTab, setLabelTextDisplay, setpaths, updateEditorContent);
+    } catch (error) {
+      setStatusText(`Error downloading Mii GLB: ${String(error)}`);
+    } finally {
+      window.dispatchEvent(new CustomEvent('totkbits:model-loading', {
+        detail: { id: operationId, done: true },
+      }));
+    }
+  };
+
   const handleSearchClick = (event) => {
     event.stopPropagation(); // Prevent click event from reaching parent
     closeMenu();
@@ -359,6 +382,7 @@ function MenuBarDisplay({ updateButton = null }) {
   const isSarcOpened = paths.paths.length > 0 && activeTab === "SARC";
   const isInternalFileSelected = isSarcOpened && selectedPath.path !== '' && selectedPath.isfile;
   const toolsMenuItems = [
+    { label: 'Download GLB', onClick: handleDownloadMiiGlb, icon: blankIcon, shortcut: '', condition: activeDocument?.fileType === 'MII' },
     { label: 'Batch render', onClick: handleBatchRender, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Physics merge', onClick: handlePhysicsMerge, icon: blankIcon, shortcut: '', condition: true },
     { label: 'Add file', onClick: handleAddClick, icon: 'menu/add.png', shortcut: '', condition: isSarcOpened },

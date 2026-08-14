@@ -51,6 +51,8 @@ pub enum TotkFileType {
     Bfres,
     Fbx,
     G1M,
+    Glb,
+    Mii,
     Image,
     Archive,
     Bars,
