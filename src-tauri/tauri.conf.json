@@ -8,6 +8,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "windows": {
+      "console": false
+    },    
     "resources": [
       "bin/cpp",
       "bin/dlls",
