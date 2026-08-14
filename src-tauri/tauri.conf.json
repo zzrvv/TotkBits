@@ -7,10 +7,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
-    "windows": {
-      "console": false
-    },    
+    "targets": "all", 
     "resources": [
       "bin/cpp",
       "bin/dlls",
