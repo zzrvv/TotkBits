@@ -45,3 +45,10 @@ jobs:
         with:
           name: totkbits-windows
           path: src-tauri/target/release/totkbits.7z
+
+      - name: 发布发行版（仅 tag 触发）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src-tauri/target/release/totkbits.7z
+          tag_name: ${{ github.ref_name }}
