@@ -33,11 +33,12 @@ jobs:
         run: npm run tauri build
 
       - name: 从安装包提取便携版（7z）
+        shell: cmd
         run: |
-          cd src-tauri/target/release/bundle/nsis
-          7z x "*.exe" -o../../portable -y
-          cd ../../portable
-          7z a ../totkbits.7z *
+          cd src-tauri/target/release/bundle\nsis
+          7z x "*.exe" -o..\..\portable -y
+          cd ..\..\portable
+          7z a ..\totkbits.7z *
 
       - name: 上传产物
         uses: actions/upload-artifact@v4
