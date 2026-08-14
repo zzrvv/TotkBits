@@ -40,11 +40,8 @@ jobs:
           cd ..\..\portable
           7z a ..\totkbits.7z *
 
-      - name: 上传产物
+      - name: 上传产物（仅 7z 便携版）
         uses: actions/upload-artifact@v4
         with:
           name: totkbits-windows
-          path: |
-            src-tauri/target/release/totkbits.exe
-            src-tauri/target/release/bundle/nsis/*.exe
-            src-tauri/target/release/totkbits.7z
+          path: src-tauri/target/release/totkbits.7z
