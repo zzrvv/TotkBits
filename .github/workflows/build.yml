@@ -1,1 +1,49 @@
+name: Build Windows (TotkBits)
 
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: 拉取源码（含子模块）
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 安装 Rust 工具链
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 安装前端依赖
+        run: npm install
+
+      - name: 打包前端（Vite）
+        run: npm run build
+
+      - name: 编译 Tauri（release）
+        run: npm run tauri build
+
+      - name: 从安装包提取便携版（7z）
+        run: |
+          cd src-tauri/target/release/bundle/nsis
+          7z x "*.exe" -o../../portable -y
+          cd ../../portable
+          7z a ../totkbits.7z *
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: totkbits-windows
+          path: |
+            src-tauri/target/release/totkbits.exe
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/totkbits.7z
