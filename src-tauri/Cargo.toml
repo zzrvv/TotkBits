@@ -107,6 +107,3 @@ custom-protocol = ["tauri/custom-protocol"]
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2.3.2"
 # yaml = ["serde_yaml"]
-
-[package.metadata.windows]
-    subsystem = "windows"
